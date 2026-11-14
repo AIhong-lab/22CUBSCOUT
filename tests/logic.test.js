@@ -494,3 +494,75 @@ test('CSV 解析與輸出互通', () => {
   const rows = [['a', 'b,c', '有"引號"'], ['換\n行', '', 'x']];
   assert.deepEqual(L.parseCsv(L.toCsv(rows)), rows);
 });
+
+// ───── 出席與進程 ─────
+
+const att = (date, status = '出席') => ({ date, status });
+function progressA(attendance, completions = [], awards = [], opts = {}) {
+  const rows = itemsTable([['P-羚羊-7', '進程', '羚羊', '－', '參加幼童軍團集會至少4次', 25, '是']]);
+  return L.computeCubProgress({
+    cubId: 'C1', items: L.parseItems(rows).items, completions, awards, attendance,
+    intervalMonths: opts.interval ?? 6, today: opts.today || TODAY,
+    autoItemId: 'P-羚羊-7', autoCount: 4, levelAttendCount: opts.need ?? 0,
+  });
+}
+const itemOf = (p, id) => p.units.flatMap((u) => u.items).find((i) => i.id === id);
+
+test('出席滿 4 次自動完成羚羊「參加團集會至少4次」，日期為第 4 次出席日', () => {
+  const three = [att('2026-09-05'), att('2026-09-12'), att('2026-09-19', '請假'), att('2026-09-26')];
+  assert.equal(itemOf(progressA(three), 'P-羚羊-7').done, false, '請假不算出席');
+  const four = [...three, att('2026-10-17'), att('2026-10-03')];
+  const it = itemOf(progressA(four), 'P-羚羊-7');
+  assert.equal(it.done, true);
+  assert.equal(it.date, '2026-10-03', '依日期排序取第 4 次');
+  assert.equal(it.auto, true);
+  assert.equal(it.signer, '出席自動計算');
+});
+
+test('出席紀錄被修改後自動完成會重算（不寫入完成紀錄）', () => {
+  const four = [att('2026-09-05'), att('2026-09-12'), att('2026-09-19'), att('2026-09-26')];
+  assert.equal(itemOf(progressA(four), 'P-羚羊-7').done, true);
+  four[3].status = '請假';
+  assert.equal(itemOf(progressA(four), 'P-羚羊-7').done, false);
+});
+
+test('已有人工簽核時，取較早的日期', () => {
+  const four = [att('2026-09-05'), att('2026-09-12'), att('2026-09-19'), att('2026-09-26')];
+  const it = itemOf(progressA(four, [done('C1', 'P-羚羊-7', '2026-08-01')]), 'P-羚羊-7');
+  assert.equal(it.date, '2026-08-01');
+  assert.equal(it.auto, false);
+});
+
+test('晉級所需出席次數：上一級頒發日之後（不含當天）出席滿 N 次才達標', () => {
+  const comps = [done('C1', 'P-狼-國旗-1', '2026-01-10'), done('C1', 'P-狼-國旗-2', '2026-01-10')];
+  const awards = [award('C1', '羚羊', '2026-01-01')];
+  const meetings = [att('2026-01-01'), att('2026-02-01'), att('2026-03-01', '請假'), att('2026-04-01')];
+  const wolf = (attendance, need) => progressA(attendance, comps, awards, { need }).units.find((u) => u.unit === '狼');
+  const w0 = wolf(meetings, 0);
+  assert.equal(w0.eligible, true, '0 表示不要求');
+  assert.equal(w0.attendRequired, undefined);
+  const w2 = wolf(meetings, 2);
+  assert.equal(w2.eligible, true);
+  assert.equal(w2.attendSinceLast, 2, '頒發當天與請假都不算');
+  assert.equal(w2.eligibleDate, '2026-07-01', '仍需滿 6 個月');
+  const w3 = wolf(meetings, 3);
+  assert.equal(w3.eligible, false);
+  assert.equal(w3.attendRequired, 3);
+  const late = wolf([...meetings, att('2026-08-15')], 3);
+  assert.equal(late.eligible, true);
+  assert.equal(late.eligibleDate, '2026-08-15', '達標日期取第 N 次出席日與滿間隔日較晚者');
+});
+
+test('出席與請假分開計算', () => {
+  assert.deepEqual(L.attendanceCounts([att('a'), att('b', '請假'), att('c'), att('d', '')]), { attended: 2, leave: 1 });
+});
+
+test('出席相關設定的預設與格式檢查', () => {
+  const d = L.parseSettings(L.defaultSettingsRows()).values;
+  assert.equal(d['出席自動完成項目ID'], 'P-羚羊-7');
+  assert.equal(d['自動完成所需出席次數'], 4);
+  assert.equal(d['晉級所需出席次數'], 0);
+  const bad = L.parseSettings([['鍵', '值'], ['出席自動完成項目ID', '羚羊第七項']]);
+  assert.equal(bad.values['出席自動完成項目ID'], 'P-羚羊-7');
+  assert.ok(bad.errors.some((e) => e.key === '出席自動完成項目ID'));
+});

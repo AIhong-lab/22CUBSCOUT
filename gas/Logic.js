@@ -126,6 +126,9 @@ var Logic = (function () {
     { key: '臨時碼有效小時數', type: 'int', def: 24, min: 1, max: 168, desc: '重設密碼用的臨時碼有效時間' },
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
+    { key: '晉級所需出席次數', type: 'int', def: 0, min: 0, max: 100, desc: '狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
+    { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
+    { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算）' },
     { key: '快達標門檻（剩幾項以內）', type: 'int', def: 2, min: 1, max: 10, desc: '' },
     { key: '未頒章再提醒天數', type: 'int', def: 14, min: 0, max: 365, desc: '填 0 表示不提醒' },
     { key: '每日排程時間（幾點）', type: 'int', def: 8, min: 0, max: 23, desc: '' },
@@ -154,6 +157,11 @@ var Logic = (function () {
         return;
       }
       var raw = clean(f.value);
+      if (s.type === 'str') {
+        if (s.pattern.test(raw)) values[s.key] = raw;
+        else { values[s.key] = s.def; errors.push({ key: s.key, row: f.row, value: raw, reason: '格式不正確，已使用預設值' }); }
+        return;
+      }
       if (s.type === 'bool') {
         if (raw === '是' || raw === '否') values[s.key] = raw === '是';
         else { values[s.key] = s.def; errors.push({ key: s.key, row: f.row, value: raw, reason: '只能填「是」或「否」，已使用預設值' }); }
@@ -282,6 +290,16 @@ var Logic = (function () {
       // 同一項目若有多筆，取最早日期
       if (!done[c.itemId] || c.date < done[c.itemId].date) done[c.itemId] = c;
     });
+    // 出席（請假不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
+    var attended = (p.attendance || []).filter(function (a) { return a.status === '出席' && isDateStr(a.date); })
+      .map(function (a) { return a.date; }).sort();
+    // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）
+    if (p.autoItemId && p.autoCount > 0 && attended.length >= p.autoCount) {
+      var autoDate = attended[p.autoCount - 1];
+      if (!done[p.autoItemId] || autoDate < done[p.autoItemId].date) {
+        done[p.autoItemId] = { date: autoDate, signer: '出席自動計算', auto: true };
+      }
+    }
     var awarded = {};
     (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
 
@@ -309,7 +327,7 @@ var Logic = (function () {
       var itemStates = g.items.map(function (it) {
         var c = done[it.id];
         if (c) { doneCount++; dates.push(c.date); }
-        return { id: it.id, section: it.section, text: it.text, done: !!c, date: c ? c.date : null, signer: c ? c.signer : null };
+        return { id: it.id, section: it.section, text: it.text, done: !!c, date: c ? c.date : null, signer: c ? c.signer : null, auto: !!(c && c.auto) };
       });
       var allDone = total > 0 && doneCount === total;
       var award = awarded[g.unit] && (g.category === CATEGORY.PROGRESS ? LEVELS.indexOf(g.unit) >= 0 : true) ? awarded[g.unit] : null;
@@ -327,8 +345,9 @@ var Logic = (function () {
         eligible: false, eligibleDate: null
       };
       if (!award) {
-        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today);
+        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today, attended, p.levelAttendCount || 0);
         u.eligible = e.eligible; u.eligibleDate = e.date; u.waitingUntil = e.waitingUntil || null;
+        if (e.attendRequired) { u.attendRequired = e.attendRequired; u.attendSinceLast = e.attendSinceLast; }
       }
       return u;
     });
@@ -338,18 +357,42 @@ var Logic = (function () {
   /**
    * 達標（可頒章）判定：
    *  - 羚羊、技能章：啟用項目全部完成。
-   *  - 狼、鹿、豹：全部完成，且上一級已頒發，且今天 ≥ 上一級頒發日期 + 間隔月數。
-   * 回傳的 date 是「達標日期」= max(最後完成日, 上一級頒發日 + 間隔)。
+   *  - 狼、鹿、豹：全部完成，且上一級已頒發，且今天 ≥ 上一級頒發日期 + 間隔月數，
+   *    且上一級頒發日「之後」（不含當天）出席次數 ≥ 晉級所需出席次數（0 表示不要求；請假不算）。
+   * 回傳的 date 是「達標日期」= 以上各條件都滿足的最早日期。
    */
-  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today) {
+  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed) {
     if (!allDone) return { eligible: false, date: null };
     if (category === CATEGORY.BADGE || unit === LEVELS[0]) return { eligible: true, date: lastDate };
     var prev = LEVELS[LEVELS.indexOf(unit) - 1];
     if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
-    var ready = addMonths(awarded[prev].date, intervalMonths || 0);
+    var prevDate = awarded[prev].date;
+    var ready = addMonths(prevDate, intervalMonths || 0);
     var date = ready > lastDate ? ready : lastDate;
-    if (today < date) return { eligible: false, date: null, waitingUntil: date };
-    return { eligible: true, date: date };
+    var out = {};
+    if (attendNeed > 0) {
+      var after = (attended || []).filter(function (d) { return d > prevDate; });
+      out.attendRequired = attendNeed;
+      out.attendSinceLast = after.length;
+      if (after.length < attendNeed) {
+        out.eligible = false; out.date = null; out.reason = '出席次數未達';
+        return out;
+      }
+      if (after[attendNeed - 1] > date) date = after[attendNeed - 1];
+    }
+    if (today < date) { out.eligible = false; out.date = null; out.waitingUntil = date; return out; }
+    out.eligible = true; out.date = date;
+    return out;
+  }
+
+  /** 出席統計：出席與請假分開計算 */
+  function attendanceCounts(records) {
+    var r = { attended: 0, leave: 0 };
+    (records || []).forEach(function (a) {
+      if (a.status === '出席') r.attended++;
+      else if (a.status === '請假') r.leave++;
+    });
+    return r;
   }
 
   /**
@@ -784,7 +827,7 @@ var Logic = (function () {
     parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
-    isNearlyDone: isNearlyDone, statusTextForParents: statusTextForParents,
+    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, statusTextForParents: statusTextForParents,
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,

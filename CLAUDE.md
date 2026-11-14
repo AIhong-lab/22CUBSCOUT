@@ -12,7 +12,7 @@
   - ③ LINE webhook 打到 GAS（302 轉址不影響）並以 reply API 回覆：通過。Verify 按鈕結果不作為判斷依據。
   - `gas/Verify0B.gs`、`web/0b/` 為暫時性驗證程式，階段 2／3 由正式程式取代後刪除；Script Properties 的 `WEBHOOK_KEY`、`LINE_MESSAGING_TOKEN` 沿用。
 - 階段 1 完成：`gas/Logic.js`（純邏輯，GAS 以全域 `Logic` 使用、Node 以 require 使用）＋ `tests/logic.test.js`（46 項，`npm test` 全過；另以故意改壞程式確認測試抓得到錯）。
-- 點名系統已寫入 SPEC 7.13（排入階段 4A）；「出席與進程如何連動」待團長說明，尚未實作。
+- 點名系統已寫入 SPEC 7.13（排入階段 4A）。出席與進程的連動已寫入 Logic.js：羚羊 `P-羚羊-7` 依出席自動完成（計算而得、不寫入完成紀錄）、狼鹿豹需「晉級所需出席次數」。出席率算法待團長確認。
 - 下一步：階段 2（GAS 後端基礎）。
 
 ## 架構
