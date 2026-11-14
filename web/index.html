@@ -397,10 +397,12 @@ function renderLogin(opt = {}) {
   setTabs(null); setHeader(''); scrollTop(); setHash('');
   document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
   $app.innerHTML = `
-    <section class="card welcome"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2>
-      <p class="muted">一起看看小狼闖過了哪些關卡吧</p></section>
+    ${opt.admin ? `<section class="card welcome"><div class="mascot">🛠️</div><h2>管理員登入</h2>
+      <p class="muted">團長與服務員請用自己的帳號登入，登入後會直接進入管理員後台。</p></section>`
+    : `<section class="card welcome"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2>
+      <p class="muted">一起看看小狼闖過了哪些關卡吧</p></section>`}
     <section class="card">
-      <h2>🔑 登入</h2>
+      <h2>🔑 ${opt.admin ? '管理員登入' : '登入'}</h2>
       ${opt.notice ? `<div class="msg info">${esc(opt.notice)}</div>` : ''}
       <form id="f">
         <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
@@ -417,7 +419,7 @@ function renderLogin(opt = {}) {
     </section>
     <section class="card">
       <h2>🌱 第一次來？</h2>
-      <p class="muted">請準備團長給你的「綁定碼」，以及孩子的姓名。</p>
+      <p class="muted">${opt.admin ? '請準備團長給你的「邀請碼」，孩子姓名留空。' : '請準備團長給你的「綁定碼」，以及孩子的姓名。'}</p>
       <button class="btn alt" id="reg">我有代碼，要註冊</button>
     </section>`;
   $('#forgot').onclick = renderForgot;
@@ -899,6 +901,11 @@ const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
 function setHash(h) { try { history.replaceState(null, '', location.pathname + location.search + (h || '')); } catch (e) {} }
 
 function onPublicTab(v) {
+  if (v === 'admin') {
+    setHash('');
+    if (state.me && state.me.role) { state.mode = 'admin'; return route(); }
+    return state.me ? route() : renderLogin({ admin: true });
+  }
   if (v === 'login') { setHash(''); return state.me ? route() : renderLogin(); }
   if (v === 'home') return renderHome();
   return renderCatalog(v);
@@ -958,9 +965,14 @@ function renderHome() {
       <button class="btn alt" data-go="badges">🎖️ 技能章查詢</button>
     </section>
     <section class="card">
-      <h2>👨‍👩‍👧 家長與團長</h2>
-      <p class="small">家長登入後，可以看到<b>自己孩子</b>的闖關進度、拿到的章與出席紀錄。第一次使用請準備團長給的「綁定碼」。<br>團長與服務員登入後可以點名、簽核與頒章。</p>
-      <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '🔑 家長／團長登入'}</button>
+      <h2>👨‍👩‍👧 家長</h2>
+      <p class="small">登入後可以看到<b>自己孩子</b>的闖關進度、拿到的章與出席紀錄。第一次使用請準備團長給的「綁定碼」。</p>
+      <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '👨‍👩‍👧 家長登入'}</button>
+    </section>
+    <section class="card">
+      <h2>🛠️ 管理員（團長、服務員）</h2>
+      <p class="small">登入後進入管理員後台：點名、簽核進程與技能章、頒章、管理小狼名單與行事曆，不需要打開試算表。</p>
+      <button class="btn" data-go="admin">${state.me && state.me.role ? '🛠️ 進入管理員後台' : '🛠️ 管理員登入'}</button>
     </section>
     <p class="muted small center">進程與技能章內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉。<br>查詢頁不會顯示任何孩子的資料。</p>`;
   $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
