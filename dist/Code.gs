@@ -142,7 +142,8 @@ var Logic = (function () {
     { key: '每日排程時間（幾點）', type: 'int', def: 8, min: 0, max: 23, desc: '' },
     { key: '每週備份', type: 'bool', def: true, desc: '是/否' },
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
-    { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' }
+    { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' },
+    { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
 
   /**
@@ -361,7 +362,35 @@ var Logic = (function () {
     return { byItem: byItem, errors: errors };
   }
 
-  // ───────────── 完成紀錄與狀態判定 ─────────────
+  // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
+
+  var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
+  var MAX_CHILDREN_PER_REQUEST = 5;
+
+  /**
+   * 檢查申請時填的孩子姓名：去空白、去重複，每個 1～20 字，最多 5 位。
+   * @return {{ok: boolean, names?: string[], error?: string}}
+   */
+  function validateChildNames(list, required) {
+    var names = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (x) {
+      var n = clean(x).replace(/\s+/g, '');
+      if (n && !seen[n]) { seen[n] = true; names.push(n); }
+    });
+    if (required && !names.length) return { ok: false, error: '請填寫孩子的姓名。' };
+    if (names.length > MAX_CHILDREN_PER_REQUEST) return { ok: false, error: '一次最多填 ' + MAX_CHILDREN_PER_REQUEST + ' 位孩子。' };
+    for (var i = 0; i < names.length; i++) if (names[i].length > 20) return { ok: false, error: '孩子姓名最多 20 字。' };
+    return { ok: true, names: names };
+  }
+
+  /** 過去 24 小時內送出註冊申請的帳號數（防止濫用） */
+  function recentRequestAccounts(requests, now) {
+    var set = {};
+    (requests || []).forEach(function (r) { if (r.at && now - r.at < 24 * 3600000) set[r.accountId] = true; });
+    return Object.keys(set).length;
+  }
+
+
 
   /** 第二期預留：只有「回報狀態為空或已確認」才算完成 */
   function isCountedCompletion(rec) {
@@ -751,7 +780,8 @@ var Logic = (function () {
     manageItems: [ROLE.LEADER],
     manageSettings: [ROLE.LEADER],
     privacy: [ROLE.LEADER],
-    backup: [ROLE.LEADER]
+    backup: [ROLE.LEADER],
+    reviewRequests: [ROLE.LEADER]
   };
 
   function can(role, action) {
@@ -822,7 +852,8 @@ var Logic = (function () {
     '頒章紀錄': 0,
     '通知紀錄': 0,
     '出席紀錄': 1,
-    '額外出席': 1
+    '額外出席': 1,
+    '註冊申請': 8
   };
 
   /**
@@ -964,6 +995,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
+    IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
     diffNotifications: diffNotifications
@@ -1007,6 +1039,7 @@ var SHEET = {
   NOTIFY: '通知紀錄',
   FAILURES: '失敗紀錄',
   CONSENT: '告知同意內容',
+  REQUESTS: '註冊申請',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -1036,6 +1069,7 @@ HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席�
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
 HEADERS[SHEET.NOTIFY] = ['小狼ID', '級別或章名', '通知類型', '通知時間'];
 HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
+HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
@@ -1059,6 +1093,7 @@ TEXT_COLUMNS[SHEET.PERIODS] = [2, 3];
 TEXT_COLUMNS[SHEET.EXTRA] = [2];
 TEXT_COLUMNS[SHEET.NOTIFY] = [1];
 TEXT_COLUMNS[SHEET.CONSENT] = [3];
+TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -1259,6 +1294,16 @@ function loadInvites_() {
     return {
       code: Logic.normalizeCode(r[0]), role: Logic.clean(r[1]), name: Logic.clean(r[2]), createdBy: Logic.clean(r[3]),
       expiresAt: ms_(r[5]), status: Logic.clean(r[6]), _row: r._row, _raw: r
+    };
+  });
+}
+
+/** 註冊申請：類型 孩子/服務員；狀態 待審核/已核准/已退回（處理後清掉填寫姓名，只留連結的小狼ID） */
+function loadRequests_() {
+  return readRows_(SHEET.REQUESTS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return {
+      requestId: Logic.clean(r[0]), accountId: Logic.clean(r[1]), type: Logic.clean(r[2]), name: Logic.clean(r[3]), at: ms_(r[4]),
+      status: Logic.clean(r[5]), cubId: Logic.clean(r[8]), consentVersion: Number(r[9]) || 0, note: Logic.clean(r[10]), _row: r._row, _raw: r
     };
   });
 }
@@ -1553,7 +1598,8 @@ var AUTHED_ACTIONS = {
   reconsent: apiReconsent_,
   unbind: apiUnbind_,
   changePassword: apiChangePassword_,
-  updateNickname: apiUpdateNickname_
+  updateNickname: apiUpdateNickname_,
+  requestChildren: apiRequestChildren_
 };
 
 function dispatch_(req) {
@@ -1686,6 +1732,8 @@ function requireConsentVersion_(agreedVersion) {
 // ───────────── 註冊、登入、密碼 ─────────────
 
 function apiRegister_(req) {
+  // 沒有代碼：新的註冊方式（送出申請，團長審核）；有代碼：舊方式（第一位團長邀請碼、既有綁定碼仍可用）
+  if (!Logic.clean(req.code)) return registerByRequest_(req);
   return withLock_(function () {
     var settings = loadSettings_().values;
     var r = verifyCode_(req.code, req.childName, null, settings);
@@ -1840,6 +1888,68 @@ function apiUnbind_(req, who) {
 // ───────────── 查詢 ─────────────
 
 /** 登入者的基本資訊、身分、綁定的小狼 */
+/**
+ * 新的註冊方式（SPEC 附錄第 31 點）：選身分（家長／服務員）、填孩子姓名 → 建立帳號並送出申請，
+ * 團長在後台核准後才綁定孩子或成為服務員。帳號可以先登入，看到「等待審核」。
+ */
+function registerByRequest_(req) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var identity = Logic.clean(req.identity);
+    if (identity !== Logic.IDENTITY.PARENT && identity !== Logic.IDENTITY.STAFF) throw new ApiError(ERR.BAD_INPUT, '請選擇身分（家長或服務員）。');
+    var v = Logic.validateChildNames(req.childNames, identity === Logic.IDENTITY.PARENT);
+    if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+    checkAccountInput_(req.username, req.password, req.nickname, settings);
+    // 有填孩子就要先同意個資告知；沒有同意不建立任何資料
+    var version = v.names.length ? requireConsentVersion_(req.consentVersion) : 0;
+    var requests = loadRequests_();
+    if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
+      throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
+    }
+    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+
+    var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
+    var salt = randomHex_(32);
+    var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+    var now = new Date();
+    appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), Logic.clean(req.nickname), hash, salt, '啟用', now, now, '', '']]);
+    var rows = requestRows_(accountId, v.names, version, requests, now);
+    if (identity === Logic.IDENTITY.STAFF) rows.push(requestRow_(accountId, '服務員', Logic.clean(req.nickname), 0, requests.concat(rowsToIds_(rows)), now));
+    appendRows_(SHEET.REQUESTS, rows);
+    logOp_(accountId, '註冊申請', Logic.clean(req.username), '', identity + (v.names.length ? '，孩子 ' + v.names.length + ' 位' : ''));
+    var s = createSession_(accountId, !!req.remember, settings);
+    return { token: s.token, expiresAt: s.expiresAt };
+  });
+}
+
+/** 已登入的家長再申請新增孩子（例如第二個孩子） */
+function apiRequestChildren_(req, who) {
+  return withLock_(function () {
+    var v = Logic.validateChildNames(req.childNames, true);
+    if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+    var version = requireConsentVersion_(req.consentVersion);
+    var requests = loadRequests_();
+    var pendingMine = requests.filter(function (r) { return r.accountId === who.account.accountId && r.status === '待審核'; });
+    if (pendingMine.length + v.names.length > 10) throw new ApiError(ERR.BAD_INPUT, '待審核的申請太多了，請等團長審核後再送。');
+    var dup = v.names.filter(function (n) { return pendingMine.some(function (r) { return r.type === '孩子' && r.name === n; }); });
+    if (dup.length) throw new ApiError(ERR.BAD_INPUT, '「' + dup.join('、') + '」已經在等待審核了。');
+    appendRows_(SHEET.REQUESTS, requestRows_(who.account.accountId, v.names, version, requests, new Date()));
+    logOp_(who.account.accountId, '申請新增孩子', who.account.username, '', v.names.length + ' 位');
+    return { added: v.names.length };
+  });
+}
+
+function requestRow_(accountId, type, name, version, existing, now) {
+  var id = newId_('R', existing.map(function (r) { return r.requestId; }));
+  return [id, accountId, type, name, now, '待審核', '', '', '', version || '', ''];
+}
+function rowsToIds_(rows) { return rows.map(function (r) { return { requestId: r[0] }; }); }
+function requestRows_(accountId, names, version, existing, now) {
+  var rows = [];
+  names.forEach(function (n) { rows.push(requestRow_(accountId, '孩子', n, version, existing.concat(rowsToIds_(rows)), now)); });
+  return rows;
+}
+
 function apiMe_(req, who) {
   var latest = Logic.latestConsentVersion(loadConsents_());
   var cubs = loadCubs_();
@@ -1857,6 +1967,13 @@ function apiMe_(req, who) {
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     cubs: list,
+    // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
+    requests: (function () {
+      var mineReq = loadRequests_().filter(function (r) { return r.accountId === who.account.accountId; });
+      var pend = mineReq.filter(function (r) { return r.status === '待審核'; });
+      var rej = mineReq.filter(function (r) { return r.status === '已退回'; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 5);
+      return pend.concat(rej).map(function (r) { return { type: r.type, name: r.name, status: r.status, at: r.at ? new Date(r.at).toISOString() : '', note: r.note }; });
+    })(),
     latestConsentVersion: latest,
     needsConsent: mine.some(function (b) { return Logic.needsReconsent(b, latest); })
   };
@@ -2009,7 +2126,7 @@ function inviteMessage_(inv) {
   var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
   return inv.name + ' 您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
     '1. 打開 ' + url + '\n' +
-    '2. 按「我有代碼，要註冊」\n' +
+    '2. 按右上角「登入」→「我有團長給的代碼」\n' +
     '3. 綁定碼欄位輸入：' + inv.code + '（孩子姓名留空）\n' +
     '4. 設定您的帳號、密碼、稱呼\n' +
     '邀請碼只能用一次，' + Utilities.formatDate(new Date(inv.expiresAt), TZ, 'MM/dd HH:mm') + ' 前有效。';
@@ -2123,6 +2240,7 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       permission: parse('PERM_LAST'),
       privacyOverdue: Logic.overdueForPrivacy(cubs, ctx.settings['離團後提醒處理個資的天數'], ctx.today).map(function (c) { return { cubId: c.cubId, name: c.name, leftDate: c.leftDate }; }),
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
+      pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核'; }).length : 0,
       notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0)
     }
   };
@@ -2636,8 +2754,106 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
     purgeSessions_(acc.accountId);
     deleteRows_(SHEET.BINDINGS, loadBindings_().filter(function (b) { return b.accountId === acc.accountId; }).map(function (b) { return b._row; }));
     deleteRows_(SHEET.ADMINS, admins.filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
+    deleteRows_(SHEET.REQUESTS, loadRequests_().filter(function (r) { return r.accountId === acc.accountId; }).map(function (r) { return r._row; }));
     deleteRows_(SHEET.ACCOUNTS, [acc._row]);
     logOp_(who.account.accountId, '刪除帳號', acc.accountId, '', '');
+    return {};
+  });
+});
+
+// ───────────── 註冊申請審核（SPEC 附錄第 31 點，團長專用） ─────────────
+
+registerAdmin_('requestList', 'reviewRequests', function () {
+  var accounts = accountsById_();
+  var cubs = loadCubs_().filter(function (c) { return c.status === '在團'; });
+  var adminIds = {};
+  loadAdmins_().forEach(function (a) { adminIds[a.accountId] = true; });
+  var items = loadRequests_().filter(function (r) { return r.status === '待審核'; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
+    var acc = accounts[r.accountId] || {};
+    return {
+      requestId: r.requestId, type: r.type, name: r.name, at: r.at ? new Date(r.at).toISOString() : '',
+      nickname: acc.nickname || '（帳號已刪除）', username: acc.username || '', isAdmin: !!adminIds[r.accountId],
+      // 同名的在團小狼（例如爸爸媽媽各自註冊同一個孩子），審核時建議直接連結
+      sameName: r.type === '孩子' ? cubs.filter(function (c) { return c.name === r.name; }).map(function (c) { return c.cubId; }) : []
+    };
+  });
+  var settings = loadSettings_().values;
+  return {
+    items: items,
+    cubs: cubs.map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad }; }),
+    squads: settings['小隊清單'] || [],
+    today: today_()
+  };
+});
+
+/** 取出一筆待審核申請，帳號必須仍在且啟用 */
+function pendingRequest_(requestId) {
+  var r = loadRequests_().filter(function (x) { return x.requestId === Logic.clean(requestId); })[0];
+  if (!r || r.status !== '待審核') throw new ApiError(ERR.NOT_FOUND, '找不到這筆申請，可能已經處理過了，請重新整理。');
+  var acc = accountsById_()[r.accountId];
+  if (!acc || acc.status !== '啟用') throw new ApiError(ERR.BAD_INPUT, '申請人的帳號已停用或刪除，請按「退回」。');
+  return { req: r, acc: acc };
+}
+
+/** 結案：寫入結果並清掉申請時填的姓名（姓名已在小狼名單或管理員名單，不重複保存） */
+function closeRequest_(r, status, who, cubId, note) {
+  var row = r._raw.slice(0, HEADERS[SHEET.REQUESTS].length);
+  row[3] = ''; row[5] = status; row[6] = who.account.accountId; row[7] = new Date(); row[8] = cubId || ''; row[10] = Logic.clean(note).slice(0, 100);
+  updateRows_(SHEET.REQUESTS, [{ row: r._row, values: row }]);
+}
+
+/**
+ * 核准：
+ * - 孩子：mode='new' 新增小狼（姓名可修正、選小隊、填入團日）或 mode='link' 連結到現有小狼，並綁定申請人帳號。
+ * - 服務員：把申請人設為服務員（姓名可修正）。
+ */
+registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
+  return withLock_(function () {
+    var p = pendingRequest_(req.requestId), r = p.req;
+    if (r.type === '服務員') {
+      var name = Logic.clean(req.name).slice(0, 30) || r.name;
+      if (!name) throw new ApiError(ERR.BAD_INPUT, '請填寫服務員姓名。');
+      var admins = loadAdmins_();
+      if (!admins.some(function (a) { return a.accountId === r.accountId; })) {
+        var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'add', targetId: r.accountId, role: Logic.ROLE.ASSISTANT });
+        if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+        appendRows_(SHEET.ADMINS, [[r.accountId, name, Logic.ROLE.ASSISTANT, new Date(), who.account.accountId, '', '']]);
+      }
+      closeRequest_(r, '已核准', who, '', '');
+      logOp_(who.account.accountId, '核准服務員申請', p.acc.username, '', '服務員：' + name);
+      return { type: '服務員' };
+    }
+    var cub;
+    if (Logic.clean(req.mode) === 'link') {
+      cub = findCub_(req.cubId);
+      if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只能連結在團的小狼。');
+    } else {
+      var cname = Logic.clean(req.name).replace(/\s+/g, '') || r.name;
+      if (!cname || cname.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
+      var squad = requireSquad_(Logic.clean(req.squad).slice(0, 20));
+      var joinDate = requireDate_(Logic.clean(req.joinDate), '入團日');
+      var settings = loadSettings_().values;
+      var id = newId_('C', loadCubs_().map(function (c) { return c.cubId; }));
+      var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
+      appendRows_(SHEET.CUBS, [[id, cname, squad, joinDate, '', code, settings['綁定碼可用次數'], '在團', '']]);
+      logOp_(who.account.accountId, '新增小狼', id, '', [cname, squad, joinDate].join('／') + '（註冊申請）');
+      cub = findCub_(id);
+    }
+    // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）
+    var exists = loadBindings_().some(function (b) { return b.accountId === r.accountId && b.cubId === cub.cubId; });
+    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion]]);
+    closeRequest_(r, '已核准', who, cub.cubId, '');
+    logOp_(who.account.accountId, '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
+    return { type: '孩子', cubId: cub.cubId };
+  });
+});
+
+registerAdmin_('requestReject', 'reviewRequests', function (req, who) {
+  return withLock_(function () {
+    var r = loadRequests_().filter(function (x) { return x.requestId === Logic.clean(req.requestId); })[0];
+    if (!r || r.status !== '待審核') throw new ApiError(ERR.NOT_FOUND, '找不到這筆申請，可能已經處理過了，請重新整理。');
+    closeRequest_(r, '已退回', who, '', req.note);
+    logOp_(who.account.accountId, '退回註冊申請', r.requestId, '', r.type);
     return {};
   });
 });

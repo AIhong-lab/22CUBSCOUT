@@ -19,6 +19,7 @@
 - 里程碑一期間新增：小隊清單（SPEC 7.2、附錄第 20 點）：`Logic.parseList`／`changeSquads`、API `squadList`／`squadSave`、後台「更多 → 🏕️ 小隊設定」；`cubSave` 只接受清單內的小隊。
 - 里程碑一期間新增：公開頁面（SPEC 第六節第 11 點、附錄第 21、22 點）：公開 API `catalog`（`PUBLIC_ACTIONS`，只回傳啟用項目與說明，快取 5 分鐘）；前端 `renderHome`（首頁 `#home`）、`renderCatalog('progress'|'badges')`（`#progress`、`#badges`），`setHash` 更新網址方便分享；未登入者預設看首頁。
 - 里程碑一期間新增：進程細項（SPEC 附錄第 24、27 點）：團自訂細項掛在官方項目下，只顯示不勾選、不影響達標；`Logic.parseDetails`／`buildDetailSeed`、`loadDetails_`／`detailsView_`（白名單 group/standard/life/subs）；catalog（快取鍵 `CATALOG2`）、`buildCubView_`、`cubAdminDetail` 的項目帶 `details`；前端 `detailsHtml()`。技能章不掛細項；晉級所需技能章枚數先不做。
+- 里程碑一期間新增：新的註冊方式（SPEC 附錄第 31 點、7.2-1）：`register` 沒帶 `code` 走 `registerByRequest_`（身分、孩子姓名、同意）→ 寫「註冊申請」；`requestChildren`（已登入加孩子）；後台 `requestList`／`requestApprove`／`requestReject`（權限 `reviewRequests`，團長）；`me.requests`；`adminHome.alerts.pendingRequests`。結案時清空填寫姓名。前端 `renderSignup1~3`、`renderNoCub` 顯示申請狀態、`ADMIN_PAGES.requests`。舊的代碼註冊保留。
 - **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構
@@ -73,6 +74,7 @@
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |
 | 失敗紀錄 | 類型（登入/綁定）、對象（帳號名稱、帳號ID 或「未登入」）、時間 |
 | 告知同意內容 | 版本、內容、生效日 |
+| 註冊申請 | 申請ID、帳號ID、類型（孩子/服務員）、填寫姓名、申請時間、狀態（待審核/已核准/已退回）、處理人、處理時間、小狼ID、同意版本、備註 |
 | 設定 | 鍵、值、說明 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 

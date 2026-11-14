@@ -341,3 +341,115 @@ test('小隊清單：新增、新增小狼只能選清單內、改名同步更�
   assert.deepEqual([...call(L, 'squadSave', { type: 'remove', name: '灰狼小隊' }).squads], ['一小隊', '二小隊', '豹豹小隊']);
   assert.equal(call(L, 'cubSave', { cubId, name: '測試小狼甲', squad: '', joinDate: '2025-03-01' }).ok, true, '小隊可留空');
 });
+
+// ═════ 新的註冊方式：送出申請、團長審核（SPEC 附錄第 31 點） ═════
+function apply(env, username, data) {
+  const v = env.api({ action: 'consentText' }).version;
+  return env.api({ action: 'register', username, password: 'applypass1', consentVersion: v, ...data });
+}
+
+test('註冊申請：家長選身分、填孩子姓名；需同意；送出後可登入但看不到孩子，等待審核', () => {
+  const { env, call } = world();
+  assert.match(apply(env, 'mom02', { nickname: '王小明媽媽', childNames: ['王小明'] }).message, /請選擇身分/);
+  assert.match(apply(env, 'mom02', { identity: '家長', nickname: '王小明媽媽', childNames: [' ', ''] }).message, /孩子的姓名/);
+  const noConsent = env.api({ action: 'register', identity: '家長', username: 'mom02', password: 'applypass1', nickname: '王小明媽媽', childNames: ['王小明'] });
+  assert.equal(noConsent.code, 'NEED_CONSENT');
+  assert.equal(env.rows('帳號').filter((r) => r[1] === 'mom02').length, 0, '沒同意不建立任何資料');
+
+  const r = apply(env, 'mom02', { identity: '家長', nickname: '王小明媽媽', childNames: ['王小明', '王 小 華', '王小明'] });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const rows = env.rows('註冊申請');
+  assert.deepEqual(rows.map((x) => [x[2], x[3], x[5]]), [['孩子', '王小明', '待審核'], ['孩子', '王小華', '待審核']], '去空白、去重複');
+  assert.ok(rows.every((x) => x[9] >= 1), '記錄同意版本');
+  const me = call(r.token, 'me');
+  assert.deepEqual(me.cubs, []);
+  assert.equal(me.role, null);
+  assert.deepEqual(me.requests.map((x) => [x.type, x.name, x.status]), [['孩子', '王小明', '待審核'], ['孩子', '王小華', '待審核']]);
+  assert.ok(!JSON.stringify(me.requests).includes('U'), '不回傳帳號ID');
+  assert.equal(env.rows('綁定紀錄').filter((b) => b[0] === env.rows('帳號').find((a) => a[1] === 'mom02')[0]).length, 0, '核准前沒有綁定');
+});
+
+test('註冊申請：團長審核——新增小狼、同名孩子連結到同一位、退回；服務員看不到審核', () => {
+  const { env, call, L, A } = world();
+  const mom = apply(env, 'mom02', { identity: '家長', nickname: '王小明媽媽', childNames: ['王小明'] });
+  const dad = apply(env, 'dad02', { identity: '家長', nickname: '王小明爸爸', childNames: ['王小明'] });
+  const fake = apply(env, 'fake02', { identity: '家長', nickname: '路人', childNames: ['不認識'] });
+  assert.equal(call(A, 'requestList').code, 'FORBIDDEN', '服務員不能審核');
+  assert.equal(call(A, 'requestApprove', { requestId: 'x' }).code, 'FORBIDDEN');
+  assert.equal(call(L, 'adminHome').alerts.pendingRequests, 3);
+  assert.equal(call(A, 'adminHome').alerts.pendingRequests, 0);
+
+  let list = call(L, 'requestList');
+  assert.equal(list.items.length, 3);
+  assert.deepEqual(list.squads, ['一小隊', '二小隊']);
+  const [m, d, f] = list.items;
+  assert.equal(m.nickname, '王小明媽媽');
+  assert.equal(m.accountId, undefined, '不回傳帳號ID');
+  assert.match(call(L, 'requestApprove', { requestId: m.requestId, mode: 'new', name: '王小明', squad: '不存在小隊', joinDate: '2026-11-01' }).message, /不在小隊清單/);
+  const ok = call(L, 'requestApprove', { requestId: m.requestId, mode: 'new', name: '王小明', squad: '一小隊', joinDate: '2026-11-01' });
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const cub = env.rows('小狼名單').find((c) => c[1] === '王小明');
+  assert.deepEqual([cub[2], cub[3], cub[7]], ['一小隊', '2026-11-01', '在團']);
+  assert.equal(call(mom.token, 'me').cubs[0].name, '王小明', '家長核准後看得到孩子');
+  assert.equal(call(mom.token, 'cubDetail', { cubId: cub[0] }).ok, true);
+  const req = env.rows('註冊申請')[0];
+  assert.deepEqual([req[3], req[5], req[8]], ['', '已核准', cub[0]], '結案後清掉填寫姓名，只留小狼ID');
+  assert.equal(call(L, 'requestApprove', { requestId: m.requestId, mode: 'new', squad: '一小隊', joinDate: '2026-11-01' }).code, 'NOT_FOUND', '不可重複核准');
+
+  // 爸爸申請同一個孩子：列表提示同名小狼，連結到同一位
+  list = call(L, 'requestList');
+  assert.deepEqual(list.items.find((x) => x.requestId === d.requestId).sameName, [cub[0]]);
+  assert.equal(call(L, 'requestApprove', { requestId: d.requestId, mode: 'link', cubId: cub[0] }).ok, true);
+  assert.equal(env.rows('小狼名單').filter((c) => c[1] === '王小明').length, 1, '沒有重複建立');
+  assert.equal(call(dad.token, 'me').cubs[0].cubId, cub[0]);
+
+  // 退回：清掉姓名，申請人看得到團長的備註
+  assert.equal(call(L, 'requestReject', { requestId: f.requestId, note: '本團沒有這位小狼，請聯絡團長' }).ok, true);
+  const me = call(fake.token, 'me');
+  assert.deepEqual(me.requests.map((x) => [x.status, x.name, x.note]), [['已退回', '', '本團沒有這位小狼，請聯絡團長']]);
+  assert.equal(call(L, 'adminHome').alerts.pendingRequests, 0);
+  assert.ok(env.rows('操作日誌').some((x) => x[2] === '核准孩子申請') && env.rows('操作日誌').some((x) => x[2] === '退回註冊申請'));
+});
+
+test('註冊申請：服務員（含家長服務員）核准後成為服務員；也可以同時申請孩子', () => {
+  const { env, call, L } = world();
+  const s = env.api({ action: 'register', identity: '服務員', username: 'staff02', password: 'applypass1', nickname: '林服務員' });
+  assert.equal(s.ok, true, '服務員沒有填孩子時不需要同意個資告知：' + JSON.stringify(s));
+  const both = apply(env, 'staff03', { identity: '服務員', nickname: '李服務員', childNames: ['李小美'] });
+  assert.equal(both.ok, true);
+  const list = call(L, 'requestList').items;
+  assert.deepEqual(list.map((x) => [x.type, x.name]), [['服務員', '林服務員'], ['孩子', '李小美'], ['服務員', '李服務員']]);
+  assert.equal(call(L, 'requestApprove', { requestId: list[0].requestId, name: '林老師' }).ok, true);
+  const me = call(s.token, 'me');
+  assert.deepEqual([me.role, me.adminName], ['服務員', '林老師']);
+  assert.equal(call(s.token, 'signoffData').ok, true, '核准後可以用後台');
+  // 團長也可以把「家長」帳號改成服務員（沿用管理員指定），之後再送的服務員申請直接結案
+  call(L, 'requestApprove', { requestId: list[2].requestId });
+  assert.equal(call(both.token, 'me').role, '服務員');
+});
+
+test('註冊申請：已登入家長申請第二個孩子、24 小時上限、刪除帳號一併刪除申請', () => {
+  const { env, call, L, P } = world();
+  const v = env.api({ action: 'consentText' }).version;
+  assert.equal(call(P, 'requestChildren', { childNames: ['測試小狼乙'] }).code, 'NEED_CONSENT');
+  assert.equal(call(P, 'requestChildren', { childNames: ['測試小狼乙'], consentVersion: v }).added, 1);
+  assert.match(call(P, 'requestChildren', { childNames: ['測試小狼乙'], consentVersion: v }).message, /已經在等待審核/);
+  assert.equal(call(P, 'me').requests.length, 1);
+
+  env.sheet('設定').getRange(env.rows('設定').findIndex((r) => r[0] === '每日註冊申請上限') + 2, 2).setValues([['5']]);
+  for (let i = 0; i < 4; i++) assert.equal(apply(env, 'many0' + i, { identity: '家長', nickname: '家長' + i, childNames: ['孩子' + i] }).ok, true);
+  assert.equal(apply(env, 'many09', { identity: '家長', nickname: '家長9', childNames: ['孩子9'] }).code, 'LOCKED', '24 小時內第 6 個帳號被擋（家長甲申請孩子也算一個）');
+  const acc = call(L, 'accountList').accounts.find((a) => a.username === 'many00');
+  assert.equal(call(L, 'accountDelete', { accountId: acc.accountId, confirmUsername: 'many00' }).ok, true);
+  assert.equal(env.rows('註冊申請').filter((r) => r[1] === acc.accountId).length, 0, '刪除帳號一併刪除申請');
+
+  env.advance(86400000 + 1000);
+  assert.equal(apply(env, 'many09', { identity: '家長', nickname: '家長9', childNames: ['孩子9'] }).ok, true, '過 24 小時恢復');
+});
+
+test('註冊申請：舊的代碼註冊仍可用（第一位團長邀請碼、既有綁定碼）', () => {
+  const { env, code } = world();
+  const v = env.api({ action: 'consentText' }).version;
+  const r = env.api({ action: 'register', code, childName: '測試小狼甲', username: 'parent09', password: 'parentpass1', nickname: '測試小狼甲爸爸', consentVersion: v });
+  assert.equal(r.ok, true);
+});

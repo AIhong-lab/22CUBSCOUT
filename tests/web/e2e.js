@@ -117,12 +117,12 @@ function seed(env) {
   await tab('login');
 
   // ═════ 家長 ═════
-  await page.getByText('我有代碼，要註冊').waitFor();
+  await page.getByText('我有團長給的代碼').waitFor();
   assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'login', '登入頁仍有導覽列，可以回到查詢頁');
   await shot('01-login'); await noHScroll('登入頁');
 
   // 註冊：錯誤代碼 → 正確代碼 → 不同意
-  await page.getByText('我有代碼，要註冊').click();
+  await page.getByText('我有團長給的代碼').click();
   await page.fill('input[name=code]', 'ZZZZZZ'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
   await page.locator('.msg.err').waitFor();
@@ -143,7 +143,7 @@ function seed(env) {
   assert.equal(env.rows('帳號').length, 1, '不同意就不建立帳號');
 
   // 重新註冊並同意
-  await page.getByText('我有代碼，要註冊').click();
+  await page.getByText('我有團長給的代碼').click();
   await page.fill('input[name=code]', 'AB2CDE'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
   await fillAccount();
@@ -225,7 +225,19 @@ function seed(env) {
   await tab('mine');
   await page.getByText('綁定的孩子').waitFor();
   await shot('08-mine');
-  await page.getByText('＋ 新增綁定').click();
+  // 新增孩子：送出申請（新方式）
+  await page.getByText('＋ 新增孩子').click();
+  await page.fill('#kidBox2 input[name=child]', '測試小狼己');
+  await page.locator('#fr button[type=submit]').click();
+  assert.match(await page.locator('#fr .msg.err').innerText(), /請先勾選同意/);
+  await page.check('#fr input[name=agree]');
+  await page.locator('#fr button[type=submit]').click();
+  await page.getByText('等待團長審核').first().waitFor();
+  assert.ok(env.rows('註冊申請').some((r) => r[3] === '測試小狼己' && r[5] === '待審核'));
+  await tab('mine');
+  await page.getByText('綁定的孩子').waitFor();
+  // 舊方式：團長給的綁定碼仍可用
+  await page.getByText('我有團長給的綁定碼或邀請碼').click();
   await page.fill('#fb input[name=code]', 'FG3HJK'); await page.fill('#fb input[name=childName]', '測試小狼乙');
   await page.locator('#fb button[type=submit]').click();
   await page.locator('#fb .msg.err').waitFor();
@@ -402,6 +414,55 @@ function seed(env) {
   const sh = await page.locator('.sheet').boundingBox();
   assert.ok(sh.y > 20, '寬螢幕彈出視窗置中，不是貼底');
   await shot('22-desktop-badges');
+
+  // ═════ 新的註冊方式：家長自己註冊 → 等待審核 → 團長核准 → 家長看到孩子 ═════
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
+  await tab('login');
+  await page.click('#signup');
+  await page.getByText('同時是家長和服務員').waitFor();
+  await shot('30-signup-identity'); await noHScroll('註冊選身分');
+  await page.locator('[data-id=家長]').click();
+  await page.fill('input[name=nickname]', '測試小狼戊媽媽');
+  await page.fill('input[name=username]', 'mom_new'); await page.fill('input[name=password]', 'mompass12'); await page.fill('input[name=password2]', 'mompass12');
+  await page.click('form#f button[type=submit]');
+  assert.match(await page.locator('.out').innerText(), /請填寫孩子的姓名/);
+  await page.fill('#kidBox input[name=child]', '測試小狼戊');
+  await page.click('#addKid');
+  assert.equal(await page.locator('#kidBox input[name=child]').count(), 2);
+  await shot('31-signup-form');
+  await page.click('form#f button[type=submit]');
+  await page.getByText('註冊 3／3').waitFor();
+  await page.check('input[name=agree]');
+  await page.click('form#f button[type=submit]');
+  await page.getByText('申請已送出，等待團長審核').waitFor();
+  assert.match(await text(), /測試小狼戊[\s\S]*等待團長審核/);
+  await shot('32-signup-waiting');
+  assert.equal(env.rows('註冊申請').filter((r) => r[5] === '待審核' && r[1] === env.rows('帳號').find((x) => x[1] === 'mom_new')[0]).length, 1, '空白的第二格不送出');
+
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
+  await tab('login');
+  await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
+  await page.click('button[type=submit]');
+  await page.locator('#toReq').click();
+  await page.locator('[data-req]').first().waitFor();
+  assert.match(await text(), /測試小狼戊[\s\S]*申請人：測試小狼戊媽媽/);
+  await shot('33-admin-requests'); await noHScroll('註冊審核');
+  await page.locator('[data-req]', { hasText: '測試小狼戊' }).locator('[data-ok]').click();
+  await page.getByText('已核准').waitFor();
+  await page.locator('[data-req]').first().waitFor();
+  assert.ok(!/測試小狼戊/.test(await text()), '核准後從清單移除');
+  const newCub = env.rows('小狼名單').find((r) => r[1] === '測試小狼戊');
+  assert.ok(newCub, '核准後新增小狼');
+
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
+  await tab('login');
+  await page.fill('input[name=username]', 'mom_new'); await page.fill('input[name=password]', 'mompass12');
+  await page.click('button[type=submit]');
+  await page.getByText('下一步挑戰').waitFor();
+  assert.match(await text(), /測試小狼戊/, '家長核准後看到孩子');
 
   assert.deepEqual(errors, [], '頁面不可有 JavaScript 錯誤');
   console.log(`前端端對端測試全部通過（共呼叫後端 ${calls} 次）`);

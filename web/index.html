@@ -459,10 +459,12 @@ function renderLogin(opt = {}) {
     </section>
     <section class="card">
       <h2>🌱 第一次來？</h2>
-      <p class="muted">請準備團長給你的「綁定碼」，以及孩子的姓名。</p>
-      <button class="btn alt" id="reg">我有代碼，要註冊</button>
+      <p class="muted">家長、服務員都在這裡註冊。送出後由團長審核，通過後就能使用。</p>
+      <button class="btn alt" id="signup">註冊新帳號</button>
+      <button class="linkbtn" id="reg">我有團長給的代碼</button>
     </section>`;
   $('#forgot').onclick = renderForgot;
+  $('#signup').onclick = () => renderSignup1();
   $('#reg').onclick = () => renderRegister1();
   $('#toProgress').onclick = () => renderCatalog('progress');
   $('#toBadges').onclick = () => renderCatalog('badges');
@@ -496,6 +498,118 @@ function renderForgot() {
     await api('resetPassword', { username: fd.get('username'), tempCode: fd.get('tempCode'), newPassword: fd.get('newPassword') });
     renderLogin({ notice: '新密碼設定好了，請用新密碼登入。' });
   });
+}
+
+// ───── 新的註冊方式：選身分 → 填資料 → 個資說明 → 送出申請，團長審核（SPEC 附錄第 31 點） ─────
+
+/** 註冊第 1 步：選身分 */
+function renderSignup1(prev = {}) {
+  scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>🌱 註冊 1／3：你的身分</h2>
+      <div class="menu-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
+        <button data-id="家長" class="${prev.identity === '家長' ? 'on' : ''}"><span class="ic">👨‍👩‍👧</span>家長<br><span class="s">孩子在團裡，想看孩子的進度</span></button>
+        <button data-id="服務員" class="${prev.identity === '服務員' ? 'on' : ''}"><span class="ic">🧢</span>服務員<br><span class="s">協助團集會、點名、簽核</span></button>
+      </div>
+      <div class="msg info small">同時是<b>家長和服務員</b>：請選「服務員」，下一步可以一起填孩子；或先選「家長」，之後請團長幫你調整成服務員。</div>
+      <button class="linkbtn" id="back">← 回登入</button>
+    </section>`;
+  $('#back').onclick = () => renderLogin();
+  $$('[data-id]').forEach((b) => { b.onclick = () => renderSignup2(Object.assign({}, prev, { identity: b.dataset.id })); });
+}
+
+/** 孩子姓名欄位（可再加一位，最多 5 位） */
+function childInputsHtml(names) {
+  const list = names && names.length ? names : [''];
+  return list.map((n, i) => `<input name="child" type="text" autocomplete="off" maxlength="20" placeholder="孩子 ${i + 1} 的姓名" value="${esc(n)}" style="margin-bottom:8px">`).join('');
+}
+function wireChildAdd(box, btn) {
+  btn.onclick = () => {
+    const n = $$('input[name=child]', box).length;
+    if (n >= 5) return toast('一次最多 5 位');
+    box.insertAdjacentHTML('beforeend', childInputsHtml(['']).replace('孩子 1', '孩子 ' + (n + 1)));
+  };
+}
+const childNamesOf = (root) => $$('input[name=child]', root).map((x) => x.value.trim()).filter(Boolean);
+
+/** 註冊第 2 步：孩子與帳號 */
+function renderSignup2(ctx) {
+  scrollTop();
+  const parent = ctx.identity === '家長';
+  const withKids = parent || ctx.withKids;
+  $app.innerHTML = `
+    <section class="card">
+      <h2>🎒 註冊 2／3：填寫資料（${esc(ctx.identity)}）</h2>
+      <form id="f">
+        ${parent ? '' : `<label for="nk">你的姓名（會顯示在管理員名單）</label><input id="nk" name="nickname" type="text" maxlength="30" value="${esc(ctx.nickname || '')}" placeholder="例如：陳小華" required>
+          <label class="check"><input type="checkbox" name="withKids" id="wk" ${ctx.withKids ? 'checked' : ''}> 我也有孩子在團裡</label>`}
+        <div id="kids" ${withKids ? '' : 'hidden'}>
+          <label>孩子的姓名（請填全名，團長會核對）</label>
+          <div id="kidBox">${childInputsHtml(ctx.childNames)}</div>
+          <button type="button" class="btn ghost small" id="addKid">＋ 再加一位孩子</button>
+        </div>
+        ${parent ? `<label for="nk">你的稱呼（孩子姓名＋稱呼，例如「王小明媽媽」）</label><input id="nk" name="nickname" type="text" maxlength="30" value="${esc(ctx.nickname || '')}" required>` : ''}
+        <label for="u">帳號（4～20 個英文字母、數字或底線）</label>
+        <p class="muted small" style="margin-top:-2px">建議用好記的英文，例如 <b>xiaoming_mom</b>、<b>amy_dad</b>。</p>
+        <input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(ctx.username || '')}" required>
+        <label for="p">密碼（至少 8 個字）</label><input id="p" name="password" type="password" autocomplete="new-password" required>
+        <label for="p2">再輸入一次密碼</label><input id="p2" name="password2" type="password" autocomplete="new-password" required>
+        <label class="check"><input type="checkbox" name="remember" checked> 記住我（這台裝置下次不用再登入）</label>
+        <button class="btn" type="submit">下一步</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="back">← 上一步</button>
+    </section>`;
+  const wk = $('#wk');
+  if (wk) wk.onchange = () => { $('#kids').hidden = !wk.checked; };
+  wireChildAdd($('#kidBox'), $('#addKid'));
+  $('#back').onclick = () => renderSignup1(ctx);
+  bindForm($('#f'), async (fd, out) => {
+    const kids = (parent || fd.get('withKids')) ? childNamesOf($('#f')) : [];
+    if (parent && !kids.length) return msg(out, '請填寫孩子的姓名。');
+    if (!parent && fd.get('withKids') && !kids.length) return msg(out, '請填寫孩子的姓名，或取消勾選「我也有孩子在團裡」。');
+    if (fd.get('password') !== fd.get('password2')) return msg(out, '兩次輸入的密碼不一樣。');
+    if (!/^[A-Za-z0-9_]{4,20}$/.test(fd.get('username').trim())) return msg(out, '帳號需為 4～20 個英文字母、數字或底線。');
+    if (fd.get('password').length < 8) return msg(out, '密碼至少 8 個字。');
+    const next = Object.assign({}, ctx, { withKids: !!fd.get('withKids'), childNames: kids, username: fd.get('username').trim(), password: fd.get('password'), nickname: fd.get('nickname').trim(), remember: !!fd.get('remember') });
+    if (!kids.length) return doSignup(next);
+    if (!next.consent) next.consent = await api('consentText');
+    renderSignup3(next);
+  });
+}
+
+/** 註冊第 3 步：個資說明（有填孩子才需要；不同意就不建立任何資料） */
+function renderSignup3(ctx) {
+  scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>📜 註冊 3／3：個資說明</h2>
+      <p class="muted">請閱讀以下說明，同意後才會建立帳號並送出申請。</p>
+      <div class="consent">${esc(ctx.consent.content)}</div>
+      <form id="f">
+        <label class="check"><input type="checkbox" name="agree" required> 我已閱讀並同意上述說明</label>
+        <button class="btn green" type="submit">同意並送出申請</button>
+        <div class="out"></div>
+      </form>
+      <button class="btn ghost" id="no">不同意（不建立帳號）</button>
+      <button class="linkbtn" id="back">← 上一步</button>
+    </section>`;
+  $('#back').onclick = () => renderSignup2(ctx);
+  $('#no').onclick = () => renderLogin({ notice: '沒有建立帳號，也沒有留下任何資料。有問題歡迎聯絡團長。' });
+  bindForm($('#f'), async () => doSignup(ctx));
+}
+
+async function doSignup(ctx) {
+  try {
+    const r = await api('register', { identity: ctx.identity, childNames: ctx.childNames, username: ctx.username, password: ctx.password,
+      nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined });
+    store.set('token', r.token, ctx.remember);
+    await start();
+  } catch (e) {
+    if (['NAME_TAKEN', 'BAD_INPUT', 'LOCKED', 'NEED_CONSENT'].includes(e.code)) { renderSignup2(ctx); msg($('.out'), e.message); return; }
+    throw e;
+  }
 }
 
 /** 註冊第 1 步：代碼與小孩姓名 */
@@ -685,12 +799,22 @@ async function renderParent(keep) {
   ({ home: viewHome, progress: viewMap, badges: viewBadges, attendance: viewStamps })[state.view](state.detail);
 }
 
+function requestsHtml(reqs) {
+  if (!reqs || !reqs.length) return '';
+  return reqs.map((r) => `<div class="list-row"><span class="grow"><span class="t">${r.type === '服務員' ? '🧢 服務員申請' : '🧒 ' + esc(r.name || '孩子申請')}</span>
+    ${r.note ? `<br><span class="s">團長備註：${esc(r.note)}</span>` : ''}</span>
+    <span class="pill ${r.status === '待審核' ? 'st-已完成待頒發' : 'st-未開始'}">${r.status === '待審核' ? '⏳ 等待團長審核' : '未通過'}</span></div>`).join('');
+}
 function renderNoCub() {
+  const reqs = state.me.requests || [];
+  const waiting = reqs.some((r) => r.status === '待審核');
   $app.innerHTML = `
-    <section class="card welcome"><div class="mascot">🧒</div><h2>還沒有綁定孩子</h2>
-      <p class="muted">到「我的」頁面輸入團長給的綁定碼，就能看到孩子的冒險紀錄。</p>
-      <button class="btn alt" id="go">前往新增綁定</button></section>`;
-  $('#go').onclick = () => { state.view = 'mine'; renderParent(true); };
+    <section class="card welcome"><div class="mascot">${waiting ? '⏳' : '🧒'}</div><h2>${waiting ? '申請已送出，等待團長審核' : '還沒有綁定孩子'}</h2>
+      <p class="muted">${waiting ? '團長核准後，這裡就會出現孩子的冒險紀錄（服務員核准後會出現「後台」按鈕）。可以稍後再回來看看。' : '到「我的」頁面填寫孩子姓名送出申請，團長核准後就能看到孩子的冒險紀錄。'}</p>
+      ${waiting ? '<button class="btn ghost" id="reload">🔄 重新整理</button>' : '<button class="btn alt" id="go">前往新增孩子</button>'}</section>
+    ${reqs.length ? `<section class="card"><h2>📝 我的申請</h2>${requestsHtml(reqs)}</section>` : ''}`;
+  const go = $('#go'); if (go) go.onclick = () => { state.view = 'mine'; renderParent(true); };
+  const rl = $('#reload'); if (rl) rl.onclick = () => start();
 }
 
 /** 進程細項（團自訂，只顯示不勾選）：收合在項目下面，點開才看到 */
@@ -891,7 +1015,15 @@ async function renderMine() {
           <div class="muted small">同意個資說明：第 ${esc(c.consentVersion)} 版${c.consentAt ? '，' + esc(new Date(c.consentAt).toLocaleString('zh-TW')) : ''}</div>
           <button class="btn danger small unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>
         </div>`).join('') : '<p class="muted">目前沒有綁定任何孩子。</p>'}
-      <details style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary class="fold">＋ 新增綁定（另一個孩子）</summary>
+      ${requestsHtml(me.requests)}
+      <details style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary class="fold">＋ 新增孩子（送出申請，由團長審核）</summary>
+        <form id="fr">
+          <div id="kidBox2">${childInputsHtml([])}</div>
+          <button type="button" class="btn ghost small" id="addKid2">＋ 再加一位孩子</button>
+          ${consent ? `<label class="check"><input type="checkbox" name="agree"> 我已閱讀並同意下方的個資說明（第 ${esc(consent.version)} 版）</label>` : ''}
+          <button class="btn" type="submit">送出申請</button><div class="out"></div>
+        </form></details>
+      <details style="margin-top:4px"><summary class="fold" style="font-size:15px;color:var(--gray)">我有團長給的綁定碼或邀請碼</summary>
         <form id="fb">
           <label>綁定碼</label><input name="code" type="text" autocapitalize="characters" autocomplete="off" required>
           <label>孩子的姓名</label><input name="childName" type="text" autocomplete="off">
@@ -925,6 +1057,16 @@ async function renderMine() {
     $('#fp').reset();
     msg(out, '密碼已修改。其他裝置需要重新登入。', 'ok');
   });
+  wireChildAdd($('#kidBox2'), $('#addKid2'));
+  bindForm($('#fr'), async (fd, out) => {
+    const kids = childNamesOf($('#fr'));
+    if (!kids.length) return msg(out, '請填寫孩子的姓名。');
+    if (consent && !fd.get('agree')) return msg(out, '請先勾選同意個資說明。');
+    await api('requestChildren', { childNames: kids, consentVersion: consent ? consent.version : undefined });
+    state.me = await api('me');
+    toast('已送出申請，等待團長審核');
+    renderParent(true);
+  });
   bindForm($('#fb'), async (fd, out) => {
     const childName = (fd.get('childName') || '').trim();
     if (childName && consent && !fd.get('agree')) return msg(out, '請先勾選同意個資說明。');
@@ -936,7 +1078,7 @@ async function renderMine() {
   });
   $$('.unbind').forEach((b) => {
     b.onclick = () => {
-      if (!confirm(`確定要解除與「${b.dataset.name}」的綁定嗎？\n解除後你就看不到這個孩子的資料（孩子的紀錄不受影響），之後需要團長的綁定碼才能再綁定。`)) return;
+      if (!confirm(`確定要解除與「${b.dataset.name}」的綁定嗎？\n解除後你就看不到這個孩子的資料（孩子的紀錄不受影響），之後要再送出申請、由團長審核才能再綁定。`)) return;
       act(b, async () => {
         await api('unbind', { cubId: b.dataset.id });
         state.me = await api('me');
@@ -1019,7 +1161,7 @@ function renderHome() {
     <section class="card">
       <h2>🔑 登入</h2>
       <p class="small">家長、團長、服務員都從這裡登入，系統會依帳號自動帶你到對的地方：</p>
-      <ul class="small"><li><b>家長</b>：看到自己孩子的闖關進度、拿到的章與出席紀錄。第一次使用請準備團長給的「綁定碼」。</li>
+      <ul class="small"><li><b>家長</b>：看到自己孩子的闖關進度、拿到的章與出席紀錄。第一次使用請按「登入 → 註冊新帳號」，選「家長」並填孩子姓名，團長審核後就能使用。</li>
         <li><b>團長、服務員</b>：直接進入管理員後台，點名、簽核進程與技能章、頒章，不需要打開試算表。</li></ul>
       <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '🔑 登入'}</button>
     </section>
@@ -1128,7 +1270,7 @@ const ADMIN_TABS = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['si
 function adminMoreItems() {
   const L = isLeader();
   return [
-    ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
+    ['requests', '📝', '註冊審核', L], ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
     ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['squads', '🏕️', '小隊設定', L], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
     ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '公開查詢頁', true],
   ].filter((x) => x[3]);
@@ -1170,6 +1312,7 @@ const ADMIN_PAGES = {
     const nextM = open.find((m) => m.date > today);
     const al = h.alerts;
     const alerts = [];
+    if (al.pendingRequests) alerts.push(['red', '📝', `有 ${al.pendingRequests} 筆註冊申請等待審核`]);
     if (al.permission && !al.permission.ok) alerts.push(['red', '🚨', '試算表權限過寬：' + al.permission.issues.join('；')]);
     if (al.itemErrors.length) alerts.push(['red', '⚠️', `項目總表有 ${al.itemErrors.length} 列格式錯誤（第 ${al.itemErrors.map((e) => e.row).join('、')} 列），這些列暫時不會被使用。`]);
     if (al.settingErrors.length) alerts.push(['yellow', '⚙️', '設定值有問題，已暫用預設值：' + al.settingErrors.map((e) => e.key + '（' + e.reason + '）').join('；')]);
@@ -1186,6 +1329,7 @@ const ADMIN_PAGES = {
           <div class="row-flex"><button class="btn green small" id="goRoll">📋 去點名</button><button class="btn small" id="goSign">✅ 去簽核</button></div>`
         : `<p class="muted">今天沒有集會。${nextM ? `下次集會：<b>${fmtDate(nextM.date)} ${esc(nextM.name)}</b>` : (isLeader() ? '行事曆還沒有之後的集會。' : '')}</p>
           ${!nextM && isLeader() ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
+      ${al.pendingRequests ? `<section class="card"><div class="banner"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></div><button class="btn alt small" id="toReq">前往審核</button></section>` : ''}
       <section class="card"><h2>🏅 待頒章 <span class="pill st-已完成待頒發">${h.pending.length}</span></h2>
         ${h.pending.length ? h.pending.map((p) => row(p, `<span class="s">達標 ${fmtDate(p.eligibleDate)}</span>`)).join('') : '<p class="muted">目前沒有待頒章的小狼。</p>'}
         ${h.pending.length && isLeader() ? '<button class="btn alt" id="toAward">🏅 前往頒章</button>' : ''}</section>
@@ -1195,11 +1339,59 @@ const ADMIN_PAGES = {
       <section class="card"><h2>📣 系統提示</h2>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</section>`;
     const ta = $('#toAward');
     if (ta) ta.onclick = () => goAdmin('award');
+    const tq = $('#toReq'); if (tq) tq.onclick = () => goAdmin('requests');
     $$('[data-cub]').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.cub }); });
     const tabTo = (t) => { state.admin = { tab: t, page: null }; renderAdmin(); };
     const gr = $('#goRoll'); if (gr) gr.onclick = () => tabTo('roll');
     const gs = $('#goSign'); if (gs) gs.onclick = () => tabTo('sign');
     const gc = $('#goCal'); if (gc) gc.onclick = () => goAdmin('calendar');
+  },
+
+  // ───── 註冊審核（團長） ─────
+  async requests() {
+    const d = await api('requestList');
+    const cubOpt = (sel) => d.cubs.map((c) => `<option value="${esc(c.cubId)}" ${sel.includes(c.cubId) ? 'selected' : ''}>${esc(c.name)}（${esc(c.squad || '未分小隊')}）</option>`).join('');
+    const card = (r) => r.type === '服務員' ? `
+      <div class="unit" style="padding:14px" data-req="${esc(r.requestId)}">
+        <div class="name">🧢 服務員申請</div>
+        <div class="muted small">帳號 ${esc(r.username)}・${fmtTime(Date.parse(r.at))}${r.isAdmin ? '・<b>已經是管理員</b>' : ''}</div>
+        <label>顯示姓名</label><input type="text" name="name" maxlength="30" value="${esc(r.name)}">
+        <div class="row-flex"><button class="btn green small" data-ok>✅ 核准為服務員</button><button class="btn danger small" data-no>退回</button></div><div class="out"></div>
+      </div>` : `
+      <div class="unit" style="padding:14px" data-req="${esc(r.requestId)}">
+        <div class="name">🧒 ${esc(r.name)}</div>
+        <div class="muted small">申請人：${esc(r.nickname)}（帳號 ${esc(r.username)}）・${fmtTime(Date.parse(r.at))}</div>
+        ${r.sameName.length ? '<div class="msg warn small">已經有同名的小狼，可能是爸爸或媽媽已經申請過，建議選「連結到現有小狼」。</div>' : ''}
+        <div class="chips"><label class="check" style="margin:4px 12px 4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="new" ${r.sameName.length ? '' : 'checked'}> 新增小狼</label>
+          <label class="check" style="margin:4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="link" ${r.sameName.length ? 'checked' : ''} ${d.cubs.length ? '' : 'disabled'}> 連結到現有小狼</label></div>
+        <div data-pane="new" ${r.sameName.length ? 'hidden' : ''}>
+          <label>小狼姓名（可修正錯字）</label><input type="text" name="name" maxlength="30" value="${esc(r.name)}">
+          <label>小隊</label><select class="full" name="squad"><option value="">（未分小隊）</option>${d.squads.map((q) => `<option>${esc(q)}</option>`).join('')}</select>
+          <label>入團日</label><input type="date" name="joinDate" value="${esc(d.today)}" max="${esc(d.today)}">
+        </div>
+        <div data-pane="link" ${r.sameName.length ? '' : 'hidden'}><label>選擇小狼</label><select class="full" name="cubId">${cubOpt(r.sameName)}</select></div>
+        <div class="row-flex"><button class="btn green small" data-ok>✅ 核准</button><button class="btn danger small" data-no>退回</button></div><div class="out"></div>
+      </div>`;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 註冊審核 <span class="pill st-已完成待頒發">${d.items.length}</span></h2>
+      <p class="muted small">家長與服務員自己註冊後，在這裡核准。孩子核准時可以「新增小狼」或「連結到現有小狼」（例如爸爸、媽媽各自申請同一個孩子）。</p>
+      ${d.items.length ? d.items.map(card).join('') : '<p class="muted">目前沒有待審核的申請。</p>'}</section>`;
+    wireBack();
+    $$('[data-req]').forEach((box) => {
+      const id = box.dataset.req;
+      const val = (n) => { const el = box.querySelector(`[name=${n}]`); return el ? el.value : ''; };
+      $$('input[type=radio]', box).forEach((rb) => { rb.onchange = () => $$('[data-pane]', box).forEach((p) => { p.hidden = p.dataset.pane !== rb.value; }); });
+      box.querySelector('[data-ok]').onclick = (ev) => act(ev.target, async () => {
+        const mode = (box.querySelector('input[type=radio]:checked') || {}).value || 'new';
+        try { await api('requestApprove', { requestId: id, mode, name: val('name'), squad: val('squad'), joinDate: val('joinDate'), cubId: val('cubId') }); }
+        catch (e) { if (e.code === 'SESSION_EXPIRED') return; return msg(box.querySelector('.out'), e.message); }
+        toast('已核准'); goAdmin('requests');
+      });
+      box.querySelector('[data-no]').onclick = (ev) => {
+        const note = prompt('退回原因（申請人看得到，可留空）：', '');
+        if (note === null) return;
+        act(ev.target, async () => { await api('requestReject', { requestId: id, note }); toast('已退回'); goAdmin('requests'); });
+      };
+    });
   },
 
   // ───── 點名 ─────
@@ -1431,7 +1623,7 @@ const ADMIN_PAGES = {
       const dte = prompt(`標記「${c.name}」離團，綁定碼會立即失效。\n請輸入離團日（例如 ${todayStr()}）：`, todayStr());
       if (dte) act(b, async () => { await api('cubLeave', { cubId: c.cubId, leftDate: dte.trim() }); toast('已標記離團'); reload(); });
     });
-    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按「我有代碼，要註冊」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
+    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有團長給的代碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
     on('#newCode', (b) => { if (confirm('重新產生後，舊的綁定碼立即失效（已綁定的家長不受影響）。確定嗎？')) act(b, async () => { await api('cubNewCode', { cubId: c.cubId }); toast('已產生新的綁定碼'); reload(); }); });
     $$('[data-unbind]').forEach((b) => { b.onclick = () => { if (confirm(`確定要解除「${b.dataset.n}」與 ${c.name} 的綁定嗎？`)) act(b, async () => { await api('cubUnbind', { cubId: c.cubId, accountId: b.dataset.unbind }); reload(); }); }; });
     $$('[data-revoke]').forEach((b) => { b.onclick = () => { if (confirm('確定要撤銷這一項的簽核嗎？')) act(b, async () => { await api('signoffRevoke', { entries: [{ cubId: c.cubId, itemId: b.dataset.revoke }] }); toast('已撤銷'); reload(); }); }; });

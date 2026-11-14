@@ -135,7 +135,8 @@ var Logic = (function () {
     { key: '每日排程時間（幾點）', type: 'int', def: 8, min: 0, max: 23, desc: '' },
     { key: '每週備份', type: 'bool', def: true, desc: '是/否' },
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
-    { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' }
+    { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' },
+    { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
 
   /**
@@ -354,7 +355,35 @@ var Logic = (function () {
     return { byItem: byItem, errors: errors };
   }
 
-  // ───────────── 完成紀錄與狀態判定 ─────────────
+  // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
+
+  var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
+  var MAX_CHILDREN_PER_REQUEST = 5;
+
+  /**
+   * 檢查申請時填的孩子姓名：去空白、去重複，每個 1～20 字，最多 5 位。
+   * @return {{ok: boolean, names?: string[], error?: string}}
+   */
+  function validateChildNames(list, required) {
+    var names = [], seen = {};
+    (Array.isArray(list) ? list : []).forEach(function (x) {
+      var n = clean(x).replace(/\s+/g, '');
+      if (n && !seen[n]) { seen[n] = true; names.push(n); }
+    });
+    if (required && !names.length) return { ok: false, error: '請填寫孩子的姓名。' };
+    if (names.length > MAX_CHILDREN_PER_REQUEST) return { ok: false, error: '一次最多填 ' + MAX_CHILDREN_PER_REQUEST + ' 位孩子。' };
+    for (var i = 0; i < names.length; i++) if (names[i].length > 20) return { ok: false, error: '孩子姓名最多 20 字。' };
+    return { ok: true, names: names };
+  }
+
+  /** 過去 24 小時內送出註冊申請的帳號數（防止濫用） */
+  function recentRequestAccounts(requests, now) {
+    var set = {};
+    (requests || []).forEach(function (r) { if (r.at && now - r.at < 24 * 3600000) set[r.accountId] = true; });
+    return Object.keys(set).length;
+  }
+
+
 
   /** 第二期預留：只有「回報狀態為空或已確認」才算完成 */
   function isCountedCompletion(rec) {
@@ -744,7 +773,8 @@ var Logic = (function () {
     manageItems: [ROLE.LEADER],
     manageSettings: [ROLE.LEADER],
     privacy: [ROLE.LEADER],
-    backup: [ROLE.LEADER]
+    backup: [ROLE.LEADER],
+    reviewRequests: [ROLE.LEADER]
   };
 
   function can(role, action) {
@@ -815,7 +845,8 @@ var Logic = (function () {
     '頒章紀錄': 0,
     '通知紀錄': 0,
     '出席紀錄': 1,
-    '額外出席': 1
+    '額外出席': 1,
+    '註冊申請': 8
   };
 
   /**
@@ -957,6 +988,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
+    IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
     diffNotifications: diffNotifications

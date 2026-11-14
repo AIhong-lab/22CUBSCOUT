@@ -57,7 +57,7 @@ function inviteMessage_(inv) {
   var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
   return inv.name + ' 您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
     '1. 打開 ' + url + '\n' +
-    '2. 按「我有代碼，要註冊」\n' +
+    '2. 按右上角「登入」→「我有團長給的代碼」\n' +
     '3. 綁定碼欄位輸入：' + inv.code + '（孩子姓名留空）\n' +
     '4. 設定您的帳號、密碼、稱呼\n' +
     '邀請碼只能用一次，' + Utilities.formatDate(new Date(inv.expiresAt), TZ, 'MM/dd HH:mm') + ' 前有效。';

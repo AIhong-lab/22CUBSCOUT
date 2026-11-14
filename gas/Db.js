@@ -163,6 +163,16 @@ function loadInvites_() {
   });
 }
 
+/** 註冊申請：類型 孩子/服務員；狀態 待審核/已核准/已退回（處理後清掉填寫姓名，只留連結的小狼ID） */
+function loadRequests_() {
+  return readRows_(SHEET.REQUESTS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return {
+      requestId: Logic.clean(r[0]), accountId: Logic.clean(r[1]), type: Logic.clean(r[2]), name: Logic.clean(r[3]), at: ms_(r[4]),
+      status: Logic.clean(r[5]), cubId: Logic.clean(r[8]), consentVersion: Number(r[9]) || 0, note: Logic.clean(r[10]), _row: r._row, _raw: r
+    };
+  });
+}
+
 function loadItems_() { return Logic.parseItems(readAll_(SHEET.ITEMS)); }
 
 /** 進程細項（團自訂，只顯示）：{byItem, errors}；分頁不存在（尚未重跑 setup）時視為沒有細項 */

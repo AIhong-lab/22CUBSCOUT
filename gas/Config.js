@@ -31,6 +31,7 @@ var SHEET = {
   NOTIFY: '通知紀錄',
   FAILURES: '失敗紀錄',
   CONSENT: '告知同意內容',
+  REQUESTS: '註冊申請',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -60,6 +61,7 @@ HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席�
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
 HEADERS[SHEET.NOTIFY] = ['小狼ID', '級別或章名', '通知類型', '通知時間'];
 HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
+HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
@@ -83,6 +85,7 @@ TEXT_COLUMNS[SHEET.PERIODS] = [2, 3];
 TEXT_COLUMNS[SHEET.EXTRA] = [2];
 TEXT_COLUMNS[SHEET.NOTIFY] = [1];
 TEXT_COLUMNS[SHEET.CONSENT] = [3];
+TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
