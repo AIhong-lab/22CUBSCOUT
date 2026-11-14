@@ -461,7 +461,7 @@ function renderLogin(opt = {}) {
       <h2>🌱 第一次來？</h2>
       <p class="muted">家長、服務員都在這裡註冊。送出後由團長審核，通過後就能使用。</p>
       <button class="btn alt" id="signup">註冊新帳號</button>
-      <button class="linkbtn" id="reg">我有團長給的代碼</button>
+      <button class="linkbtn" id="reg">我有綁定碼</button>
     </section>`;
   $('#forgot').onclick = renderForgot;
   $('#signup').onclick = () => renderSignup1();
@@ -623,7 +623,7 @@ function renderRegister1(prev = {}) {
         <input id="c" name="code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(prev.code || '')}" required>
         <label for="n">孩子的姓名</label>
         <input id="n" name="childName" type="text" autocomplete="off" value="${esc(prev.childName || '')}">
-        <p class="muted small">服務員用「邀請碼」註冊時，孩子姓名請留空。</p>
+        <p class="muted small">系統第一次架設時，團長用 setup 產生的「團長邀請碼」也在這裡輸入，孩子姓名留空。</p>
         <button class="btn" type="submit">下一步</button>
         <div class="out"></div>
       </form>
@@ -1023,11 +1023,10 @@ async function renderMine() {
           ${consent ? `<label class="check"><input type="checkbox" name="agree"> 我已閱讀並同意下方的個資說明（第 ${esc(consent.version)} 版）</label>` : ''}
           <button class="btn" type="submit">送出申請</button><div class="out"></div>
         </form></details>
-      <details style="margin-top:4px"><summary class="fold" style="font-size:15px;color:var(--gray)">我有團長給的綁定碼或邀請碼</summary>
+      <details style="margin-top:4px"><summary class="fold" style="font-size:15px;color:var(--gray)">我有綁定碼</summary>
         <form id="fb">
           <label>綁定碼</label><input name="code" type="text" autocapitalize="characters" autocomplete="off" required>
           <label>孩子的姓名</label><input name="childName" type="text" autocomplete="off">
-          <p class="muted small">服務員邀請碼也在這裡輸入（孩子姓名留空）。</p>
           ${consent ? `<label class="check"><input type="checkbox" name="agree"> 我已閱讀並同意下方的個資說明（第 ${esc(consent.version)} 版）</label>` : ''}
           <button class="btn" type="submit">新增綁定</button><div class="out"></div>
         </form></details>
@@ -1623,7 +1622,7 @@ const ADMIN_PAGES = {
       const dte = prompt(`標記「${c.name}」離團，綁定碼會立即失效。\n請輸入離團日（例如 ${todayStr()}）：`, todayStr());
       if (dte) act(b, async () => { await api('cubLeave', { cubId: c.cubId, leftDate: dte.trim() }); toast('已標記離團'); reload(); });
     });
-    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有團長給的代碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
+    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有綁定碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
     on('#newCode', (b) => { if (confirm('重新產生後，舊的綁定碼立即失效（已綁定的家長不受影響）。確定嗎？')) act(b, async () => { await api('cubNewCode', { cubId: c.cubId }); toast('已產生新的綁定碼'); reload(); }); });
     $$('[data-unbind]').forEach((b) => { b.onclick = () => { if (confirm(`確定要解除「${b.dataset.n}」與 ${c.name} 的綁定嗎？`)) act(b, async () => { await api('cubUnbind', { cubId: c.cubId, accountId: b.dataset.unbind }); reload(); }); }; });
     $$('[data-revoke]').forEach((b) => { b.onclick = () => { if (confirm('確定要撤銷這一項的簽核嗎？')) act(b, async () => { await api('signoffRevoke', { entries: [{ cubId: c.cubId, itemId: b.dataset.revoke }] }); toast('已撤銷'); reload(); }); }; });
@@ -1858,10 +1857,10 @@ const ADMIN_PAGES = {
         <button class="btn ghost small" data-ad="${esc(x.accountId)}">管理</button></div>`).join('')}</section>
       <section class="card"><h2>➕ 從已註冊的帳號指定</h2><p class="muted small">對方已有帳號（例如家長兼服務員）時用。</p>
         <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
-      <section class="card"><h2>✉️ 邀請新的管理員</h2><p class="muted small">對方沒有孩子在團裡時用。</p>
-        <form id="fi"><label>角色</label><select class="full" name="role"><option>服務員</option><option>團長</option></select>
-          <label>對方姓名（可留空，留空時用對方註冊時填的稱呼）</label><input name="name" type="text" maxlength="30"><button class="btn alt" type="submit">產生邀請碼</button><div class="out"></div></form>
-        <h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('') || '<p class="muted">沒有。</p>'}</section>`;
+      <section class="card"><h2>🆕 新的服務員</h2><p class="muted small">請對方自己到網站「登入 → 註冊新帳號」選「服務員」，再到「📝 註冊審核」核准。</p>
+        <button class="btn alt small" id="toReq2">📝 前往註冊審核</button>
+        ${inv.invites.length ? `<h3>尚未使用的舊邀請碼</h3><p class="muted small">邀請碼功能已停用；這些是之前產生、還沒用掉的，建議作廢。</p>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('')}` : ''}</section>`;
+    $('#toReq2').onclick = () => goAdmin('requests');
     wireBack();
     const drawCands = () => {
       const q = $('#q').value.trim();
@@ -1876,11 +1875,6 @@ const ADMIN_PAGES = {
     };
     $('#q').oninput = drawCands;
     drawCands();
-    bindForm($('#fi'), async (fd, out) => {
-      const r = await api('inviteCreate', { role: fd.get('role'), name: fd.get('name') });
-      out.innerHTML = `<div class="codebox">${esc(r.code)}</div><pre class="copytext">${esc(r.message)}</pre><button type="button" class="btn alt" id="cp">📋 複製邀請說明文字</button>`;
-      $('#cp').onclick = () => copyText(r.message);
-    });
     $$('[data-void]').forEach((b) => { b.onclick = () => { if (confirm('作廢這組邀請碼？')) act(b, async () => { await api('inviteVoid', { code: b.dataset.void }); goAdmin('admins'); }); }; });
     $$('[data-ad]').forEach((b) => {
       b.onclick = () => {

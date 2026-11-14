@@ -12,8 +12,10 @@ function world() {
   const r = env.ctx.setup();
   const L = env.api({ action: 'register', code: r.firstLeaderInvite.code, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
   const call = (token, action, data = {}) => env.api({ action, token, ...data });
-  const inv = call(L.token, 'inviteCreate', { role: '服務員', name: '陳服務員' });
-  const A = env.api({ action: 'register', code: inv.code, childName: '', username: 'helper01', password: 'helperpass1', nickname: '陳服務員' });
+  // 服務員：自己註冊選「服務員」，團長核准（邀請碼功能已拿掉）
+  const A = env.api({ action: 'register', identity: '服務員', username: 'helper01', password: 'helperpass1', nickname: '陳服務員' });
+  const reqA = call(L.token, 'requestList').items[0];
+  call(L.token, 'requestApprove', { requestId: reqA.requestId });
   call(L.token, 'squadSave', { type: 'add', name: '一小隊' });
   call(L.token, 'squadSave', { type: 'add', name: '二小隊' });
   const cub = call(L.token, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-03-01' });
@@ -27,7 +29,7 @@ test('權限：家長不能呼叫後台；服務員不能做團長專屬操作',
   const { call, L, A, P, cubId } = world();
   for (const a of ['adminHome', 'cubList', 'signoffData', 'overview', 'meetingList']) assert.equal(call(P, a).code, 'FORBIDDEN', '家長：' + a);
   for (const [a, d] of [['cubSave', { name: 'x', joinDate: '2025-01-01' }], ['cubLeave', { cubId, leftDate: '2026-01-01' }], ['cubNewCode', { cubId }], ['award', { date: '2026-01-01', entries: [{ cubId, unit: '羚羊' }] }],
-    ['backfill', { cubId, unit: '羚羊', date: '2026-01-01' }], ['adminList'], ['inviteCreate', { role: '服務員', name: 'x' }], ['accountList'], ['privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }],
+    ['backfill', { cubId, unit: '羚羊', date: '2026-01-01' }], ['adminList'], ['requestList'], ['accountList'], ['privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }],
     ['backupNow'], ['meetingSave', { lines: '2026-11-22 團集會' }], ['periodSave', { name: 'x', start: '2026-01-01', end: '2026-12-31', total: 1 }]]) {
     assert.equal(call(A, a, d).code, 'FORBIDDEN', '服務員：' + a);
   }
@@ -146,13 +148,15 @@ test('管理員：方式一指定、角色變更立即生效、最後一位團�
   assert.equal(call(A, 'adminUpdate', { accountId: helperId, role: '服務員' }).code, 'BAD_INPUT', '最後一位團長不可降級');
 });
 
-test('邀請碼：後台產生、說明文字、作廢後不能用', () => {
+test('邀請碼功能已拿掉：後台不能再產生；之前留下的邀請碼可以作廢', () => {
   const { env, call, L } = world();
-  const inv = call(L, 'inviteCreate', { role: '服務員', name: '林服務員' });
-  assert.match(inv.message, new RegExp(inv.code));
-  assert.ok(call(L, 'inviteList').invites.some((i) => i.code === inv.code));
-  assert.equal(call(L, 'inviteVoid', { code: inv.code }).ok, true);
-  assert.equal(env.api({ action: 'checkCode', code: inv.code, childName: '' }).code, 'CODE_INVALID');
+  assert.equal(call(L, 'inviteCreate', { role: '服務員', name: '林服務員' }).code, 'BAD_INPUT', '不支援的操作');
+  // 模擬之前產生、還沒用掉的邀請碼
+  const sh = env.sheet('管理員邀請');
+  sh.getRange(sh.getLastRow() + 1, 1, 1, 9).setValues([['OLDCODE2', '服務員', '', 'x', new Date(), new Date(Date.now() + 86400000), '未使用', '', '']]);
+  assert.ok(call(L, 'inviteList').invites.some((i) => i.code === 'OLDCODE2'));
+  assert.equal(call(L, 'inviteVoid', { code: 'OLDCODE2' }).ok, true);
+  assert.equal(env.api({ action: 'checkCode', code: 'OLDCODE2', childName: '' }).code, 'CODE_INVALID');
 });
 
 test('帳號管理：臨時碼重設、停用、刪除（最後一位團長保護）', () => {
@@ -358,7 +362,7 @@ test('註冊申請：家長選身分、填孩子姓名；需同意；送出後�
 
   const r = apply(env, 'mom02', { identity: '家長', nickname: '王小明媽媽', childNames: ['王小明', '王 小 華', '王小明'] });
   assert.equal(r.ok, true, JSON.stringify(r));
-  const rows = env.rows('註冊申請');
+  const rows = env.rows('註冊申請').filter((x) => x[5] === '待審核');
   assert.deepEqual(rows.map((x) => [x[2], x[3], x[5]]), [['孩子', '王小明', '待審核'], ['孩子', '王小華', '待審核']], '去空白、去重複');
   assert.ok(rows.every((x) => x[9] >= 1), '記錄同意版本');
   const me = call(r.token, 'me');
@@ -392,7 +396,7 @@ test('註冊申請：團長審核——新增小狼、同名孩子連結到同�
   assert.deepEqual([cub[2], cub[3], cub[7]], ['一小隊', '2026-11-01', '在團']);
   assert.equal(call(mom.token, 'me').cubs[0].name, '王小明', '家長核准後看得到孩子');
   assert.equal(call(mom.token, 'cubDetail', { cubId: cub[0] }).ok, true);
-  const req = env.rows('註冊申請')[0];
+  const req = env.rows('註冊申請').find((x) => x[8] === cub[0]);
   assert.deepEqual([req[3], req[5], req[8]], ['', '已核准', cub[0]], '結案後清掉填寫姓名，只留小狼ID');
   assert.equal(call(L, 'requestApprove', { requestId: m.requestId, mode: 'new', squad: '一小隊', joinDate: '2026-11-01' }).code, 'NOT_FOUND', '不可重複核准');
 
@@ -437,8 +441,8 @@ test('註冊申請：已登入家長申請第二個孩子、24 小時上限、�
   assert.equal(call(P, 'me').requests.length, 1);
 
   env.sheet('設定').getRange(env.rows('設定').findIndex((r) => r[0] === '每日註冊申請上限') + 2, 2).setValues([['5']]);
-  for (let i = 0; i < 4; i++) assert.equal(apply(env, 'many0' + i, { identity: '家長', nickname: '家長' + i, childNames: ['孩子' + i] }).ok, true);
-  assert.equal(apply(env, 'many09', { identity: '家長', nickname: '家長9', childNames: ['孩子9'] }).code, 'LOCKED', '24 小時內第 6 個帳號被擋（家長甲申請孩子也算一個）');
+  for (let i = 0; i < 3; i++) assert.equal(apply(env, 'many0' + i, { identity: '家長', nickname: '家長' + i, childNames: ['孩子' + i] }).ok, true);
+  assert.equal(apply(env, 'many09', { identity: '家長', nickname: '家長9', childNames: ['孩子9'] }).code, 'LOCKED', '24 小時內第 6 個帳號被擋（服務員、家長甲申請孩子也各算一個）');
   const acc = call(L, 'accountList').accounts.find((a) => a.username === 'many00');
   assert.equal(call(L, 'accountDelete', { accountId: acc.accountId, confirmUsername: 'many00' }).ok, true);
   assert.equal(env.rows('註冊申請').filter((r) => r[1] === acc.accountId).length, 0, '刪除帳號一併刪除申請');
@@ -454,18 +458,3 @@ test('註冊申請：舊的代碼註冊仍可用（第一位團長邀請碼、�
   assert.equal(r.ok, true);
 });
 
-test('邀請碼不用填姓名：自動產生亂碼，對方註冊時填的稱呼當作管理員姓名', () => {
-  const { env, call, L } = world();
-  const inv = call(L, 'inviteCreate', { role: '服務員', name: '' });
-  assert.equal(inv.ok, true, JSON.stringify(inv));
-  assert.match(inv.code, /^[A-Z2-9]{8}$/);
-  assert.match(inv.message, /^您好，邀請您加入/);
-  const r = env.api({ action: 'register', code: inv.code, childName: '', username: 'helper09', password: 'helperpass1', nickname: '林小華' });
-  assert.equal(r.ok, true);
-  assert.equal(call(r.token, 'me').adminName, '林小華');
-  // 試算表選單：直接產生，不跳出輸入姓名的視窗
-  const before = env.rows('管理員邀請').length;
-  env.ctx.menuInviteAssistant();
-  assert.equal(env.rows('管理員邀請').length, before + 1);
-  assert.equal(env.rows('管理員邀請').at(-1)[2], '');
-});

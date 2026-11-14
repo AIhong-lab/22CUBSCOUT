@@ -297,46 +297,20 @@ test('合併檔 dist/Code.gs 可獨立運作', () => {
   assert.equal(env.rows('項目總表').length, 163);
 });
 
-test('試算表選單：自動產生服務員邀請碼，對方可用它註冊成服務員', () => {
+test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄第 33 點）', () => {
   const { env } = fresh();
   env.ctx.onOpen();
   assert.equal(env.ui.menus[0].title, '🐺 幼童軍系統');
   assert.ok(env.ui.menus[0].items.every(([, fn]) => typeof env.ctx[fn] === 'function' && !fn.endsWith('_')), '選單函式存在且非私有');
-  const n0 = env.rows('管理員邀請').length;
-  env.ctx.menuInviteAssistant(); // 不跳出輸入姓名的視窗，直接產生
-  assert.equal(env.rows('管理員邀請').length, n0 + 1);
-  const row = env.rows('管理員邀請').at(-1);
-  assert.equal(row[2], '', '不需要姓名');
-  assert.ok(row);
-  assert.match(row[0], /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/, '長度 = 綁定碼長度 + 2，排除易混淆字元');
-  assert.equal(row[1], '服務員');
-  assert.equal(row[6], '未使用');
-  assert.equal(row[5].getTime() - row[4].getTime(), 24 * 3600000, '有效時數依設定（預設 24 小時）');
-  assert.match(env.ui.alerts.at(-1), new RegExp(row[0]));
-  assert.match(env.ui.alerts.at(-1), /aihong-lab\.github\.io\/22CUBSCOUT/);
-  const r = env.api({ action: 'register', code: row[0], childName: '', username: 'helper01', password: 'helperpass1', nickname: '陳服務員' });
-  assert.equal(r.ok, true);
-  const me = env.api({ action: 'me', token: r.token });
-  assert.equal(me.role, '服務員');
-  assert.equal(me.adminName, '陳服務員');
-  assert.equal(env.api({ action: 'register', code: row[0], childName: '', username: 'helper02', password: 'helperpass1', nickname: 'x' }).code, 'CODE_INVALID', '只能用一次');
+  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
+  assert.equal(typeof env.ctx.menuInviteAssistant, 'undefined');
 });
 
-test('試算表選單：團長邀請碼也直接產生，每次都是不同的亂碼', () => {
-  const { env } = fresh();
-  env.ctx.menuInviteLeader();
-  env.ctx.menuInviteLeader();
-  const rows = env.rows('管理員邀請').slice(-2);
-  assert.deepEqual(rows.map((r) => r[1]), ['團長', '團長']);
-  assert.notEqual(rows[0][0], rows[1][0]);
-});
-
-test('邀請碼過期後不能使用', () => {
-  const { env } = fresh();
-  env.ctx.menuInviteAssistant();
-  const code = env.rows('管理員邀請').at(-1)[0];
-  env.advance(25 * 3600000);
-  assert.equal(env.api({ action: 'checkCode', code, childName: '' }).code, 'CODE_INVALID');
+test('第一位團長邀請碼過期後不能使用', () => {
+  const env = loadGas();
+  const r = env.ctx.setup();
+  env.advance(73 * 3600000);
+  assert.equal(env.api({ action: 'checkCode', code: r.firstLeaderInvite.code, childName: '' }).code, 'CODE_INVALID');
 });
 
 test('randInt_ 支援大範圍且結果均在範圍內（修正：曾因只取 16 位元在 n > 65536 時無窮迴圈）', () => {

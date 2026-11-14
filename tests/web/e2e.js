@@ -117,12 +117,12 @@ function seed(env) {
   await tab('login');
 
   // ═════ 家長 ═════
-  await page.getByText('我有團長給的代碼').waitFor();
+  await page.getByText('我有綁定碼').waitFor();
   assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'login', '登入頁仍有導覽列，可以回到查詢頁');
   await shot('01-login'); await noHScroll('登入頁');
 
   // 註冊：錯誤代碼 → 正確代碼 → 不同意
-  await page.getByText('我有團長給的代碼').click();
+  await page.getByText('我有綁定碼').click();
   await page.fill('input[name=code]', 'ZZZZZZ'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
   await page.locator('.msg.err').waitFor();
@@ -143,7 +143,7 @@ function seed(env) {
   assert.equal(env.rows('帳號').length, 1, '不同意就不建立帳號');
 
   // 重新註冊並同意
-  await page.getByText('我有團長給的代碼').click();
+  await page.getByText('我有綁定碼').click();
   await page.fill('input[name=code]', 'AB2CDE'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
   await fillAccount();
@@ -237,7 +237,7 @@ function seed(env) {
   await tab('mine');
   await page.getByText('綁定的孩子').waitFor();
   // 舊方式：團長給的綁定碼仍可用
-  await page.getByText('我有團長給的綁定碼或邀請碼').click();
+  await page.getByText('我有綁定碼').click();
   await page.fill('#fb input[name=code]', 'FG3HJK'); await page.fill('#fb input[name=childName]', '測試小狼乙');
   await page.locator('#fb button[type=submit]').click();
   await page.locator('#fb .msg.err').waitFor();
