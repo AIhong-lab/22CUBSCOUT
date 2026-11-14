@@ -430,6 +430,17 @@ function seed(env) {
   await page.fill('#kidBox input[name=child]', '測試小狼戊');
   await page.click('#addKid');
   assert.equal(await page.locator('#kidBox input[name=child]').count(), 2);
+  // 多加的孩子欄位可以刪除（修正：原本加了就刪不掉）
+  await page.click('#addKid');
+  assert.equal(await page.locator('#kidBox input[name=child]').count(), 3);
+  await page.locator('#kidBox [data-rmkid]').nth(1).click();
+  assert.equal(await page.locator('#kidBox input[name=child]').count(), 2);
+  assert.equal(await page.locator('#kidBox input[name=child]').nth(1).getAttribute('placeholder'), '孩子 2 的姓名', '刪除後重新編號');
+  await page.locator('#kidBox [data-rmkid]').nth(1).click();
+  assert.equal(await page.locator('#kidBox input[name=child]').count(), 1);
+  assert.equal(await page.locator('#kidBox [data-rmkid]').count(), 0, '只剩一格時不顯示刪除');
+  assert.equal(await page.inputValue('#kidBox input[name=child]'), '測試小狼戊', '刪除其他格不影響已填的');
+  await page.click('#addKid');
   await shot('31-signup-form');
   await page.click('form#f button[type=submit]');
   await page.getByText('註冊 3／3').waitFor();

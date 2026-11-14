@@ -519,16 +519,33 @@ function renderSignup1(prev = {}) {
   $$('[data-id]').forEach((b) => { b.onclick = () => renderSignup2(Object.assign({}, prev, { identity: b.dataset.id })); });
 }
 
-/** 孩子姓名欄位（可再加一位，最多 5 位） */
+/** 孩子姓名欄位（可再加一位、可刪除，最多 5 位） */
+function childRowHtml(name) {
+  return `<div class="row-flex kid-row" style="flex-wrap:nowrap;margin-bottom:8px"><input name="child" type="text" autocomplete="off" maxlength="20" value="${esc(name || '')}"></div>`;
+}
 function childInputsHtml(names) {
-  const list = names && names.length ? names : [''];
-  return list.map((n, i) => `<input name="child" type="text" autocomplete="off" maxlength="20" placeholder="孩子 ${i + 1} 的姓名" value="${esc(n)}" style="margin-bottom:8px">`).join('');
+  return (names && names.length ? names : ['']).map(childRowHtml).join('');
+}
+/** 重新編號；兩格以上才顯示刪除鈕 */
+function renumberKids(box) {
+  const rows = $$('.kid-row', box);
+  rows.forEach((r, i) => {
+    $('input', r).placeholder = `孩子 ${i + 1} 的姓名`;
+    const btn = $('[data-rmkid]', r);
+    if (rows.length > 1 && !btn) r.insertAdjacentHTML('beforeend', '<button type="button" class="btn ghost small" data-rmkid aria-label="刪除這一位" style="margin-top:0;flex:none">✕ 刪除</button>');
+    if (rows.length === 1 && btn) btn.parentNode.removeChild(btn);
+  });
+  $$('[data-rmkid]', box).forEach((b) => {
+    b.onclick = () => { const row = b.closest('.kid-row'); row.parentNode.removeChild(row); renumberKids(box); };
+  });
 }
 function wireChildAdd(box, btn) {
+  renumberKids(box);
   btn.onclick = () => {
-    const n = $$('input[name=child]', box).length;
-    if (n >= 5) return toast('一次最多 5 位');
-    box.insertAdjacentHTML('beforeend', childInputsHtml(['']).replace('孩子 1', '孩子 ' + (n + 1)));
+    if ($$('.kid-row', box).length >= 5) return toast('一次最多 5 位');
+    box.insertAdjacentHTML('beforeend', childRowHtml(''));
+    renumberKids(box);
+    $$('input[name=child]', box).pop().focus();
   };
 }
 const childNamesOf = (root) => $$('input[name=child]', root).map((x) => x.value.trim()).filter(Boolean);
