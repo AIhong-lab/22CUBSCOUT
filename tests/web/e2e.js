@@ -16,7 +16,7 @@ const SHOT = process.env.SHOT_DIR;
 function seed(env) {
   env.ctx.setup();
   const invite = env.ctx.loadInvites_()[0].code;
-  const leader = env.api({ action: 'register', code: invite, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
+  env.api({ action: 'register', code: invite, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
   const leaderId = env.rows('管理員')[0][0];
   const put = (sheet, rows) => { const sh = env.sheet(sheet); sh.getRange(sh.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows); };
   put('小狼名單', [['C1', '測試小狼甲', '一小隊', '2025-03-01', '羚羊', 'AB2CDE', 3, '在團', ''], ['C2', '測試小狼乙', '二小隊', '2025-09-01', '', 'FG3HJK', 3, '在團', '']]);
@@ -32,7 +32,6 @@ function seed(env) {
   put('出席紀錄', [['M0', 'C1', '出席', leaderId, ''], ['M1', 'C1', '請假', leaderId, ''], ['M2', 'C1', '出席', leaderId, ''], ['M4', 'C1', '出席', leaderId, '']]);
   put('年度出席設定', [['115學年度', '2026-08-01', '2027-07-31', 18, '']]);
   put('額外出席', [['115學年度', 'C1', 2, '露營', leaderId, new Date()]]);
-  return leader;
 }
 
 (async () => {
@@ -44,6 +43,7 @@ function seed(env) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  page.on('dialog', (d) => d.accept()); // confirm／prompt 一律按確定（prompt 用預設值）
   await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
   let calls = 0;
   await page.route(GAS, (r) => {
@@ -58,65 +58,69 @@ function seed(env) {
   const shot = async (name) => { if (SHOT) await page.screenshot({ path: path.join(SHOT, name + '.png'), fullPage: true }); };
   const noHScroll = async (where) => assert.ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)), '不可橫向捲動：' + where);
   const text = () => page.locator('#app').innerText();
+  const tab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
 
-  // ── 登入頁 ──
+  // ═════ 家長 ═════
   await page.goto(PAGE);
   await page.getByText('我有代碼，要註冊').waitFor();
   await shot('01-login'); await noHScroll('登入頁');
 
-  // ── 註冊：錯誤代碼 ──
+  // 註冊：錯誤代碼 → 正確代碼 → 不同意
   await page.getByText('我有代碼，要註冊').click();
   await page.fill('input[name=code]', 'ZZZZZZ'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
   await page.locator('.msg.err').waitFor();
   assert.match(await text(), /代碼或姓名不正確/);
-  // ── 正確代碼 → 帳號 → 不同意 ──
   await page.fill('input[name=code]', 'ab2cde');
   await page.click('button[type=submit]');
   await page.getByText('註冊 2／3').waitFor();
-  await page.fill('input[name=username]', 'parent01'); await page.fill('input[name=password]', 'parentpass1');
-  await page.fill('input[name=password2]', 'parentpass1'); await page.fill('input[name=nickname]', '測試小狼甲媽媽');
-  await page.click('button[type=submit]');
+  const fillAccount = async () => {
+    await page.fill('input[name=username]', 'parent01'); await page.fill('input[name=password]', 'parentpass1');
+    await page.fill('input[name=password2]', 'parentpass1'); await page.fill('input[name=nickname]', '測試小狼甲媽媽');
+    await page.click('button[type=submit]');
+  };
+  await fillAccount();
   await page.getByText('註冊 3／3').waitFor();
   await shot('02-consent');
   await page.getByText('不同意（不建立帳號）').click();
   await page.getByText('沒有建立帳號').waitFor();
   assert.equal(env.rows('帳號').length, 1, '不同意就不建立帳號');
 
-  // ── 重新註冊並同意 ──
+  // 重新註冊並同意
   await page.getByText('我有代碼，要註冊').click();
   await page.fill('input[name=code]', 'AB2CDE'); await page.fill('input[name=childName]', '測試小狼甲');
   await page.click('button[type=submit]');
-  await page.fill('input[name=username]', 'parent01'); await page.fill('input[name=password]', 'parentpass1');
-  await page.fill('input[name=password2]', 'parentpass1'); await page.fill('input[name=nickname]', '測試小狼甲媽媽');
-  await page.click('button[type=submit]');
+  await fillAccount();
   await page.check('input[name=agree]');
   await page.click('button[type=submit]');
 
-  // ── 首頁 ──
+  // 首頁（冒險）
   await page.getByText('下一步挑戰').waitFor();
   const home = await text();
-  assert.match(home, /測試小狼甲/); assert.match(home, /2025\/3\/1/); assert.match(home, /1 年 8 個月/); assert.match(home, /羚羊級/);
+  assert.match(home, /測試小狼甲/); assert.match(home, /2025\/3\/1/); assert.match(home, /1 年 8 個月/); assert.match(home, /目前級別：羚羊級/);
   assert.match(home, /恭喜你完成羚羊進程/);
   const order = ['下一步挑戰', '正在挑戰的', '已經拿到的', '還沒開始的'].map((t) => home.indexOf(t));
   assert.ok(order.every((v, i) => v >= 0 && (i === 0 || v > order[i - 1])), '首頁區塊順序');
   assert.match(home, /項目已全部完成，等待團長評核頒發/, '環保章待頒發文字');
   assert.ok(!/可晉級/.test(home));
   assert.ok(home.indexOf('嚮導') > home.indexOf('已經拿到的'), '已頒發的嚮導章在已經拿到的');
+  assert.match(home, /⭐ 36/, '星星數＝完成項目數（羚羊 10＋狼 20＋環保 5＋嚮導 1）');
   await shot('03-home'); await noHScroll('首頁');
 
-  // ── 進程頁與列印 ──
-  await page.locator('nav.tabs button[data-v=progress]').click();
-  await page.locator('details.unit').first().waitFor();
-  // 用卡片標題比對（晉級條件文字裡也會出現其他級別名稱）
-  const card = (lv) => page.locator('details.unit').filter({ has: page.locator('.name', { hasText: new RegExp(' ' + lv + '級$') }) });
-  const wolfCard = card('狼');
-  await wolfCard.locator('summary').click();
-  assert.match(await wolfCard.innerText(), /晉級條件：參與羚羊級幼童軍6個月以上/);
-  assert.match(await wolfCard.innerText(), /已完成 2026\/1\/10/);
-  assert.match(await wolfCard.innerText(), /待挑戰/);
-  await shot('04-progress');
-  await wolfCard.getByText('列印這一級的簽核單').click();
+  // 闖關地圖
+  await tab('progress');
+  await page.locator('.stage').first().waitFor();
+  assert.equal(await page.locator('.stage').count(), 4);
+  assert.match(await page.locator('.stage[data-unit=羚羊]').getAttribute('class'), /done/);
+  assert.match(await page.locator('.stage[data-unit=狼]').getAttribute('class'), /active/);
+  assert.match(await page.locator('.stage[data-unit=鹿]').getAttribute('class'), /locked/);
+  const panel = await page.locator('#lvPanel').innerText();
+  assert.match(panel, /狼級任務/, '預設打開正在挑戰的那一關');
+  assert.match(panel, /晉級條件：參與羚羊級幼童軍6個月以上/);
+  assert.match(panel, /完成！2026\/1\/10/);
+  assert.match(panel, /待挑戰/);
+  await shot('04-map'); await noHScroll('闖關地圖');
+  await page.locator('#printBtn').click();
   assert.equal(await page.evaluate(() => window.__printed), 1);
   const printed = await page.locator('#print').innerHTML();
   assert.match(printed, /狼級進程簽核單/); assert.match(printed, /測試小狼甲/);
@@ -125,29 +129,38 @@ function seed(env) {
   await page.emulateMedia({ media: 'print' });
   await shot('05-print');
   await page.emulateMedia({ media: 'screen' });
-  const lionCard = card('羚羊');
-  await lionCard.locator('summary').click();
-  assert.match(await lionCard.innerText(), /依出席紀錄|已完成/);
+  await page.locator('.stage[data-unit=羚羊]').click();
+  assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務[\s\S]*6 月團集會/);
 
-  // ── 技能章頁 ──
-  await page.locator('nav.tabs button[data-v=badges]').click();
-  await page.getByText('服務類').waitFor();
+  // 徽章收藏冊
+  await tab('badges');
+  await page.getByText('我的徽章收藏冊').waitFor();
   const b = await text();
   assert.ok(b.indexOf('服務類') < b.indexOf('健身類') && b.indexOf('健身類') < b.indexOf('技巧類'));
-  assert.match(b, /已拿到 1／8 個/);
-  await shot('06-badges'); await noHScroll('技能章');
+  assert.match(b, /已收藏 1／8 個/);
+  assert.equal(await page.locator('.badge').count(), 26);
+  assert.match(await page.locator('.badge[data-unit=嚮導]').getAttribute('class'), /got/);
+  assert.match(await page.locator('.badge[data-unit=環保]').getAttribute('class'), /pending/);
+  await shot('06-badges'); await noHScroll('徽章');
+  await page.locator('.badge[data-unit=環保]').click();
+  await page.locator('.sheet').waitFor();
+  assert.match(await page.locator('.sheet').innerText(), /合格標準[\s\S]*能說出環境保護的意義/);
+  await shot('06b-badge-sheet');
+  await page.locator('.sheet [data-close]').click();
 
-  // ── 出席頁 ──
-  await page.locator('nav.tabs button[data-v=attendance]').click();
-  await page.getByText('出席統計').waitFor();
+  // 出席集點卡
+  await tab('attendance');
+  await page.getByText('出席集點卡').waitFor();
   const a = await text();
   assert.match(a, /28%/, '(3 出席 + 2 額外) ÷ 18');
   assert.match(a, /12\/6 團集會/, '即將到來');
-  assert.match(a, /請假/); assert.match(a, /－/);
-  await shot('07-attendance');
+  assert.equal(await page.locator('.stamp').count(), 5);
+  assert.equal(await page.locator('.stamp.出席').count(), 3);
+  assert.equal(await page.locator('.stamp.請假').count(), 1);
+  await shot('07-stamps'); await noHScroll('集點卡');
 
-  // ── 我的資料：新增第二個孩子、切換、解除綁定 ──
-  await page.locator('nav.tabs button[data-v=mine]').click();
+  // 我的：新增第二個孩子、切換、解除綁定
+  await tab('mine');
   await page.getByText('綁定的孩子').waitFor();
   await shot('08-mine');
   await page.getByText('＋ 新增綁定').click();
@@ -162,59 +175,111 @@ function seed(env) {
   await page.selectOption('#cubSel', 'C1');
   await page.getByText('下一步挑戰').waitFor();
   assert.match(await text(), /測試小狼甲/);
-  await page.locator('nav.tabs button[data-v=mine]').click();
-  page.once('dialog', (d) => d.accept());
+  await tab('mine');
   await page.locator('.unbind[data-id=C2]').click();
   await page.waitForFunction(() => !document.querySelector('.unbind[data-id=C2]'));
   assert.equal(env.rows('綁定紀錄').filter((r) => r[1] === 'C2').length, 0);
 
-  // ── 登入過期：回登入畫面，登入後回到原畫面 ──
-  await page.locator('nav.tabs button[data-v=attendance]').click();
-  await page.getByText('出席統計').waitFor();
-  await page.locator('nav.tabs button[data-v=mine]').click();
+  // 登入過期：回登入畫面，登入後回到原畫面
   await page.getByText('綁定的孩子').waitFor();
   env.advance(31 * 24 * 3600000);
-  // 切換分頁沿用已載入的資料；下一次呼叫需要登入的後端功能時才會發現過期
   await page.getByText('修改稱呼').click();
   await page.locator('#fn button[type=submit]').click();
   await page.getByText('登入已過期').waitFor();
   await page.fill('input[name=username]', 'parent01'); await page.fill('input[name=password]', 'parentpass1');
   await page.click('button[type=submit]');
   await page.getByText('綁定的孩子').waitFor();
-  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'mine', '回到過期前要去的畫面');
-  await page.locator('nav.tabs button[data-v=home]').click();
-  await page.getByText('下一步挑戰').waitFor();
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'mine', '回到過期前的畫面');
+  env.advance(-31 * 24 * 3600000); // 時鐘撥回「今天」，後面的點名才會預設今天的集會
 
-  // ── 告知內容改版 → 要求重新同意 ──
+  // 告知內容改版 → 要求重新同意
   env.sheet('告知同意內容').getRange(3, 1, 1, 3).setValues([[2, '第二版測試內容', '2026-12-14']]);
   await page.reload();
   await page.getByText('個資說明已更新').waitFor();
-  await shot('09-reconsent');
   await page.check('input[name=agree]');
   await page.click('button[type=submit]');
   await page.getByText('下一步挑戰').waitFor();
 
-  // ── 登出 → 錯誤密碼 → 團長登入（後台佔位頁） ──
-  await page.locator('nav.tabs button[data-v=mine]').click();
+  // 登出 → 錯誤密碼
+  await tab('mine');
   await page.getByText('登出', { exact: true }).click();
   await page.getByText('已登出').waitFor();
   await page.fill('input[name=username]', 'parent01'); await page.fill('input[name=password]', 'wrongpass');
   await page.click('button[type=submit]');
   await page.locator('.msg.err').waitFor();
   assert.match(await text(), /帳號或密碼錯誤/);
+
+  // ═════ 團長後台 ═════
   await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
   await page.click('button[type=submit]');
-  await page.getByText('團長後台').waitFor();
-  await shot('10-admin');
-  await page.getByText('切換到家長畫面').click();
-  await page.getByText('還沒有綁定孩子').waitFor();
+  await page.getByText('待頒章').waitFor();
+  const ah = await text();
+  assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
+  assert.match(ah, /尚未設定備份資料夾/);
+  await shot('10-admin-home'); await noHScroll('後台首頁');
 
-  // ── 忘記密碼頁 ──
-  await page.locator('nav.tabs button[data-v=mine]').click();
-  await page.getByText('登出', { exact: true }).click();
-  await page.getByText('忘記密碼？').click();
-  await page.getByText('臨時碼').first().waitFor();
-  await shot('11-forgot');
+  // 行事曆：新增今天的集會
+  await tab('more');
+  await page.locator('.menu-grid button[data-p=calendar]').click();
+  await page.fill('textarea[name=lines]', '2026-11-14 團集會\n2026-11-21 露營');
+  await page.click('form#f button[type=submit]');
+  await page.getByText('露營').first().waitFor();
+  assert.equal(env.rows('集會行事曆').length, 8);
+
+  // 點名：預設今天的集會、切換狀態、儲存
+  await tab('roll');
+  await page.locator('.roll-btn').first().waitFor();
+  assert.match(await page.locator('#mSel option:checked').innerText(), /2026\/11\/14/, '預設今天的集會');
+  await page.locator('.roll-btn[data-id=C1]').click();
+  await page.locator('.roll-btn[data-id=C2]').click();
+  await page.locator('.roll-btn[data-id=C2]').click();
+  assert.match(await page.locator('#sum').innerText(), /出席 1 人・請假 1 人・尚未儲存 2 筆/);
+  await shot('11-roll'); await noHScroll('點名');
+  await page.locator('#save').click();
+  await page.waitForFunction(() => !/尚未儲存/.test(document.querySelector('#sum').textContent));
+  assert.equal(env.rows('出席紀錄').length, 6);
+
+  // 小狼：新增
+  await tab('cubs');
+  await page.getByText('＋ 新增小狼').click();
+  await page.fill('input[name=name]', '測試小狼丙'); await page.fill('input[name=squad]', '二小隊'); await page.fill('input[name=joinDate]', '2026-09-01');
+  await page.click('form#f button[type=submit]');
+  await page.locator('.codebox').waitFor();
+  assert.match(await page.locator('.codebox').innerText(), /^[A-Z2-9]{6}$/);
+  await shot('12-cub'); await noHScroll('小狼頁');
+
+  // 簽核：小隊批次（選二小隊 → 進程・羚羊級 → 兩項）→ 復原
+  await tab('sign');
+  await page.locator('#flt').waitFor();
+  await page.locator('#squads .chip[data-s=二小隊]').click();
+  await page.selectOption('#flt', '進程|羚羊');
+  await page.locator('#items input').nth(0).check();
+  await page.locator('#items input').nth(1).check();
+  assert.match(await page.locator('#sum').innerText(), /2 個項目 × 2 位小狼：將新增 4 筆/);
+  await shot('13-sign');
+  await page.locator('#go').click();
+  await page.getByText('新增 4 筆、略過 0 筆').waitFor();
+  await page.locator('#undo').click();
+  await page.getByText('已復原 4 筆').waitFor();
+
+  // 頒章：首頁 → 前往頒章 → 確定
+  await tab('home');
+  await page.getByText('前往頒章').click();
+  await page.fill('input[name=occasion]', '11 月團集會');
+  await page.click('form#f button[type=submit]');
+  await page.getByText('目前沒有待頒章的小狼').waitFor();
+  assert.ok(env.rows('頒章紀錄').some((r) => r[1] === '環保' && r[3] === '11 月團集會'));
+
+  // 進程總覽
+  await tab('more');
+  await page.locator('.menu-grid button[data-p=overview]').click();
+  await page.locator('table.tbl').waitFor();
+  assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
+  await shot('14-overview');
+
+  // 切換到家長畫面
+  await page.getByText('家長畫面').click();
+  await page.getByText('還沒有綁定孩子').waitFor();
 
   assert.deepEqual(errors, [], '頁面不可有 JavaScript 錯誤');
   console.log(`前端端對端測試全部通過（共呼叫後端 ${calls} 次）`);

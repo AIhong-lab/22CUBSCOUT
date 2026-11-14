@@ -4,141 +4,252 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>22團幼童軍進程</title>
+<meta name="theme-color" content="#1f4e9c">
+<title>22團幼童軍冒險</title>
 <!--
   幼童軍進程與技能章查詢系統：前端（查詢端與後台同一頁，依身分顯示）
   ⚠️ 本 repo 為公開：這個檔案只能放 GAS 網址，其他任何設定值、金鑰都不可以出現在這裡。
+  設計：叢林闖關冒險風（SPEC 附錄第 19 點）。不使用外部圖片，圖示用表情符號與 CSS。
 -->
 <style>
   :root {
-    --blue: #1f4e9c; --blue-dark: #163a75; --blue-soft: #e8eefa;
-    --yellow: #ffc928; --yellow-soft: #fff6d6;
-    --green: #1d7a3a; --green-soft: #e3f3e8;
-    --gray: #6b7385; --gray-soft: #eef0f4;
-    --red: #b3261e; --red-soft: #fce8e6;
-    --bg: #f5f7fb; --card: #ffffff; --text: #1d2433; --line: #dfe4ee;
-    --radius: 16px;
+    --blue: #1f4e9c; --blue-dark: #163a75; --blue-soft: #e6eefc; --sky: #dff0ff;
+    --yellow: #ffc928; --yellow-dark: #e0a800; --yellow-soft: #fff4cc;
+    --green: #2e9d57; --green-dark: #1d7a3a; --green-soft: #e2f6e9;
+    --gray: #6b7385; --gray-soft: #eef0f4; --gray-line: #dfe4ee;
+    --red: #c62828; --red-soft: #fde7e7;
+    --bg: #fffaf0; --card: #ffffff; --text: #1d2433;
+    --radius: 22px; --shadow: 0 4px 0 rgba(31, 78, 156, .12), 0 8px 20px rgba(31, 78, 156, .08);
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 18px/1.65 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
-  button, input, select, textarea { font: inherit; }
+  body {
+    margin: 0; color: var(--text); background: var(--bg);
+    background-image: radial-gradient(circle at 10% 0%, #fff1c2 0, transparent 40%), radial-gradient(circle at 100% 30%, #e3f4e8 0, transparent 35%);
+    background-attachment: fixed;
+    font: 18px/1.65 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
   a { color: var(--blue); }
 
-  header.top { background: var(--blue); color: #fff; padding: 14px 16px 12px; border-bottom: 6px solid var(--yellow); position: sticky; top: 0; z-index: 10; }
-  header.top .row { display: flex; align-items: center; gap: 10px; max-width: 720px; margin: 0 auto; }
-  header.top h1 { font-size: 20px; margin: 0; flex: 1; letter-spacing: .5px; }
-  header.top select { max-width: 55%; font-size: 17px; padding: 8px 10px; border-radius: 10px; border: 0; background: #fff; color: var(--text); }
-  .mode-switch { background: var(--yellow); color: var(--text); border: 0; border-radius: 999px; padding: 6px 12px; font-size: 15px; cursor: pointer; }
+  /* ───── 頂部 ───── */
+  header.top { position: sticky; top: 0; z-index: 20; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, #2d6bc4 100%); box-shadow: 0 3px 0 var(--yellow); }
+  header.top .row { display: flex; align-items: center; gap: 10px; max-width: 760px; margin: 0 auto; padding: 12px 16px; }
+  header.top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 900; letter-spacing: .5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header.top select { max-width: 48%; font-size: 16px; padding: 8px 10px; border-radius: 999px; border: 0; background: #fff; color: var(--text); font-weight: 700; }
+  .chip-btn { background: var(--yellow); color: var(--text); border: 0; border-radius: 999px; padding: 7px 14px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 0 var(--yellow-dark); white-space: nowrap; }
 
-  main { max-width: 720px; margin: 0 auto; padding: 16px 16px 110px; }
-  .card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(20, 40, 80, .08); }
-  .card h2 { margin: 0 0 10px; font-size: 21px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
-  .card h3 { margin: 0; font-size: 19px; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 120px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 18px; box-shadow: var(--shadow); border: 2px solid #f2ead8; }
+  .card h2 { margin: 0 0 12px; font-size: 21px; font-weight: 900; color: var(--blue-dark); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card h3 { margin: 14px 0 6px; font-size: 18px; font-weight: 900; }
   .muted { color: var(--gray); font-size: 16px; }
   .small { font-size: 15px; }
+  .s { font-size: 15px; color: var(--gray); font-weight: 400; }
   .center { text-align: center; }
+  .row-flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
 
-  label { display: block; margin: 14px 0 6px; font-weight: 600; }
-  input[type=text], input[type=password], input[type=date], select.full, textarea {
-    width: 100%; font-size: 18px; padding: 13px 14px; border: 2px solid #cfd6e4; border-radius: 12px; background: #fff;
+  /* ───── 表單與按鈕 ───── */
+  label { display: block; margin: 14px 0 6px; font-weight: 800; }
+  input[type=text], input[type=password], input[type=date], input[type=number], input[type=search], select.full, textarea {
+    width: 100%; font-size: 18px; padding: 13px 15px; border: 3px solid var(--gray-line); border-radius: 16px; background: #fff;
   }
-  input:focus, select:focus, textarea:focus { outline: 3px solid var(--yellow); border-color: var(--blue); }
-  .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; margin: 14px 0; }
-  .check input { width: 24px; height: 24px; margin-top: 3px; flex: none; }
-  .btn { display: inline-block; width: 100%; min-height: 52px; font-size: 19px; font-weight: 700; padding: 12px 18px; border: 0; border-radius: 14px; background: var(--blue); color: #fff; cursor: pointer; margin-top: 14px; }
-  .btn:active { transform: translateY(1px); }
-  .btn.alt { background: var(--yellow); color: var(--text); }
-  .btn.ghost { background: transparent; color: var(--blue); border: 2px solid var(--blue); }
-  .btn.danger { background: var(--red-soft); color: var(--red); }
-  .btn:disabled { opacity: .55; cursor: default; }
-  .linkbtn { background: none; border: 0; color: var(--blue); text-decoration: underline; padding: 8px 0; font-size: 17px; cursor: pointer; }
-  .msg { padding: 12px 14px; border-radius: 12px; margin-top: 12px; white-space: pre-wrap; }
+  textarea { min-height: 120px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px var(--yellow-soft); }
+  .check { display: flex; gap: 12px; align-items: flex-start; font-weight: 800; margin: 12px 0; cursor: pointer; }
+  .check input { width: 26px; height: 26px; margin-top: 2px; flex: none; accent-color: var(--blue); }
+  .btn { display: block; width: 100%; min-height: 54px; font-size: 19px; font-weight: 900; padding: 12px 18px; border: 0; border-radius: 18px; background: var(--blue); color: #fff; cursor: pointer; margin-top: 14px; box-shadow: 0 4px 0 var(--blue-dark); transition: transform .08s; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--blue-dark); }
+  .btn.alt { background: var(--yellow); color: var(--text); box-shadow: 0 4px 0 var(--yellow-dark); }
+  .btn.green { background: var(--green); box-shadow: 0 4px 0 var(--green-dark); }
+  .btn.ghost { background: #fff; color: var(--blue); border: 3px solid var(--blue); box-shadow: none; }
+  .btn.danger { background: var(--red-soft); color: var(--red); box-shadow: 0 4px 0 #f3b8b8; }
+  .btn.small { display: inline-block; width: auto; min-height: 42px; font-size: 16px; padding: 8px 14px; margin-top: 8px; border-radius: 14px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .linkbtn { background: none; border: 0; color: var(--blue); text-decoration: underline; padding: 8px 0; font-size: 17px; cursor: pointer; font-weight: 700; }
+  .msg { padding: 12px 15px; border-radius: 16px; margin-top: 12px; white-space: pre-wrap; font-weight: 700; }
   .msg.err { background: var(--red-soft); color: var(--red); }
-  .msg.ok { background: var(--green-soft); color: var(--green); }
+  .msg.ok { background: var(--green-soft); color: var(--green-dark); }
   .msg.info { background: var(--blue-soft); color: var(--blue-dark); }
-
-  .hero { text-align: center; padding: 26px 18px; }
-  .hero .badge { font-size: 54px; line-height: 1; }
-  .hero h2 { justify-content: center; font-size: 24px; margin-top: 10px; }
-
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
-  .kv dt { color: var(--gray); }
-  .kv dd { margin: 0; font-weight: 600; }
-
-  .pill { display: inline-block; padding: 2px 12px; border-radius: 999px; font-size: 15px; font-weight: 700; white-space: nowrap; }
-  .st-已頒發 { background: var(--green-soft); color: var(--green); }
+  .msg.warn { background: var(--yellow-soft); color: #7a5a00; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .chip { border: 3px solid var(--gray-line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 16px; font-weight: 800; cursor: pointer; }
+  .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .pill { display: inline-block; padding: 2px 12px; border-radius: 999px; font-size: 14px; font-weight: 900; white-space: nowrap; }
+  .st-已頒發 { background: #fff1b8; color: #8a6100; }
   .st-已完成待頒發 { background: var(--blue-soft); color: var(--blue-dark); }
-  .st-進行中 { background: var(--yellow-soft); color: #7a5a00; }
+  .st-進行中 { background: var(--green-soft); color: var(--green-dark); }
   .st-未開始 { background: var(--gray-soft); color: var(--gray); }
+  .bar { height: 14px; background: var(--gray-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; border: 2px solid #fff; box-shadow: inset 0 1px 2px rgba(0,0,0,.08); }
+  .bar > span { display: block; height: 100%; background: repeating-linear-gradient(45deg, var(--green) 0 12px, #39b169 12px 24px); border-radius: 999px; transition: width .6s; }
+  .bar.full > span { background: repeating-linear-gradient(45deg, var(--yellow) 0 12px, #ffd85c 12px 24px); }
+  .consent { background: var(--bg); border-radius: 16px; padding: 14px; max-height: 50vh; overflow: auto; white-space: pre-wrap; font-size: 16px; border: 2px solid var(--gray-line); }
+  details > summary.fold { cursor: pointer; font-weight: 900; color: var(--blue); padding: 6px 0; }
 
-  .unit { border: 2px solid var(--line); border-radius: 14px; margin-top: 12px; overflow: hidden; }
+  /* ───── 登入頁 ───── */
+  .welcome { text-align: center; padding: 26px 18px 18px; background: linear-gradient(180deg, var(--sky), #fff); }
+  .welcome .mascot { font-size: 74px; line-height: 1; display: inline-block; animation: bob 2.4s ease-in-out infinite; }
+  .welcome h2 { justify-content: center; font-size: 25px; margin: 10px 0 4px; }
+
+  /* ───── 冒險家卡片 ───── */
+  .hero { position: relative; overflow: hidden; background: linear-gradient(135deg, #2d6bc4, var(--blue)); color: #fff; border: 0; }
+  .hero::after { content: ''; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: rgba(255,255,255,.08); }
+  .hero .top { display: flex; gap: 16px; align-items: center; position: relative; z-index: 1; }
+  .avatar { width: 88px; height: 88px; flex: none; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 52px; border: 5px solid var(--yellow); box-shadow: 0 4px 0 rgba(0,0,0,.15); }
+  .hero .name { font-size: 26px; font-weight: 900; line-height: 1.2; }
+  .hero .sub { opacity: .92; font-size: 16px; }
+  .levelchip { display: inline-block; margin-top: 6px; background: var(--yellow); color: var(--text); font-weight: 900; border-radius: 999px; padding: 2px 12px; font-size: 15px; }
+  .stats3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; position: relative; z-index: 1; }
+  .stats3 div { background: rgba(255,255,255,.14); border-radius: 16px; padding: 8px 4px; text-align: center; font-size: 14px; }
+  .stats3 b { display: block; font-size: 22px; line-height: 1.3; }
+
+  .mission { display: flex; gap: 12px; align-items: flex-start; padding: 12px; margin-top: 10px; border-radius: 16px; background: var(--yellow-soft); border: 2px dashed var(--yellow-dark); }
+  .mission .no { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--yellow); display: grid; place-items: center; font-weight: 900; }
+  .mission .txt { font-weight: 700; }
+  .congrats { font-size: 20px; font-weight: 900; color: var(--blue-dark); margin: 0; white-space: pre-wrap; }
+  .banner { background: linear-gradient(90deg, var(--yellow-soft), #fff); border-radius: 16px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--yellow); }
+
+  /* 可展開卡片 */
+  .unit { border: 3px solid var(--gray-line); border-radius: 18px; margin-top: 12px; overflow: hidden; background: #fff; }
   .unit > summary { list-style: none; cursor: pointer; padding: 14px; display: block; }
   .unit > summary::-webkit-details-marker { display: none; }
   .unit .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .unit .name { font-size: 20px; font-weight: 800; }
-  .unit .body { padding: 0 14px 14px; border-top: 1px dashed var(--line); }
-  .unit .more { color: var(--blue); font-size: 15px; margin-top: 6px; }
+  .unit .name { font-size: 20px; font-weight: 900; }
+  .unit .body { padding: 2px 14px 14px; border-top: 2px dashed var(--gray-line); }
+  .unit .more { color: var(--blue); font-size: 15px; margin-top: 6px; font-weight: 700; }
   .unit[open] .more { display: none; }
-  .bar { height: 12px; background: var(--gray-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; }
-  .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), #3f7ad6); border-radius: 999px; }
-  .bar.full > span { background: linear-gradient(90deg, #f0b400, var(--yellow)); }
+  .unit.bd-已頒發 { border-color: #ffd85c; }
+  .unit.bd-已完成待頒發 { border-color: #9fbcec; }
 
   ul.items { list-style: none; padding: 0; margin: 8px 0 0; }
-  ul.items li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--gray-soft); }
+  ul.items li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 2px solid var(--gray-soft); align-items: flex-start; }
   ul.items li:last-child { border-bottom: 0; }
-  ul.items .mark { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; font-weight: 800; margin-top: 1px; }
-  ul.items .done .mark { background: var(--green); color: #fff; }
-  ul.items .todo .mark { background: var(--gray-soft); color: var(--gray); }
+  ul.items .mark { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; margin-top: 1px; }
+  ul.items .done .mark { background: var(--yellow); box-shadow: 0 2px 0 var(--yellow-dark); }
+  ul.items .todo .mark { background: var(--gray-soft); color: var(--gray); border: 2px dashed #c7cdd9; }
   ul.items .when { display: block; color: var(--gray); font-size: 15px; }
-  .section-title { margin: 14px 0 0; font-weight: 800; color: var(--blue-dark); }
+  ul.items .done .when { color: var(--green-dark); font-weight: 700; }
+  .section-title { margin: 14px 0 0; font-weight: 900; color: var(--blue-dark); display: inline-block; background: var(--blue-soft); padding: 2px 12px; border-radius: 999px; font-size: 16px; }
 
-  .next li { font-weight: 600; }
-  .congrats { font-size: 20px; font-weight: 800; color: var(--blue-dark); margin: 0 0 6px; white-space: pre-wrap; }
+  /* ───── 闖關地圖 ───── */
+  .map { padding: 6px 0 4px; }
+  .stage { position: relative; display: flex; align-items: center; gap: 14px; margin: 0 0 34px; cursor: pointer; }
+  .stage:nth-child(even) { flex-direction: row-reverse; text-align: right; }
+  .stage:not(:last-child)::after { content: ''; position: absolute; top: 96px; left: 52px; width: calc(100% - 104px); height: 36px; border-bottom: 5px dashed #c9d8c2; border-left: 5px dashed #c9d8c2; border-radius: 0 0 0 30px; }
+  .stage:nth-child(even):not(:last-child)::after { border-left: 0; border-right: 5px dashed #c9d8c2; border-radius: 0 0 30px 0; }
+  .node { position: relative; width: 104px; height: 104px; flex: none; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e6ebe3 0); padding: 8px; transition: transform .15s; }
+  .node .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 46px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.06); }
+  .stage.locked .node .in { filter: grayscale(1); opacity: .45; }
+  .stage.locked .node::before { content: '🔒'; position: absolute; right: -2px; bottom: -2px; font-size: 26px; z-index: 1; }
+  .stage.active .node { animation: pulse 1.8s ease-in-out infinite; }
+  .stage.pending .node { background: conic-gradient(var(--blue) 100%, #fff 0); }
+  .stage.done .node { background: conic-gradient(var(--yellow) 100%, #fff 0); }
+  .stage.done .node::before { content: '🏅'; position: absolute; right: -4px; bottom: -4px; font-size: 32px; z-index: 1; }
+  .stage.sel .node { transform: scale(1.08); box-shadow: 0 0 0 5px var(--yellow-soft); }
+  .stage .lv { font-size: 22px; font-weight: 900; }
+  .stage .st { font-size: 15px; font-weight: 800; }
+  .stage .cnt { font-size: 15px; color: var(--gray); }
+  .finish { text-align: center; font-size: 15px; font-weight: 800; color: var(--green-dark); }
 
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .stat { background: var(--blue-soft); border-radius: 14px; padding: 12px; text-align: center; }
-  .stat b { display: block; font-size: 28px; color: var(--blue-dark); line-height: 1.2; }
-  .stat.big { grid-column: 1 / -1; background: var(--yellow-soft); }
-  .stat.big b { font-size: 36px; color: #7a5a00; }
-  table.list { width: 100%; border-collapse: collapse; }
-  table.list td { padding: 10px 4px; border-bottom: 1px solid var(--gray-soft); vertical-align: top; }
-  .att-出席 { color: var(--green); font-weight: 800; }
-  .att-請假 { color: #7a5a00; font-weight: 800; }
+  /* ───── 徽章收藏冊 ───── */
+  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 8px; }
+  .badge { border: 0; background: none; cursor: pointer; text-align: center; padding: 0; }
+  .badge .disc { position: relative; width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; padding: 6px; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e8ecf3 0); }
+  .badge .disc .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 36px; }
+  .badge.got .disc { background: conic-gradient(var(--yellow) 100%, #fff 0); box-shadow: 0 0 0 3px #fff3c2, 0 4px 0 var(--yellow-dark); }
+  .badge.got .disc .in { background: radial-gradient(circle at 35% 30%, #fffbe6, #ffe37a); }
+  .badge.got .disc::after { content: '✓'; position: absolute; right: -2px; top: -2px; width: 26px; height: 26px; border-radius: 50%; background: var(--green); color: #fff; font-weight: 900; font-size: 16px; display: grid; place-items: center; }
+  .badge.none .disc .in { filter: grayscale(1); opacity: .4; }
+  .badge.pending .disc { background: conic-gradient(var(--blue) 100%, #fff 0); }
+  .badge .nm { font-weight: 900; font-size: 15px; margin-top: 6px; line-height: 1.3; }
+  .badge .pc { font-size: 13px; color: var(--gray); }
 
-  details.fold > summary { cursor: pointer; font-weight: 800; color: var(--blue); padding: 6px 0; }
-  .consent { background: var(--bg); border-radius: 12px; padding: 14px; max-height: 50vh; overflow: auto; white-space: pre-wrap; font-size: 16px; border: 1px solid var(--line); }
+  /* ───── 集點卡 ───── */
+  .ring { width: 160px; height: 160px; margin: 6px auto 10px; border-radius: 50%; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e8ecf3 0); display: grid; place-items: center; padding: 14px; }
+  .ring .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; text-align: center; }
+  .ring b { font-size: 36px; color: var(--green-dark); line-height: 1; }
+  .stamps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 8px; }
+  .stamp { text-align: center; font-size: 13px; color: var(--gray); }
+  .stamp .sp { width: 62px; height: 62px; margin: 0 auto 4px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; border: 3px dashed #d5dbe6; background: #fff; }
+  .stamp.出席 .sp { border: 3px solid var(--green); background: var(--green-soft); transform: rotate(-8deg); }
+  .stamp.請假 .sp { border: 3px solid #b39ddb; background: #f3eefc; }
+  .counts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .counts span { background: var(--gray-soft); border-radius: 999px; padding: 4px 12px; font-weight: 800; font-size: 15px; }
 
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 10; }
-  nav.tabs .inner { display: flex; width: 100%; max-width: 720px; }
-  nav.tabs button { flex: 1; border: 0; background: none; padding: 8px 2px 10px; font-size: 14px; color: var(--gray); cursor: pointer; }
-  nav.tabs button .ic { display: block; font-size: 24px; line-height: 1.2; }
-  nav.tabs button.on { color: var(--blue); font-weight: 800; }
-  nav.tabs button.on .ic { transform: scale(1.12); }
+  /* ───── 底部分頁 ───── */
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 3px solid var(--yellow); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 20; box-shadow: 0 -4px 16px rgba(0,0,0,.06); }
+  nav.tabs .inner { display: flex; width: 100%; max-width: 760px; }
+  nav.tabs button { flex: 1; border: 0; background: none; padding: 7px 2px 9px; font-size: 13px; font-weight: 800; color: var(--gray); cursor: pointer; }
+  nav.tabs button .ic { display: block; font-size: 25px; line-height: 1.25; transition: transform .15s; }
+  nav.tabs button.on { color: var(--blue); }
+  nav.tabs button.on .ic { transform: translateY(-3px) scale(1.18); }
 
-  .loading { text-align: center; padding: 50px 0; color: var(--gray); }
-  .spinner { width: 42px; height: 42px; border: 5px solid var(--blue-soft); border-top-color: var(--blue); border-radius: 50%; margin: 0 auto 12px; animation: spin 0.9s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* ───── 彈出視窗、提示 ───── */
+  .sheet-bg { position: fixed; inset: 0; background: rgba(20, 30, 50, .45); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { background: #fff; width: 100%; max-width: 760px; max-height: 86vh; overflow: auto; border-radius: 26px 26px 0 0; padding: 18px 18px calc(24px + env(safe-area-inset-bottom)); animation: up .22s ease-out; }
+  .sheet .grab { width: 54px; height: 6px; background: var(--gray-line); border-radius: 3px; margin: 0 auto 12px; }
+  .sheet h2 { margin: 0 0 10px; font-size: 21px; color: var(--blue-dark); }
+  .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 800; z-index: 50; max-width: 90vw; text-align: center; animation: pop .2s ease-out; }
+  .loading { text-align: center; padding: 60px 0; color: var(--gray); font-weight: 700; }
+  .loading .paw { font-size: 44px; display: inline-block; animation: bob 1s ease-in-out infinite; }
+  .confetti { position: fixed; top: -20px; font-size: 22px; z-index: 60; pointer-events: none; animation: fall linear forwards; }
+
+  /* ───── 後台 ───── */
+  .list-row { display: flex; gap: 10px; align-items: center; padding: 12px 4px; border-bottom: 2px solid var(--gray-soft); }
+  .list-row:last-child { border-bottom: 0; }
+  .list-row.tap { cursor: pointer; }
+  .list-row .t { font-weight: 900; }
+  .roll-btn { min-width: 96px; min-height: 50px; border-radius: 14px; border: 3px solid var(--gray-line); background: #fff; font-weight: 900; font-size: 17px; cursor: pointer; }
+  .roll-btn.出席 { background: var(--green); border-color: var(--green); color: #fff; }
+  .roll-btn.請假 { background: #ede7f6; border-color: #b39ddb; color: #4a2c8a; }
+  .roll-btn.changed { box-shadow: 0 0 0 4px var(--yellow); }
+  .savebar { position: sticky; bottom: 84px; z-index: 5; background: #fff; border-radius: 18px; padding: 8px 12px 12px; box-shadow: 0 -2px 16px rgba(0,0,0,.12); margin-top: 12px; }
+  .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .menu-grid button { border: 3px solid var(--gray-line); background: #fff; border-radius: 18px; padding: 14px 8px; font-weight: 900; font-size: 16px; cursor: pointer; }
+  .menu-grid button .ic { display: block; font-size: 30px; }
+  .alert { display: flex; gap: 10px; padding: 10px 12px; border-radius: 14px; margin-top: 8px; font-weight: 700; }
+  .alert.red { background: var(--red-soft); color: var(--red); }
+  .alert.yellow { background: var(--yellow-soft); color: #7a5a00; }
+  .alert.green { background: var(--green-soft); color: var(--green-dark); }
+  .tbl-wrap { overflow-x: auto; margin: 8px -6px 0; }
+  table.tbl { border-collapse: collapse; font-size: 15px; min-width: 100%; }
+  table.tbl th, table.tbl td { padding: 7px 8px; border-bottom: 2px solid var(--gray-soft); white-space: nowrap; text-align: center; }
+  table.tbl th:first-child, table.tbl td:first-child { text-align: left; position: sticky; left: 0; background: #fff; }
+  .codebox { font-family: ui-monospace, Menlo, monospace; font-size: 28px; font-weight: 900; letter-spacing: 4px; background: var(--yellow-soft); border: 3px dashed var(--yellow-dark); border-radius: 16px; padding: 8px 14px; text-align: center; margin-top: 10px; }
+  .back { background: none; border: 0; color: var(--blue); font-weight: 900; font-size: 17px; padding: 4px 0 10px; cursor: pointer; }
+  pre.copytext { white-space: pre-wrap; background: var(--gray-soft); border-radius: 14px; padding: 12px; font-size: 15px; font-family: inherit; }
+
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes pop { from { transform: translateX(-50%) scale(.8); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+  @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  @media (max-width: 380px) { .badge .disc { width: 72px; height: 72px; } .node { width: 88px; height: 88px; } .stage:not(:last-child)::after { top: 82px; left: 44px; width: calc(100% - 88px); } }
 
   /* ───── 列印簽核單（A4） ───── */
   #print { display: none; }
   @media print {
     @page { size: A4; margin: 14mm; }
+    body { background: #fff; }
     body.printing > *:not(#print) { display: none !important; }
-    body.printing #print { display: block; color: #000; font-size: 12pt; line-height: 1.5; }
+    body.printing #print { display: block; color: #000; font: 12pt/1.5 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+    #print .page { page-break-after: always; }
+    #print .page:last-child { page-break-after: auto; }
     #print h1 { font-size: 18pt; margin: 0 0 4pt; }
     #print .meta { margin-bottom: 10pt; }
     #print table { width: 100%; border-collapse: collapse; }
     #print th, #print td { border: 1px solid #000; padding: 5pt 6pt; vertical-align: top; }
     #print th { background: #eee; }
     #print tr { page-break-inside: avoid; }
-    #print .foot { margin-top: 14pt; font-size: 10pt; }
+    #print .foot { margin-top: 12pt; font-size: 10pt; }
   }
 </style>
 </head>
 <body>
-<header class="top"><div class="row"><h1 id="title">🐺 22團幼童軍進程</h1><span id="headerRight"></span></div></header>
-<main id="app"><div class="loading"><div class="spinner"></div>載入中……</div></main>
+<header class="top"><div class="row"><h1 id="title">🐾 22團幼童軍冒險</h1><span id="headerRight" class="row-flex"></span></div></header>
+<main id="app"><div class="loading"><div class="paw">🐾</div><br>載入中……</div></main>
 <nav class="tabs" id="tabs" hidden><div class="inner"></div></nav>
 <div id="print"></div>
 
@@ -147,12 +258,22 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxTq1Gkr2bWq9M9AkJFkrSI7aW_ivJMQEjtyY9nH06qOmW3VBzcTh9uulduGlkGa4l3NQ/exec';
 
-// ───────────── 小工具 ─────────────
+// ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => [...(root || document).querySelectorAll(sel)];
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmtDate = (d) => (d ? d.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (m, y, mo, da) => `${y}/${+mo}/${+da}`) : '');
-const STATUS_ORDER = { '進行中': 0, '已完成待頒發': 1, '已頒發': 2, '未開始': 3 };
-const LEVEL_ICON = { '羚羊': '🦌', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
+const fmtDate = (d) => (d ? String(d).replace(/^(\d{4})-(\d{2})-(\d{2})$/, (m, y, mo, da) => `${y}/${+mo}/${+da}`) : '');
+const shortDate = (d) => (d ? String(d).replace(/^\d{4}-(\d{2})-(\d{2})$/, (m, mo, da) => `${+mo}/${+da}`) : '');
+const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('zh-TW', { hour12: false }) : '－');
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const LEVELS = ['羚羊', '狼', '鹿', '豹'];
+const LEVEL_ICON = { '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
+const BADGE_ICON = { 嚮導: '🧭', 環保: '♻️', 交通安全: '🚦', 表演: '🎭', 種植: '🌱', 飼養: '🐹', 勞作: '🔨', 義工: '🤝', 球類運動: '⚽', 體適能運動: '💪', 民俗體育運動: '🪀', 游泳: '🏊', 自行車: '🚲', 旅行: '🎒', 休閒活動: '🎲', 舞蹈: '💃', 體操: '🤸', 繪畫: '🎨', 音樂: '🎵', 模型: '🏠', 口技: '🗣️', 書法: '🖌️', 歌詠: '🎤', 收集: '📦', 資訊: '💻', 語文: '📖' };
+const iconOf = (u) => (u.category === '進程' ? LEVEL_ICON[u.unit] : BADGE_ICON[u.unit]) || '🎖️';
+const unitLabel = (u) => (u.category === '進程' ? u.unit + '級' : u.unit);
+const STATUS_ORDER = { '已完成待頒發': 0, '進行中': 1, '已頒發': 2, '未開始': 3 };
+const webRoot = () => location.origin + location.pathname.replace(/web\/?[^/]*$/, '');
 
 // 瀏覽器儲存：無痕模式等可能失敗，失敗時不讓頁面壞掉
 const store = {
@@ -161,7 +282,7 @@ const store = {
   del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) {} },
 };
 
-const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent', returnTo: null };
+const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent', admin: { tab: 'home', page: null }, returnTo: null, mapSel: null };
 
 class ApiErr extends Error { constructor(code, message) { super(message); this.code = code; } }
 
@@ -170,14 +291,9 @@ async function api(action, data) {
   if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
   let res;
   try {
-    res = await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {})),
-    });
-  } catch (e) {
-    throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。');
-  }
+    res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {})) });
+  } catch (e) { throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。'); }
   let json;
   try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
   if (!json.ok) {
@@ -189,57 +305,114 @@ async function api(action, data) {
 
 /** 登入過期：清除憑證、回登入畫面，登入後回到原本的畫面 */
 function onExpired() {
+  const hadLogin = !!state.me;
   store.del('token');
-  state.returnTo = { view: state.view, cubId: state.cubId, mode: state.mode };
+  state.returnTo = hadLogin ? { view: state.view, cubId: state.cubId, mode: state.mode, admin: Object.assign({}, state.admin) } : null;
   state.me = null;
-  renderLogin({ notice: '登入已過期，請重新登入。登入後會回到剛才的畫面。' });
+  renderLogin({ notice: hadLogin ? '登入已過期，請重新登入。登入後會回到剛才的畫面。' : '' });
 }
 
-function loading(text) { $app.innerHTML = `<div class="loading"><div class="spinner"></div>${esc(text || '載入中……')}</div>`; }
-function msg(el, text, kind) { el.innerHTML = text ? `<div class="msg ${kind || 'err'}">${esc(text)}</div>` : ''; }
-function setTabs(show) { document.getElementById('tabs').hidden = !show; }
+function loading(text) { $app.innerHTML = `<div class="loading"><div class="paw">🐾</div><br>${esc(text || '載入中……')}</div>`; }
+function msg(el, text, kind) { if (el) el.innerHTML = text ? `<div class="msg ${kind || 'err'}">${esc(text)}</div>` : ''; }
+function setTabs(list, cur, onPick) {
+  const nav = document.getElementById('tabs');
+  if (!list) { nav.hidden = true; return; }
+  nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
+  $$('button', nav).forEach((b) => { b.onclick = () => onPick(b.dataset.v); });
+  nav.hidden = false;
+}
 function setHeader(html) { document.getElementById('headerRight').innerHTML = html || ''; }
+function scrollTop() { window.scrollTo(0, 0); }
+function toast(text) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2600);
+}
+function confetti() {
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const set = ['⭐', '🎉', '✨', '🏅', '🐾', '🌟'];
+  for (let i = 0; i < 26; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti'; c.textContent = set[i % set.length];
+    c.style.left = Math.random() * 100 + 'vw';
+    c.style.animationDuration = 1.8 + Math.random() * 1.6 + 's';
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 3600);
+  }
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE 了'); }
+  catch (e) { prompt('請長按複製以下文字：', text); }
+}
+/** 表單送出：停用按鈕、顯示錯誤訊息 */
 function bindForm(form, handler) {
+  if (!form) return;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const btn = form.querySelector('button[type=submit]');
     const out = form.querySelector('.out');
     if (btn) btn.disabled = true;
-    if (out) msg(out, '');
+    msg(out, '');
     try { await handler(new FormData(form), out); }
-    catch (e) { if (e.code !== 'SESSION_EXPIRED' && out) msg(out, e.message); }
+    catch (e) { if (e.code !== 'SESSION_EXPIRED') { if (out) msg(out, e.message); else alert(e.message); } }
     finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
   });
 }
-function scrollTop() { window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' }); }
+/** 按鈕點擊包裝：執行中停用、錯誤用 alert 顯示 */
+async function act(btn, fn) {
+  if (btn) btn.disabled = true;
+  try { await fn(); } catch (e) { if (e.code !== 'SESSION_EXPIRED') alert(e.message); }
+  finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
+}
+/** 需要確認的後台操作：後端回 needConfirm 時詢問，確認後帶 confirm 重送 */
+async function withConfirm(action, data) {
+  let r = await api(action, data);
+  if (r.needConfirm) {
+    if (!confirm('請再確認一次：\n\n' + (r.warnings || []).join('\n') + '\n\n確定要繼續嗎？')) return null;
+    r = await api(action, Object.assign({}, data, { confirm: true }));
+  }
+  return r;
+}
+function openSheet(html, onMount) {
+  const bg = document.createElement('div');
+  bg.className = 'sheet-bg';
+  bg.innerHTML = `<div class="sheet" role="dialog"><div class="grab"></div>${html}<button class="btn ghost" data-close>關閉</button></div>`;
+  const close = () => bg.remove();
+  bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
+  document.body.appendChild(bg);
+  if (onMount) onMount(bg.querySelector('.sheet'), close);
+  return close;
+}
 
-// ───────────── 登入、註冊、忘記密碼 ─────────────
+// ═════════════ 登入、註冊、忘記密碼 ═════════════
 
 function renderLogin(opt = {}) {
-  setTabs(false); setHeader(''); scrollTop();
+  setTabs(null); setHeader(''); scrollTop();
+  document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
   $app.innerHTML = `
-    <section class="card hero"><div class="badge">⚜️</div><h2>歡迎來到 22 團幼童軍</h2>
-      <p class="muted">查詢孩子的進程、技能章與出席紀錄</p></section>
+    <section class="card welcome"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2>
+      <p class="muted">一起看看小狼闖過了哪些關卡吧</p></section>
     <section class="card">
-      <h2>登入</h2>
+      <h2>🔑 登入</h2>
       ${opt.notice ? `<div class="msg info">${esc(opt.notice)}</div>` : ''}
       <form id="f">
         <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
         <label for="p">密碼</label><input id="p" name="password" type="password" autocomplete="current-password" required>
         <label class="check"><input type="checkbox" name="remember" checked> 記住我（這台裝置下次不用再登入）</label>
-        <button class="btn" type="submit">登入</button>
+        <button class="btn" type="submit">出發！登入</button>
         <div class="out"></div>
       </form>
       <button class="linkbtn" id="forgot">忘記密碼？</button>
     </section>
     <section class="card">
-      <h2>第一次使用？</h2>
+      <h2>🌱 第一次來？</h2>
       <p class="muted">請準備團長給你的「綁定碼」，以及孩子的姓名。</p>
       <button class="btn alt" id="reg">我有代碼，要註冊</button>
     </section>`;
-  document.getElementById('forgot').onclick = renderForgot;
-  document.getElementById('reg').onclick = () => renderRegister1();
-  bindForm(document.getElementById('f'), async (fd) => {
+  $('#forgot').onclick = renderForgot;
+  $('#reg').onclick = () => renderRegister1();
+  bindForm($('#f'), async (fd) => {
     const r = await api('login', { username: fd.get('username'), password: fd.get('password'), remember: !!fd.get('remember') });
     store.set('token', r.token, !!fd.get('remember'));
     await start();
@@ -247,10 +420,10 @@ function renderLogin(opt = {}) {
 }
 
 function renderForgot() {
-  setTabs(false); scrollTop();
+  setTabs(null); scrollTop();
   $app.innerHTML = `
     <section class="card">
-      <h2>忘記密碼</h2>
+      <h2>🔁 忘記密碼</h2>
       <div class="msg info">請先聯絡團長，團長會用 LINE 傳一組「臨時碼」給你。臨時碼有使用期限，而且只能用一次。</div>
       <form id="f">
         <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" required>
@@ -262,8 +435,8 @@ function renderForgot() {
       </form>
       <button class="linkbtn" id="back">← 回登入</button>
     </section>`;
-  document.getElementById('back').onclick = () => renderLogin();
-  bindForm(document.getElementById('f'), async (fd, out) => {
+  $('#back').onclick = () => renderLogin();
+  bindForm($('#f'), async (fd, out) => {
     if (fd.get('newPassword') !== fd.get('newPassword2')) return msg(out, '兩次輸入的新密碼不一樣。');
     await api('resetPassword', { username: fd.get('username'), tempCode: fd.get('tempCode'), newPassword: fd.get('newPassword') });
     renderLogin({ notice: '新密碼設定好了，請用新密碼登入。' });
@@ -272,10 +445,10 @@ function renderForgot() {
 
 /** 註冊第 1 步：代碼與小孩姓名 */
 function renderRegister1(prev = {}) {
-  setTabs(false); scrollTop();
+  setTabs(null); scrollTop();
   $app.innerHTML = `
     <section class="card">
-      <h2>註冊 1／3：輸入代碼</h2>
+      <h2>🗝️ 註冊 1／3：輸入代碼</h2>
       <form id="f">
         <label for="c">綁定碼（團長給的英文數字）</label>
         <input id="c" name="code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(prev.code || '')}" required>
@@ -287,8 +460,8 @@ function renderRegister1(prev = {}) {
       </form>
       <button class="linkbtn" id="back">← 回登入</button>
     </section>`;
-  document.getElementById('back').onclick = () => renderLogin();
-  bindForm(document.getElementById('f'), async (fd) => {
+  $('#back').onclick = () => renderLogin();
+  bindForm($('#f'), async (fd) => {
     const code = fd.get('code'), childName = fd.get('childName');
     const r = await api('checkCode', { code, childName });
     renderRegister2({ code, childName, kind: r.kind, consent: r.consent });
@@ -301,7 +474,7 @@ function renderRegister2(ctx) {
   const isAdmin = ctx.kind === 'admin';
   $app.innerHTML = `
     <section class="card">
-      <h2>註冊 2／${isAdmin ? 2 : 3}：設定帳號</h2>
+      <h2>🎒 註冊 2／${isAdmin ? 2 : 3}：設定帳號</h2>
       ${isAdmin ? '<div class="msg ok">這是管理員邀請碼，註冊後就能進入後台。</div>' : `<div class="msg ok">代碼正確！孩子：${esc(ctx.childName)}</div>`}
       <form id="f">
         <label for="u">帳號（4～20 個英文字母、數字或底線，例如 wang_mom）</label>
@@ -316,13 +489,13 @@ function renderRegister2(ctx) {
       </form>
       <button class="linkbtn" id="back">← 上一步</button>
     </section>`;
-  document.getElementById('back').onclick = () => renderRegister1(ctx);
-  bindForm(document.getElementById('f'), async (fd, out) => {
+  $('#back').onclick = () => renderRegister1(ctx);
+  bindForm($('#f'), async (fd, out) => {
     if (fd.get('password') !== fd.get('password2')) return msg(out, '兩次輸入的密碼不一樣。');
     if (!/^[A-Za-z0-9_]{4,20}$/.test(fd.get('username').trim())) return msg(out, '帳號需為 4～20 個英文字母、數字或底線。');
     if (fd.get('password').length < 8) return msg(out, '密碼至少 8 個字。');
     const next = Object.assign({}, ctx, { username: fd.get('username').trim(), password: fd.get('password'), nickname: fd.get('nickname').trim(), remember: !!fd.get('remember') });
-    if (isAdmin) return doRegister(next, out);
+    if (isAdmin) return doRegister(next);
     renderRegister3(next);
   });
 }
@@ -332,278 +505,293 @@ function renderRegister3(ctx) {
   scrollTop();
   $app.innerHTML = `
     <section class="card">
-      <h2>註冊 3／3：個資說明</h2>
+      <h2>📜 註冊 3／3：個資說明</h2>
       <p class="muted">請閱讀以下說明，同意後才會建立帳號。</p>
       <div class="consent">${esc(ctx.consent ? ctx.consent.content : '')}</div>
       <form id="f">
         <label class="check"><input type="checkbox" name="agree" required> 我已閱讀並同意上述說明</label>
-        <button class="btn" type="submit">同意並完成註冊</button>
+        <button class="btn green" type="submit">同意並完成註冊</button>
         <div class="out"></div>
       </form>
       <button class="btn ghost" id="no">不同意（不建立帳號）</button>
       <button class="linkbtn" id="back">← 上一步</button>
     </section>`;
-  document.getElementById('back').onclick = () => renderRegister2(ctx);
-  document.getElementById('no').onclick = () => renderLogin({ notice: '沒有建立帳號，也沒有留下任何資料。有問題歡迎聯絡團長。' });
-  bindForm(document.getElementById('f'), async (fd, out) => doRegister(ctx, out));
+  $('#back').onclick = () => renderRegister2(ctx);
+  $('#no').onclick = () => renderLogin({ notice: '沒有建立帳號，也沒有留下任何資料。有問題歡迎聯絡團長。' });
+  bindForm($('#f'), async () => doRegister(ctx));
 }
 
-async function doRegister(ctx, out) {
+async function doRegister(ctx) {
   try {
-    const r = await api('register', {
-      code: ctx.code, childName: ctx.childName, username: ctx.username, password: ctx.password,
-      nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined,
-    });
+    const r = await api('register', { code: ctx.code, childName: ctx.childName, username: ctx.username, password: ctx.password,
+      nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined });
     store.set('token', r.token, ctx.remember);
+    confetti();
     await start();
   } catch (e) {
-    // 帳號名稱重複等問題要回第 2 步修改
-    if (e.code === 'NAME_TAKEN' || e.code === 'BAD_INPUT') { renderRegister2(Object.assign({}, ctx, { error: e.message })); msg(document.querySelector('.out'), e.message); return; }
-    if (e.code === 'CODE_INVALID' || e.code === 'LOCKED') { renderRegister1(ctx); msg(document.querySelector('.out'), e.message); return; }
+    if (e.code === 'NAME_TAKEN' || e.code === 'BAD_INPUT') { renderRegister2(ctx); msg($('.out'), e.message); return; }
+    if (e.code === 'CODE_INVALID' || e.code === 'LOCKED') { renderRegister1(ctx); msg($('.out'), e.message); return; }
     throw e;
   }
 }
 
-// ───────────── 重新同意（告知內容改版） ─────────────
-
 async function renderReconsent() {
-  setTabs(false); loading();
+  setTabs(null); loading();
   const c = await api('consentText');
   scrollTop();
   $app.innerHTML = `
     <section class="card">
-      <h2>個資說明已更新</h2>
+      <h2>📜 個資說明已更新</h2>
       <p class="muted">團長更新了個資說明（第 ${esc(c.version)} 版），請閱讀並同意後繼續使用。</p>
       <div class="consent">${esc(c.content)}</div>
       <form id="f">
         <label class="check"><input type="checkbox" name="agree" required> 我已閱讀並同意上述說明</label>
-        <button class="btn" type="submit">同意並繼續</button>
+        <button class="btn green" type="submit">同意並繼續</button>
         <div class="out"></div>
       </form>
       <p class="muted small">如果不同意，請登出並聯絡團長，團長可以協助刪除你的帳號。</p>
       <button class="btn ghost" id="lo">登出</button>
     </section>`;
-  document.getElementById('lo').onclick = logout;
-  bindForm(document.getElementById('f'), async () => { await api('reconsent', { consentVersion: c.version }); await start(); });
+  $('#lo').onclick = logout;
+  bindForm($('#f'), async () => { await api('reconsent', { consentVersion: c.version }); await start(); });
 }
 
-// ───────────── 主流程 ─────────────
+// ═════════════ 主流程 ═════════════
 
 async function start() {
   if (!store.get('token')) return renderLogin();
   loading();
-  try {
-    state.me = await api('me');
-  } catch (e) {
+  try { state.me = await api('me'); }
+  catch (e) {
     if (e.code === 'SESSION_EXPIRED') return;
-    $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" onclick="start()">再試一次</button></section>`;
+    $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
+    $('#re').onclick = start;
     return;
   }
   if (state.me.needsConsent) return renderReconsent();
   const back = state.returnTo; state.returnTo = null;
-  // 管理員預設進後台；有綁定小狼的可切換到家長畫面
-  state.mode = back ? back.mode : (state.me.role ? 'admin' : 'parent');
-  if (back && back.cubId && state.me.cubs.some((c) => c.cubId === back.cubId)) state.cubId = back.cubId;
+  state.mode = back ? back.mode : (state.me.role ? 'admin' : 'parent'); // 管理員預設進後台
+  if (!state.me.role) state.mode = 'parent';
+  if (back && back.cubId) state.cubId = back.cubId;
   if (!state.cubId || !state.me.cubs.some((c) => c.cubId === state.cubId)) state.cubId = (state.me.cubs[0] || {}).cubId || null;
   state.view = back ? back.view : 'home';
+  if (back && back.admin) state.admin = back.admin;
   route();
 }
 
-function route() {
-  if (state.mode === 'admin') return renderAdmin();
-  return renderParent();
-}
+function route() { return state.mode === 'admin' ? renderAdmin() : renderParent(); }
 
 async function logout() {
   try { await api('logout'); } catch (e) {}
   store.del('token');
-  state.me = null; state.detail = null; state.cubId = null;
-  renderLogin({ notice: '已登出。' });
+  Object.assign(state, { me: null, detail: null, cubId: null, admin: { tab: 'home', page: null } });
+  renderLogin({ notice: '已登出，下次見！' });
 }
 
-// ───────────── 後台（階段 4A 開放） ─────────────
+// ═════════════ 家長畫面：闖關冒險 ═════════════
 
-function renderAdmin() {
-  setTabs(false); scrollTop();
-  setHeader(`<button class="mode-switch" id="toParent">切換到家長畫面</button>`);
-  document.getElementById('toParent').onclick = () => { state.mode = 'parent'; route(); };
-  $app.innerHTML = `
-    <section class="card">
-      <h2>🛠️ 團長後台</h2>
-      <p>你好，<b>${esc(state.me.adminName || state.me.nickname)}</b>（${esc(state.me.role)}）</p>
-      <div class="msg info">後台功能（小狼名單與綁定碼、點名、簽核、頒章、帳號管理）將在下一階段開放。</div>
-    </section>
-    <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
-  document.getElementById('lo').onclick = logout;
-}
-
-// ───────────── 家長畫面 ─────────────
-
-const TABS = [
-  ['home', '🏠', '首頁'], ['progress', '🐺', '進程'], ['badges', '🎖️', '技能章'], ['attendance', '📅', '出席'], ['mine', '👤', '我的'],
-];
-
-function renderTabs() {
-  const nav = document.querySelector('#tabs .inner');
-  nav.innerHTML = TABS.map(([k, ic, t]) => `<button data-v="${k}" class="${state.view === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
-  nav.querySelectorAll('button').forEach((b) => { b.onclick = () => { state.view = b.dataset.v; renderParent(true); }; });
-  setTabs(true);
-}
+const PARENT_TABS = [['home', '🏕️', '冒險'], ['progress', '🗺️', '闖關'], ['badges', '🎖️', '徽章'], ['attendance', '🐾', '集點'], ['mine', '👤', '我的']];
 
 function renderParentHeader() {
   const me = state.me;
   let html = '';
-  if (me.cubs.length > 1) {
-    html += `<select id="cubSel" aria-label="切換孩子">${me.cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === state.cubId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
-  }
-  if (me.role) html += ` <button class="mode-switch" id="toAdmin">後台</button>`;
+  if (me.cubs.length > 1) html += `<select id="cubSel" aria-label="切換孩子">${me.cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === state.cubId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
+  if (me.role) html += `<button class="chip-btn" id="toAdmin">後台</button>`;
   setHeader(html);
-  const sel = document.getElementById('cubSel');
-  if (sel) sel.onchange = () => { state.cubId = sel.value; state.detail = null; renderParent(); };
-  const ta = document.getElementById('toAdmin');
+  const sel = $('#cubSel');
+  if (sel) sel.onchange = () => { state.cubId = sel.value; state.detail = null; state.mapSel = null; renderParent(); };
+  const ta = $('#toAdmin');
   if (ta) ta.onclick = () => { state.mode = 'admin'; route(); };
 }
 
 /** keep=true 時沿用已載入的資料（切換分頁不重新呼叫後端） */
 async function renderParent(keep) {
+  document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
   renderParentHeader();
-  renderTabs();
+  setTabs(PARENT_TABS, state.view, (v) => { state.view = v; renderParent(true); });
   scrollTop();
   if (state.view === 'mine') return renderMine();
   if (!state.cubId) return renderNoCub();
   if (!keep || !state.detail || state.detail.cub.cubId !== state.cubId) {
-    loading();
+    loading('正在打開冒險地圖……');
     try { state.detail = await api('cubDetail', { cubId: state.cubId }); }
     catch (e) {
       if (e.code === 'SESSION_EXPIRED') return;
       if (e.code === 'NEED_CONSENT') return renderReconsent();
       $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
-      document.getElementById('re').onclick = () => renderParent();
+      $('#re').onclick = () => renderParent();
       return;
     }
   }
-  ({ home: viewHome, progress: viewProgress, badges: viewBadges, attendance: viewAttendance })[state.view](state.detail);
+  ({ home: viewHome, progress: viewMap, badges: viewBadges, attendance: viewStamps })[state.view](state.detail);
 }
 
 function renderNoCub() {
   $app.innerHTML = `
-    <section class="card hero"><div class="badge">🧒</div><h2>還沒有綁定孩子</h2>
-      <p class="muted">到「我的」頁面輸入團長給的綁定碼，就能看到孩子的紀錄。</p>
+    <section class="card welcome"><div class="mascot">🧒</div><h2>還沒有綁定孩子</h2>
+      <p class="muted">到「我的」頁面輸入團長給的綁定碼，就能看到孩子的冒險紀錄。</p>
       <button class="btn alt" id="go">前往新增綁定</button></section>`;
-  document.getElementById('go').onclick = () => { state.view = 'mine'; renderParent(true); };
+  $('#go').onclick = () => { state.view = 'mine'; renderParent(true); };
 }
 
-// 共用：一個級別／技能章的卡片
-function unitCard(u, opt = {}) {
-  const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
+/** 單一級別或技能章的任務清單（依大項分組） */
+function itemsHtml(u) {
   const sections = [];
   u.items.forEach((it) => {
     let s = sections.find((x) => x.name === it.section);
     if (!s) sections.push((s = { name: it.section, items: [] }));
     s.items.push(it);
   });
-  const showSections = sections.length > 1 || (sections[0] && sections[0].name !== '－');
-  const itemsHtml = sections.map((s) => `
-    ${showSections ? `<div class="section-title">${esc(s.name)}</div>` : ''}
+  const showSec = sections.length > 1 || (sections[0] && sections[0].name !== '－');
+  return sections.map((s) => `
+    ${showSec ? `<div class="section-title">${esc(s.name)}</div>` : ''}
     <ul class="items">${s.items.map((it) => `
-      <li class="${it.done ? 'done' : 'todo'}"><span class="mark">${it.done ? '✓' : ''}</span>
-        <span>${esc(it.text)}<span class="when">${it.done ? `已完成 ${fmtDate(it.date)}${it.auto ? '（依出席紀錄）' : ''}` : '待挑戰'}</span></span></li>`).join('')}
+      <li class="${it.done ? 'done' : 'todo'}"><span class="mark">${it.done ? '⭐' : ''}</span>
+        <span>${esc(it.text)}<span class="when">${it.done ? `完成！${fmtDate(it.date)}${it.auto ? '（出席自動完成）' : ''}` : '待挑戰'}</span></span></li>`).join('')}
     </ul>`).join('');
+}
+
+function statusLabel(u) {
+  return u.status === '已頒發' ? '🏅 已拿到' : u.status === '已完成待頒發' ? '⏳ 等待頒發' : u.status === '進行中' ? '🔥 挑戰中' : '🔒 未開始';
+}
+
+/** 可展開的卡片（首頁用） */
+function unitCard(u) {
+  const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
   const sub = u.status === '已頒發'
-    ? `<div class="muted">🏅 頒發日期 ${fmtDate(u.awardDate)}${u.awardOccasion ? `・${esc(u.awardOccasion)}` : ''}</div>`
-    : `<div class="muted">完成 ${u.done}／${u.total} 項</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`;
-  const pending = u.status === '已完成待頒發' ? `<div class="msg info small">${esc(u.statusText)}</div>` : '';
-  const attend = u.attendRequired ? `<div class="muted small">晉級出席要求：上一級頒發後已出席 ${u.attendSinceLast}／${u.attendRequired} 次</div>` : '';
+    ? `<div class="muted">🏅 ${fmtDate(u.awardDate)} 頒發${u.awardOccasion ? `・${esc(u.awardOccasion)}` : ''}</div>`
+    : `<div class="muted">⭐ ${u.done}／${u.total}</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`;
   return `
-    <details class="unit" ${opt.open ? 'open' : ''}>
+    <details class="unit bd-${esc(u.status)}">
       <summary>
-        <div class="head"><span class="name">${opt.icon ? opt.icon + ' ' : ''}${esc(u.unit)}${u.category === '進程' ? '級' : ''}</span>
-          <span class="pill st-${esc(u.status)}">${esc(u.status === '已完成待頒發' ? '等待頒發' : u.status)}</span></div>
-        ${sub}${pending}
-        ${opt.showDesc !== false && u.desc ? `<div class="small" style="margin-top:6px">${esc(u.desc)}</div>` : ''}
-        <div class="more">點我看詳細項目 ▾</div>
+        <div class="head"><span class="name">${iconOf(u)} ${esc(unitLabel(u))}</span><span class="pill st-${esc(u.status)}">${statusLabel(u)}</span></div>
+        ${sub}
+        ${u.status === '已完成待頒發' ? `<div class="msg info small">${esc(u.statusText)}</div>` : ''}
+        ${u.desc ? `<div class="small" style="margin-top:6px">${esc(u.desc)}</div>` : ''}
+        <div class="more">看看有哪些任務 ▾</div>
       </summary>
-      <div class="body">
-        ${opt.showRule && u.rule ? `<p class="small"><b>晉級條件：</b>${esc(u.rule)}</p>` : ''}
-        ${attend}
-        ${itemsHtml}
-        ${opt.print ? `<button class="btn ghost print-btn" data-unit="${esc(u.unit)}">🖨️ 列印這一級的簽核單</button>` : ''}
-      </div>
+      <div class="body">${itemsHtml(u)}</div>
     </details>`;
 }
 
 function viewHome(d) {
   const c = d.cub, n = d.nextChallenge;
+  const stars = d.units.reduce((s, u) => s + u.done, 0);
+  const got = d.units.filter((u) => u.status === '已頒發').sort((a, b) => (a.awardDate < b.awardDate ? 1 : -1));
   const challenging = d.units.filter((u) => u.status === '進行中' || u.status === '已完成待頒發')
     .sort((a, b) => (a.category === b.category ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status] : a.category === '進程' ? -1 : 1));
-  const got = d.units.filter((u) => u.status === '已頒發').sort((a, b) => (a.awardDate < b.awardDate ? 1 : -1));
   const notStarted = d.units.filter((u) => u.category === '技能章' && u.status === '未開始');
+  const av = c.currentLevel ? LEVEL_ICON[c.currentLevel] : '🌱';
   let next;
-  if (n.type === 'allDone') next = `<p class="congrats">🎉 ${esc(n.message)}</p>`;
-  else if (n.type === 'pending') next = `<p class="congrats">${esc(n.message)}</p>`;
-  else next = `${n.message ? `<p class="congrats">🎉 ${esc(n.message)}</p>` : ''}
-    <p class="muted">${esc(n.level)}級還沒完成的項目：</p>
-    <ul class="items next">${n.items.map((i) => `<li class="todo"><span class="mark">☆</span><span>${esc(i.text)}</span></li>`).join('')}</ul>`;
+  if (n.type === 'allDone') next = `<div class="banner"><p class="congrats">🎉 ${esc(n.message)}</p></div>`;
+  else if (n.type === 'pending') next = `<div class="banner"><p class="congrats">${esc(n.message)}</p></div>`;
+  else next = `${n.message ? `<div class="banner"><p class="congrats">🎉 ${esc(n.message)}</p></div>` : ''}
+    <p class="muted">${esc(LEVEL_ICON[n.level] || '')} ${esc(n.level)}級的下一關任務：</p>
+    ${n.items.map((i, k) => `<div class="mission"><span class="no">${k + 1}</span><span class="txt">${esc(i.text)}</span></div>`).join('')}`;
   $app.innerHTML = `
-    <section class="card">
-      <h2>${esc(c.name)}</h2>
-      <dl class="kv">
-        <dt>小隊</dt><dd>${esc(c.squad || '－')}</dd>
-        <dt>入團日</dt><dd>${fmtDate(c.joinDate)}</dd>
-        <dt>在團時間</dt><dd>${esc(c.tenure)}</dd>
-        <dt>目前級別</dt><dd>${c.currentLevel ? esc(c.currentLevel) + '級' : '準備挑戰羚羊級'}</dd>
-      </dl>
+    <section class="card hero">
+      <div class="top"><div class="avatar">${av}</div>
+        <div class="grow"><div class="name">${esc(c.name)}</div>
+          <div class="sub">${esc(c.squad || '')}${c.squad ? '・' : ''}入團 ${fmtDate(c.joinDate)}</div>
+          <div class="sub">在團時間 ${esc(c.tenure)}</div>
+          <span class="levelchip">${c.currentLevel ? '目前級別：' + esc(c.currentLevel) + '級' : '準備挑戰羚羊級'}</span></div></div>
+      <div class="stats3"><div><b>⭐ ${stars}</b>收集的星星</div><div><b>🏅 ${got.length}</b>拿到的章</div><div><b>🐾 ${d.attendance.counts.attended}</b>出席次數</div></div>
     </section>
-    <section class="card"><h2>⭐ 下一步挑戰</h2>${next}</section>
-    <section class="card"><h2>💪 正在挑戰的</h2>
-      ${challenging.length ? challenging.map((u) => unitCard(u)).join('') : '<p class="muted">目前沒有進行中的項目。</p>'}</section>
-    <section class="card"><h2>🏅 已經拿到的</h2>
-      ${got.length ? got.map((u) => unitCard(u)).join('') : '<p class="muted">還沒有拿到章，一起加油！</p>'}</section>
-    ${notStarted.length ? `<section class="card"><details class="fold"><summary>🌱 還沒開始的技能章（${notStarted.length} 個）</summary>
-      ${notStarted.map((u) => unitCard(u)).join('')}</details></section>` : ''}`;
+    <section class="card"><h2>🎯 下一步挑戰</h2>${next}</section>
+    <section class="card"><h2>🔥 正在挑戰的</h2>
+      ${challenging.length ? challenging.map(unitCard).join('') : '<p class="muted">目前沒有進行中的關卡。</p>'}</section>
+    <section class="card"><h2>🏆 已經拿到的</h2>
+      ${got.length ? got.map(unitCard).join('') : '<p class="muted">還沒有拿到章，一起加油！💪</p>'}</section>
+    ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的技能章（${notStarted.length} 個）▾</summary>
+      ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
 }
 
-function viewProgress(d) {
-  const levels = ['羚羊', '狼', '鹿', '豹'];
-  const units = levels.map((l) => d.units.find((u) => u.category === '進程' && u.unit === l)).filter(Boolean);
-  $app.innerHTML = `<section class="card"><h2>🐺 進程</h2><p class="muted small">羚羊 → 狼 → 鹿 → 豹，點卡片看每一項。</p>
-    ${units.map((u) => unitCard(u, { icon: LEVEL_ICON[u.unit], showRule: true, print: true })).join('')}</section>`;
-  $app.querySelectorAll('.print-btn').forEach((b) => { b.onclick = (ev) => { ev.preventDefault(); printSheet(d, b.dataset.unit); }; });
+/** 闖關地圖：羚羊 → 狼 → 鹿 → 豹 */
+function viewMap(d) {
+  const units = LEVELS.map((l) => d.units.find((u) => u.category === '進程' && u.unit === l)).filter(Boolean);
+  if (!state.mapSel) state.mapSel = (units.find((u) => u.status === '進行中' || u.status === '已完成待頒發') || units[units.length - 1]).unit;
+  const cls = (u) => (u.status === '已頒發' ? 'done' : u.status === '已完成待頒發' ? 'pending' : u.status === '進行中' ? 'active' : 'locked');
+  const sel = units.find((u) => u.unit === state.mapSel);
+  $app.innerHTML = `
+    <section class="card"><h2>🗺️ 闖關地圖</h2>
+      <p class="muted small">點一個關卡，看看要完成哪些任務！</p>
+      <div class="map">${units.map((u) => {
+        const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
+        return `<div class="stage ${cls(u)} ${u.unit === state.mapSel ? 'sel' : ''}" data-unit="${esc(u.unit)}" role="button" tabindex="0">
+          <div class="node" style="--p:${pct}"><div class="in">${LEVEL_ICON[u.unit]}</div></div>
+          <div><div class="lv">${esc(u.unit)}級</div><div class="st">${statusLabel(u)}</div>
+            <div class="cnt">${u.status === '已頒發' ? fmtDate(u.awardDate) + ' 頒發' : '⭐ ' + u.done + '／' + u.total}</div></div></div>`;
+      }).join('')}</div>
+      <div class="finish">🏁 終點：完成豹級，成為全能小狼！</div>
+    </section>
+    ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(sel.unit)}級任務 <span class="pill st-${esc(sel.status)}">${statusLabel(sel)}</span></h2>
+      ${sel.status === '已完成待頒發' ? `<div class="msg info">${esc(sel.statusText)}</div>` : ''}
+      ${sel.status === '已頒發' ? `<div class="msg ok">🏅 ${fmtDate(sel.awardDate)} 頒發${sel.awardOccasion ? '・' + esc(sel.awardOccasion) : ''}</div>` : ''}
+      ${sel.rule ? `<p class="small"><b>晉級條件：</b>${esc(sel.rule)}</p>` : ''}
+      ${sel.attendRequired ? `<p class="small">🐾 晉級出席要求：上一級頒發後已出席 ${sel.attendSinceLast}／${sel.attendRequired} 次</p>` : ''}
+      <div class="bar ${sel.done === sel.total ? 'full' : ''}"><span style="width:${sel.total ? Math.round(sel.done / sel.total * 100) : 0}%"></span></div>
+      ${itemsHtml(sel)}
+      <button class="btn ghost" id="printBtn">🖨️ 列印這一級的簽核單</button></section>` : ''}`;
+  $$('.stage').forEach((s) => { s.onclick = () => { state.mapSel = s.dataset.unit; viewMap(d); const p = $('#lvPanel'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
+  const pb = $('#printBtn');
+  if (pb) pb.onclick = () => printSheets(sel.unit, [{ cub: d.cub, awardDate: sel.awardDate, items: sel.items }], sel.rule);
 }
 
+/** 徽章收藏冊 */
 function viewBadges(d) {
   const groups = ['服務類', '健身類', '技巧類'];
   const badges = d.units.filter((u) => u.category === '技能章');
   const other = badges.filter((u) => !groups.includes(u.group));
-  $app.innerHTML = groups.concat(other.length ? ['其他'] : []).map((g) => {
-    const list = g === '其他' ? other : badges.filter((u) => u.group === g);
-    const got = list.filter((u) => u.status === '已頒發').length;
-    return `<section class="card"><h2>🎖️ ${esc(g)}</h2><p class="muted small">已拿到 ${got}／${list.length} 個</p>
-      ${list.map((u) => unitCard(u)).join('')}</section>`;
-  }).join('');
+  const total = badges.length, got = badges.filter((u) => u.status === '已頒發').length;
+  const tile = (u) => {
+    const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
+    const cls = u.status === '已頒發' ? 'got' : u.status === '已完成待頒發' ? 'pending' : u.done ? 'part' : 'none';
+    return `<button class="badge ${cls}" data-unit="${esc(u.unit)}"><div class="disc" style="--p:${pct}"><div class="in">${iconOf(u)}</div></div>
+      <div class="nm">${esc(u.unit)}</div><div class="pc">${u.status === '已頒發' ? '已收藏' : u.status === '已完成待頒發' ? '等待頒發' : u.done + '／' + u.total}</div></button>`;
+  };
+  $app.innerHTML = `
+    <section class="card center"><h2 style="justify-content:center">🎖️ 我的徽章收藏冊</h2>
+      <div style="font-size:30px;font-weight:900;color:var(--blue-dark)">${got} <span class="muted">／ ${total}</span></div>
+      <div class="bar ${got === total && total ? 'full' : ''}"><span style="width:${total ? Math.round(got / total * 100) : 0}%"></span></div>
+      <p class="muted small">點徽章看看怎麼拿到它！</p></section>
+    ${groups.concat(other.length ? ['其他'] : []).map((g) => {
+      const list = g === '其他' ? other : badges.filter((u) => u.group === g);
+      return `<section class="card"><h2>${g === '服務類' ? '🤝' : g === '健身類' ? '🏃' : g === '技巧類' ? '🎨' : '🎖️'} ${esc(g)} <span class="s">已收藏 ${list.filter((u) => u.status === '已頒發').length}／${list.length} 個</span></h2>
+        <div class="badges">${list.map(tile).join('')}</div></section>`;
+    }).join('')}`;
+  $$('.badge').forEach((b) => {
+    b.onclick = () => {
+      const u = badges.find((x) => x.unit === b.dataset.unit);
+      if (u.status === '已頒發') confetti();
+      openSheet(`<div class="center"><div style="font-size:64px">${iconOf(u)}</div><h2 style="text-align:center">${esc(u.unit)}技能章</h2>
+        <span class="pill st-${esc(u.status)}">${statusLabel(u)}</span></div>
+        ${u.status === '已頒發' ? `<div class="msg ok">🏅 ${fmtDate(u.awardDate)} 頒發${u.awardOccasion ? '・' + esc(u.awardOccasion) : ''}</div>` : ''}
+        ${u.status === '已完成待頒發' ? `<div class="msg info">${esc(u.statusText)}</div>` : ''}
+        ${u.desc ? `<p>${esc(u.desc)}</p>` : ''}
+        <h3>合格標準</h3>${itemsHtml(u)}`);
+    };
+  });
 }
 
-function viewAttendance(d) {
+/** 出席集點卡 */
+function viewStamps(d) {
   const a = d.attendance, r = a.rate;
+  const pct = r && r.rate != null ? Math.round(r.rate * 100) : 0;
   $app.innerHTML = `
-    <section class="card"><h2>📅 出席統計</h2>
-      <div class="stats">
-        ${r ? `<div class="stat big"><b>${esc(r.text)}</b>${esc(r.period)} 出席率</div>
-          <div class="stat"><b>${r.attended}</b>本年度出席</div><div class="stat"><b>${r.leave}</b>本年度請假</div>
-          ${r.extra ? `<div class="stat"><b>${r.extra}</b>額外出席</div><div class="stat"><b>${r.total}</b>本年度總次數</div>` : ''}`
-        : `<div class="stat"><b>${a.counts.attended}</b>出席</div><div class="stat"><b>${a.counts.leave}</b>請假</div>`}
-      </div>
-      ${r ? `<p class="muted small">出席率 =（出席 ＋ 額外出席）÷ 本年度總次數。請假不算出席。</p>` : ''}
+    <section class="card center"><h2 style="justify-content:center">🐾 出席集點卡</h2>
+      ${r ? `<div class="ring" style="--p:${pct}"><div class="in"><div><b>${esc(r.text)}</b><div class="small muted">${esc(r.period)}<br>出席率</div></div></div></div>
+        <div class="counts"><span>🐾 出席 ${r.attended}</span><span>🌙 請假 ${r.leave}</span>${r.extra ? `<span>✨ 額外出席 ${r.extra}</span>` : ''}<span>📅 本年度 ${r.total} 次</span></div>
+        <p class="muted small">出席率 =（出席 ＋ 額外出席）÷ 本年度總次數，請假不算出席。</p>`
+      : `<div class="counts"><span>🐾 出席 ${a.counts.attended}</span><span>🌙 請假 ${a.counts.leave}</span></div>`}
     </section>
-    ${a.upcoming.length ? `<section class="card"><h2>🔜 即將到來</h2><table class="list">${a.upcoming.map((m) => `<tr><td>${fmtDate(m.date)}</td><td>${esc(m.name)}</td></tr>`).join('')}</table></section>` : ''}
-    <section class="card"><h2>📋 出席紀錄</h2>
-      ${a.meetings.length ? `<table class="list">${a.meetings.map((m) => `<tr><td>${fmtDate(m.date)}</td><td>${esc(m.name)}</td><td class="att-${esc(m.status)}">${esc(m.status)}</td></tr>`).join('')}</table>
-        <p class="muted small">「－」表示當天沒有點名紀錄。</p>` : '<p class="muted">還沒有集會紀錄。</p>'}
+    ${a.upcoming.length ? `<section class="card"><h2>🔜 下次集會</h2>${a.upcoming.map((m) => `<div class="list-row"><span class="t">${fmtDate(m.date)}</span><span class="grow">${esc(m.name)}</span></div>`).join('')}</section>` : ''}
+    <section class="card"><h2>🗓️ 集點紀錄</h2>
+      ${a.meetings.length ? `<div class="stamps">${a.meetings.map((m) => `<div class="stamp ${esc(m.status)}" title="${esc(m.name)}"><div class="sp">${m.status === '出席' ? '🐾' : m.status === '請假' ? '🌙' : ''}</div>${shortDate(m.date)}<br>${esc(m.status === '－' ? '' : m.status)}</div>`).join('')}</div>
+        <p class="muted small">🐾 出席　🌙 請假　空白：當天沒有點名紀錄</p>` : '<p class="muted">還沒有集會紀錄。</p>'}
     </section>`;
 }
 
-// ───────────── 我的資料 ─────────────
-
+// ───── 我的資料 ─────
 async function renderMine() {
   const me = state.me;
   loading();
@@ -611,11 +799,12 @@ async function renderMine() {
   try { consent = await api('consentText'); } catch (e) { if (e.code === 'SESSION_EXPIRED') return; }
   $app.innerHTML = `
     <section class="card"><h2>👤 我的帳號</h2>
-      <dl class="kv"><dt>帳號</dt><dd>${esc(me.username)}</dd><dt>稱呼</dt><dd>${esc(me.nickname)}</dd>
-      ${me.role ? `<dt>身分</dt><dd>${esc(me.role)}</dd>` : ''}</dl>
-      <details class="fold" style="margin-top:10px"><summary>修改稱呼</summary>
+      <div class="list-row"><span class="grow">帳號</span><b>${esc(me.username)}</b></div>
+      <div class="list-row"><span class="grow">稱呼</span><b>${esc(me.nickname)}</b></div>
+      ${me.role ? `<div class="list-row"><span class="grow">身分</span><b>${esc(me.role)}</b></div>` : ''}
+      <details><summary class="fold">✏️ 修改稱呼</summary>
         <form id="fn"><input name="nickname" type="text" value="${esc(me.nickname)}" required><button class="btn" type="submit">儲存</button><div class="out"></div></form></details>
-      <details class="fold"><summary>修改密碼</summary>
+      <details><summary class="fold">🔒 修改密碼</summary>
         <form id="fp"><label>目前的密碼</label><input name="oldPassword" type="password" autocomplete="current-password" required>
           <label>新密碼（至少 8 個字）</label><input name="newPassword" type="password" autocomplete="new-password" required>
           <label>再輸入一次新密碼</label><input name="newPassword2" type="password" autocomplete="new-password" required>
@@ -624,11 +813,11 @@ async function renderMine() {
     <section class="card"><h2>🧒 綁定的孩子</h2>
       ${me.cubs.length ? me.cubs.map((c) => `
         <div class="unit" style="padding:14px">
-          <div class="head"><span class="name">${esc(c.name)}</span></div>
+          <div class="name">${esc(c.name)}</div>
           <div class="muted small">同意個資說明：第 ${esc(c.consentVersion)} 版${c.consentAt ? '，' + esc(new Date(c.consentAt).toLocaleString('zh-TW')) : ''}</div>
-          <button class="btn danger unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>
+          <button class="btn danger small unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>
         </div>`).join('') : '<p class="muted">目前沒有綁定任何孩子。</p>'}
-      <details class="fold" style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary>＋ 新增綁定（另一個孩子）</summary>
+      <details style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary class="fold">＋ 新增綁定（另一個孩子）</summary>
         <form id="fb">
           <label>綁定碼</label><input name="code" type="text" autocapitalize="characters" autocomplete="off" required>
           <label>孩子的姓名</label><input name="childName" type="text" autocomplete="off">
@@ -637,65 +826,672 @@ async function renderMine() {
           <button class="btn" type="submit">新增綁定</button><div class="out"></div>
         </form></details>
     </section>
-    <section class="card"><h2>📄 個資說明</h2>
-      <details class="fold"><summary>看完整內容（第 ${esc(consent ? consent.version : '')} 版）</summary><div class="consent">${esc(consent ? consent.content : '')}</div></details>
-      <h3 style="margin-top:12px">如何要求刪除資料？</h3>
+    <section class="card"><h2>📜 個資說明</h2>
+      <details><summary class="fold">看完整內容（第 ${esc(consent ? consent.version : '')} 版）</summary>
+        <div class="consent">${esc(consent ? consent.content : '')}</div></details>
+      <h3>如何要求刪除資料？</h3>
       <p class="small">・不想再查看：按上方「解除綁定」，孩子的紀錄不受影響。<br>
         ・要刪除你的帳號，或刪除孩子的全部資料：請聯絡團長，團長會在後台處理並告訴你結果。<br>
         ・資料有錯誤需要更正：也請聯絡團長。</p>
     </section>
     <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
-  document.getElementById('lo').onclick = logout;
-  bindForm(document.getElementById('fn'), async (fd, out) => {
+  $('#lo').onclick = logout;
+  bindForm($('#fn'), async (fd, out) => {
     await api('updateNickname', { nickname: fd.get('nickname') });
     state.me.nickname = fd.get('nickname').trim();
     msg(out, '已儲存。', 'ok');
   });
-  bindForm(document.getElementById('fp'), async (fd, out) => {
+  bindForm($('#fp'), async (fd, out) => {
     if (fd.get('newPassword') !== fd.get('newPassword2')) return msg(out, '兩次輸入的新密碼不一樣。');
     await api('changePassword', { oldPassword: fd.get('oldPassword'), newPassword: fd.get('newPassword') });
-    document.getElementById('fp').reset();
+    $('#fp').reset();
     msg(out, '密碼已修改。其他裝置需要重新登入。', 'ok');
   });
-  bindForm(document.getElementById('fb'), async (fd, out) => {
+  bindForm($('#fb'), async (fd, out) => {
     const childName = (fd.get('childName') || '').trim();
     if (childName && consent && !fd.get('agree')) return msg(out, '請先勾選同意個資說明。');
     const r = await api('bind', { code: fd.get('code'), childName, consentVersion: consent ? consent.version : undefined });
     state.me = await api('me');
+    confetti();
     if (r.kind === 'parent') { state.cubId = r.cubId; state.detail = null; state.view = 'home'; return renderParent(); }
     state.mode = 'admin'; route();
   });
-  $app.querySelectorAll('.unbind').forEach((b) => {
-    b.onclick = async () => {
+  $$('.unbind').forEach((b) => {
+    b.onclick = () => {
       if (!confirm(`確定要解除與「${b.dataset.name}」的綁定嗎？\n解除後你就看不到這個孩子的資料（孩子的紀錄不受影響），之後需要團長的綁定碼才能再綁定。`)) return;
-      b.disabled = true;
-      try {
+      act(b, async () => {
         await api('unbind', { cubId: b.dataset.id });
         state.me = await api('me');
         if (state.cubId === b.dataset.id) { state.cubId = (state.me.cubs[0] || {}).cubId || null; state.detail = null; }
         renderParent(true);
-      } catch (e) { b.disabled = false; if (e.code !== 'SESSION_EXPIRED') alert(e.message); }
+      });
     };
   });
 }
 
-// ───────────── 列印簽核單（A4） ─────────────
+// ═════════════ 列印簽核單（A4，家長與後台共用） ═════════════
 
-function printSheet(d, unitName) {
-  const u = d.units.find((x) => x.category === '進程' && x.unit === unitName);
-  if (!u) return;
-  const rows = u.items.map((it, i) => `<tr><td style="width:7%">${i + 1}</td><td style="width:13%">${esc(it.section === '－' ? '' : it.section)}</td>
-    <td>${esc(it.text)}</td><td style="width:16%">${it.done ? fmtDate(it.date) : ''}</td><td style="width:16%">${it.done ? esc(it.signer) : ''}</td></tr>`).join('');
-  document.getElementById('print').innerHTML = `
-    <h1>22團幼童軍　${esc(unitName)}級進程簽核單</h1>
-    <div class="meta">姓名：${esc(d.cub.name)}　　小隊：${esc(d.cub.squad || '　　　　')}　　入團日：${fmtDate(d.cub.joinDate)}　　列印日期：${fmtDate(new Date().toISOString().slice(0, 10))}</div>
-    <table><thead><tr><th>#</th><th>大項</th><th>項目</th><th>完成日期</th><th>簽核人</th></tr></thead><tbody>${rows}</tbody></table>
-    ${u.rule ? `<p class="foot">晉級條件：${esc(u.rule)}</p>` : ''}
-    <p class="foot">${u.status === '已頒發' ? `頒發日期：${fmtDate(u.awardDate)}` : '頒發日期：＿＿＿＿＿＿＿＿　　團長簽名：＿＿＿＿＿＿＿＿'}</p>`;
+function printSheets(unit, sheets, rule) {
+  document.getElementById('print').innerHTML = sheets.map((s) => `
+    <div class="page">
+      <h1>22團幼童軍　${esc(unit)}級進程簽核單</h1>
+      <div class="meta">姓名：${esc(s.cub.name)}　　小隊：${esc(s.cub.squad || '　　　　')}　　入團日：${fmtDate(s.cub.joinDate)}　　列印日期：${fmtDate(todayStr())}</div>
+      <table><thead><tr><th>#</th><th>大項</th><th>項目</th><th>完成日期</th><th>簽核人</th></tr></thead><tbody>
+      ${s.items.map((it, i) => `<tr><td style="width:6%">${i + 1}</td><td style="width:12%">${esc(it.section === '－' ? '' : it.section)}</td><td>${esc(it.text)}</td>
+        <td style="width:15%">${it.done ? fmtDate(it.date) : ''}</td><td style="width:15%">${it.done ? esc(it.signer) : ''}</td></tr>`).join('')}
+      </tbody></table>
+      ${rule ? `<p class="foot">晉級條件：${esc(rule)}</p>` : ''}
+      <p class="foot">${s.awardDate ? `頒發日期：${fmtDate(s.awardDate)}` : '頒發日期：＿＿＿＿＿＿＿＿　　團長簽名：＿＿＿＿＿＿＿＿'}</p>
+    </div>`).join('');
   // printing 樣式只在列印時生效，螢幕上看不到，不需要事後移除
   document.body.classList.add('printing');
   window.print();
 }
+
+// ═════════════ 後台 ═════════════
+
+const isLeader = () => !!state.me && state.me.role === '團長';
+const ADMIN_TABS = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['sign', '✅', '簽核'], ['cubs', '🐺', '小狼'], ['more', '☰', '更多']];
+
+function renderAdmin() {
+  document.getElementById('title').textContent = '🛠️ 22團後台';
+  setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>`);
+  $('#toParent').onclick = () => { state.mode = 'parent'; route(); };
+  setTabs(ADMIN_TABS, state.admin.tab, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
+  scrollTop();
+  const page = state.admin.page;
+  const fn = page ? ADMIN_PAGES[page.name] : ADMIN_PAGES[state.admin.tab];
+  loading();
+  Promise.resolve().then(() => fn(page ? page.params : {})).catch((e) => {
+    if (e.code === 'SESSION_EXPIRED') return;
+    $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
+    $('#re').onclick = renderAdmin;
+  });
+}
+function goAdmin(name, params) { state.admin.page = { name, params: params || {} }; renderAdmin(); }
+function backBtn(label) { return `<button class="back" data-back>← ${esc(label || '返回')}</button>`; }
+function wireBack(target) { $$('[data-back]').forEach((b) => { b.onclick = () => { state.admin.page = target || null; renderAdmin(); }; }); }
+function squadChips(squads, cur) { return `<div class="chips" id="squads">${['全團'].concat(squads).map((s) => `<button class="chip ${s === cur ? 'on' : ''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`; }
+function onSquad(cb) { $$('#squads .chip').forEach((b) => { b.onclick = () => { $$('#squads .chip').forEach((x) => x.classList.toggle('on', x === b)); cb(b.dataset.s); }; }); }
+
+const ADMIN_PAGES = {
+  // ───── 首頁 ─────
+  async home() {
+    const h = await api('adminHome');
+    const al = h.alerts;
+    const alerts = [];
+    if (al.permission && !al.permission.ok) alerts.push(['red', '🚨', '試算表權限過寬：' + al.permission.issues.join('；')]);
+    if (al.itemErrors.length) alerts.push(['red', '⚠️', `項目總表有 ${al.itemErrors.length} 列格式錯誤（第 ${al.itemErrors.map((e) => e.row).join('、')} 列），這些列暫時不會被使用。`]);
+    if (al.settingErrors.length) alerts.push(['yellow', '⚙️', '設定值有問題，已暫用預設值：' + al.settingErrors.map((e) => e.key + '（' + e.reason + '）').join('；')]);
+    if (al.notifyFailed) alerts.push(['yellow', '📭', `有 ${al.notifyFailed} 則通知未送達`]);
+    if (al.privacyOverdue.length) alerts.push(['yellow', '🔐', '離團已久、尚未處理個資：' + al.privacyOverdue.map((c) => c.name).join('、')]);
+    if (!al.backupFolderSet) alerts.push(['yellow', '💾', '尚未設定備份資料夾']);
+    else if (al.backup) alerts.push([al.backup.ok ? 'green' : 'red', '💾', `上次備份：${fmtTime(al.backup.at)}　${al.backup.message}`]);
+    else alerts.push(['yellow', '💾', '還沒有備份紀錄']);
+    if (al.noLineAdmin) alerts.push(['yellow', '💬', '還沒有管理員連結 LINE 通知（更多 → 連結 LINE 通知）']);
+    const row = (p, extra) => `<div class="list-row tap" data-cub="${esc(p.cubId)}"><span class="grow"><span class="t">${esc(p.name)}</span> <span class="s">${esc(p.squad || '')}</span><br>${iconOf(p)} ${esc(unitLabel(p))} ${extra}</span><span>›</span></div>`;
+    $app.innerHTML = `
+      <section class="card"><h2>👋 ${esc(h.me.name)}，你好！</h2><p class="muted">身分：${esc(h.me.role)}</p></section>
+      <section class="card"><h2>🏅 待頒章 <span class="pill st-已完成待頒發">${h.pending.length}</span></h2>
+        ${h.pending.length ? h.pending.map((p) => row(p, `<span class="s">達標 ${fmtDate(p.eligibleDate)}</span>`)).join('') : '<p class="muted">目前沒有待頒章的小狼。</p>'}
+        ${h.pending.length && isLeader() ? '<button class="btn alt" id="toAward">🏅 前往頒章</button>' : ''}</section>
+      ${h.waiting.length ? `<section class="card"><h2>⏳ 項目完成、等待條件</h2>${h.waiting.map((p) => row(p, `<span class="s">${p.waitingUntil ? '間隔到 ' + fmtDate(p.waitingUntil) + ' 才滿' : '出席 ' + p.attendSinceLast + '／' + p.attendRequired + ' 次'}</span>`)).join('')}</section>` : ''}
+      <section class="card"><h2>🔥 快達標 <span class="pill st-進行中">${h.near.length}</span></h2>
+        ${h.near.length ? h.near.map((p) => row(p, `<span class="s">還差 ${p.remaining} 項</span>`)).join('') : '<p class="muted">目前沒有快達標的小狼。</p>'}</section>
+      <section class="card"><h2>📣 系統提示</h2>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</section>`;
+    const ta = $('#toAward');
+    if (ta) ta.onclick = () => goAdmin('award');
+    $$('[data-cub]').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.cub }); });
+  },
+
+  // ───── 點名 ─────
+  async roll(params) {
+    const list = await api('meetingList');
+    const meetings = list.meetings.filter((m) => m.enabled);
+    if (!meetings.length) {
+      $app.innerHTML = `<section class="card"><h2>📋 點名</h2><p class="muted">行事曆裡還沒有集會。</p>
+        ${isLeader() ? '<button class="btn alt" id="cal">前往輸入行事曆</button>' : '<p class="muted">請團長先輸入集會行事曆。</p>'}</section>`;
+      const c = $('#cal'); if (c) c.onclick = () => goAdmin('calendar');
+      return;
+    }
+    const mid = params.meetingId || list.defaultId || meetings[meetings.length - 1].meetingId;
+    const sheet = await api('attendanceSheet', { meetingId: mid });
+    let squad = params.squad || '全團';
+    const marks = {};
+    sheet.cubs.forEach((c) => { marks[c.cubId] = c.status; });
+    const orig = Object.assign({}, marks);
+    const NEXT = { '': '出席', '出席': '請假', '請假': '' };
+    $app.innerHTML = `
+      <section class="card"><h2>📋 點名</h2>
+        <select class="full" id="mSel">${meetings.map((m) => `<option value="${esc(m.meetingId)}" ${m.meetingId === mid ? 'selected' : ''}>${fmtDate(m.date)}　${esc(m.name)}</option>`).join('')}</select>
+        ${squadChips(sheet.squads, squad)}
+        <p class="muted small">點一下切換：空白 → 🐾 出席 → 🌙 請假 → 空白</p>
+        <div id="rows"></div>
+        <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="save">儲存點名</button></div>
+        ${isLeader() ? '<button class="linkbtn" id="cal">📅 管理行事曆</button>' : ''}</section>`;
+    const draw = () => {
+      const show = sheet.cubs.filter((c) => squad === '全團' || c.squad === squad);
+      $('#rows').innerHTML = show.length ? show.map((c) => `<div class="list-row"><span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span></span>
+        <button class="roll-btn ${esc(marks[c.cubId])} ${marks[c.cubId] !== orig[c.cubId] ? 'changed' : ''}" data-id="${esc(c.cubId)}">${marks[c.cubId] === '出席' ? '🐾 出席' : marks[c.cubId] === '請假' ? '🌙 請假' : '　－　'}</button></div>`).join('') : '<p class="muted">這個小隊沒有小狼。</p>';
+      const vals = Object.values(marks);
+      const changed = Object.keys(marks).filter((k) => marks[k] !== orig[k]).length;
+      $('#sum').textContent = `出席 ${vals.filter((v) => v === '出席').length} 人・請假 ${vals.filter((v) => v === '請假').length} 人${changed ? `・尚未儲存 ${changed} 筆` : ''}`;
+      $$('.roll-btn').forEach((b) => { b.onclick = () => { marks[b.dataset.id] = NEXT[marks[b.dataset.id]]; draw(); }; });
+    };
+    draw();
+    onSquad((s) => { squad = s; draw(); });
+    $('#mSel').onchange = () => { state.admin.page = { name: 'roll', params: { meetingId: $('#mSel').value, squad } }; renderAdmin(); };
+    $('#save').onclick = (ev) => act(ev.target, async () => {
+      const changed = {};
+      Object.keys(marks).forEach((k) => { if (marks[k] !== orig[k]) changed[k] = marks[k]; });
+      if (!Object.keys(changed).length) return toast('沒有變更');
+      const r = await api('attendanceSave', { meetingId: mid, marks: changed });
+      Object.assign(orig, changed);
+      draw();
+      toast(`已儲存 ${r.changed} 筆點名 🐾`);
+    });
+    const c = $('#cal'); if (c) c.onclick = () => goAdmin('calendar');
+  },
+
+  // ───── 簽核（小隊批次） ─────
+  async sign(params) {
+    const d = await api('signoffData');
+    const st = { squad: params.squad || '全團', items: new Set(), cubs: null, filter: d.recent.length ? 'recent' : '', section: '' };
+    const doneSet = new Set(d.done);
+    const unitsList = [];
+    d.items.forEach((i) => { const k = i.category + '|' + i.unit; if (!unitsList.includes(k)) unitsList.push(k); });
+    if (!st.filter) st.filter = unitsList[0] || 'recent';
+    $app.innerHTML = `
+      <section class="card"><h2>✅ 簽核</h2>
+        <h3>① 選小隊</h3>${squadChips(d.squads, st.squad)}
+        <h3>② 選項目</h3>
+        <select class="full" id="flt"><option value="recent">⭐ 最近簽過的項目</option>${unitsList.map((k) => { const [c, u] = k.split('|'); return `<option value="${esc(k)}">${c === '進程' ? '進程・' + esc(u) + '級' : '技能章・' + esc(u)}</option>`; }).join('')}</select>
+        <div id="secs" class="chips"></div><div id="items"></div>
+        <h3>③ 選小狼與日期</h3><div id="cubs"></div>
+        <label>完成日期</label><input type="date" id="date" value="${esc(d.today)}" max="${esc(d.today)}">
+        <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="go">送出簽核</button></div>
+        <div id="result"></div></section>`;
+    const drawItems = () => {
+      let list = st.filter === 'recent' ? d.recent.map((id) => d.items.find((i) => i.id === id)).filter(Boolean) : d.items.filter((i) => i.category + '|' + i.unit === st.filter);
+      const secs = [...new Set(list.map((i) => i.section))].filter((s) => s !== '－');
+      $('#secs').innerHTML = secs.length > 1 ? ['全部'].concat(secs).map((s) => `<button class="chip ${(st.section || '全部') === s ? 'on' : ''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('') : '';
+      if (st.section && st.section !== '全部') list = list.filter((i) => i.section === st.section);
+      $('#items').innerHTML = list.length ? list.map((i) => `<label class="check"><input type="checkbox" data-item="${esc(i.id)}" ${st.items.has(i.id) ? 'checked' : ''}><span>${st.filter === 'recent' ? `<span class="s">${esc(i.unit)}${i.section !== '－' ? '・' + esc(i.section) : ''}</span><br>` : ''}${esc(i.text)}</span></label>`).join('')
+        : `<p class="muted">${st.filter === 'recent' ? '還沒有最近簽過的項目，請從上方選級別或技能章。' : '沒有項目。'}</p>`;
+      $$('#secs .chip').forEach((b) => { b.onclick = () => { st.section = b.dataset.sec; drawItems(); }; });
+      $$('#items input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.items.add(cb.dataset.item) : st.items.delete(cb.dataset.item); drawSum(); }; });
+    };
+    const drawCubs = () => {
+      const list = d.cubs.filter((c) => st.squad === '全團' || c.squad === st.squad);
+      if (!st.cubs) st.cubs = new Set(list.map((c) => c.cubId)); // 預設全選該小隊
+      $('#cubs').innerHTML = list.map((c) => `<label class="check"><input type="checkbox" data-cub="${esc(c.cubId)}" ${st.cubs.has(c.cubId) ? 'checked' : ''}>${esc(c.name)} <span class="s">${esc(c.squad || '')}</span></label>`).join('') || '<p class="muted">沒有小狼。</p>';
+      $$('#cubs input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.cubs.add(cb.dataset.cub) : st.cubs.delete(cb.dataset.cub); drawSum(); }; });
+    };
+    const drawSum = () => {
+      let n = 0, skip = 0;
+      st.cubs.forEach((c) => st.items.forEach((i) => { doneSet.has(c + '|' + i) ? skip++ : n++; }));
+      $('#sum').textContent = `已選 ${st.items.size} 個項目 × ${st.cubs.size} 位小狼：將新增 ${n} 筆${skip ? `，略過已完成 ${skip} 筆` : ''}`;
+    };
+    $('#flt').value = st.filter;
+    $('#flt').onchange = () => { st.filter = $('#flt').value; st.section = ''; drawItems(); };
+    onSquad((s) => { st.squad = s; st.cubs = null; drawCubs(); drawSum(); });
+    drawItems(); drawCubs(); drawSum();
+    $('#go').onclick = (ev) => act(ev.target, async () => {
+      if (!st.items.size || !st.cubs.size) return alert('請至少選一個項目和一位小狼。');
+      const r = await api('signoff', { cubIds: [...st.cubs], itemIds: [...st.items], date: $('#date').value });
+      r.batch.forEach((b) => doneSet.add(b.cubId + '|' + b.itemId));
+      st.items.forEach((i) => { if (!d.recent.includes(i)) d.recent.unshift(i); });
+      st.items.clear(); drawItems(); drawSum();
+      $('#result').innerHTML = `<div class="msg ok">✅ 新增 ${r.added} 筆、略過 ${r.skipped} 筆（已完成的不重複寫入）</div>${r.added ? '<button class="btn ghost small" id="undo">↩️ 復原剛才這一批</button>' : ''}`;
+      toast(`簽核完成：新增 ${r.added} 筆`);
+      const u = $('#undo');
+      if (u) u.onclick = (e2) => act(e2.target, async () => {
+        if (!confirm(`確定要復原剛才的 ${r.added} 筆簽核嗎？`)) return;
+        const x = await api('signoffRevoke', { entries: r.batch });
+        r.batch.forEach((b) => doneSet.delete(b.cubId + '|' + b.itemId));
+        $('#result').innerHTML = `<div class="msg info">已復原 ${x.removed} 筆。</div>`;
+        drawSum();
+      });
+    });
+  },
+
+  // ───── 小狼名單 ─────
+  async cubs(params) {
+    const d = await api('cubList');
+    const st = { squad: params.squad || '全團', status: params.status || '在團', sort: params.sort || 'squad' };
+    $app.innerHTML = `
+      <section class="card"><h2>🐺 小狼名單</h2>
+        ${isLeader() ? '<button class="btn alt" id="add">＋ 新增小狼</button>' : ''}
+        ${squadChips(d.squads, st.squad)}
+        <div class="chips" id="sts">${['在團', '離團', '已匿名', '全部'].map((s) => `<button class="chip ${s === st.status ? 'on' : ''}" data-st="${s}">${s}</button>`).join('')}</div>
+        <div class="row-flex"><span class="muted small">排序：</span><select id="sort"><option value="squad">小隊</option><option value="join">入團日</option><option value="name">姓名</option></select></div>
+        <div id="list"></div></section>`;
+    const draw = () => {
+      const list = d.cubs.filter((c) => (st.squad === '全團' || c.squad === st.squad) && (st.status === '全部' || c.status === st.status));
+      list.sort((a, b) => st.sort === 'join' ? (a.joinDate < b.joinDate ? -1 : 1) : st.sort === 'name' ? a.name.localeCompare(b.name, 'zh-Hant') : (a.squad || '').localeCompare(b.squad || '', 'zh-Hant') || a.name.localeCompare(b.name, 'zh-Hant'));
+      $('#list').innerHTML = list.length ? list.map((c) => `<div class="list-row tap" data-id="${esc(c.cubId)}"><span style="font-size:28px">${c.level ? LEVEL_ICON[c.level] : '🌱'}</span>
+        <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">入團 ${fmtDate(c.joinDate)}${c.level ? '・' + esc(c.level) + '級' : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
+      $$('#list .list-row').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.id }); });
+    };
+    $('#sort').value = st.sort;
+    $('#sort').onchange = () => { st.sort = $('#sort').value; draw(); };
+    onSquad((s) => { st.squad = s; draw(); });
+    $$('#sts .chip').forEach((b) => { b.onclick = () => { st.status = b.dataset.st; $$('#sts .chip').forEach((x) => x.classList.toggle('on', x === b)); draw(); }; });
+    draw();
+    const add = $('#add');
+    if (add) add.onclick = () => goAdmin('cubEdit', {});
+  },
+
+  // ───── 新增／編輯小狼 ─────
+  async cubEdit(params) {
+    let cub = { name: '', squad: '', joinDate: todayStr() };
+    if (params.cubId) cub = (await api('cubAdminDetail', { cubId: params.cubId })).cub;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>${params.cubId ? '✏️ 編輯小狼' : '＋ 新增小狼'}</h2>
+      <form id="f"><label>姓名</label><input name="name" type="text" value="${esc(cub.name)}" required>
+        <label>小隊</label><input name="squad" type="text" value="${esc(cub.squad)}" placeholder="例如：一小隊">
+        <label>入團日（可填過去日期）</label><input name="joinDate" type="date" value="${esc(cub.joinDate)}" required>
+        <button class="btn" type="submit">儲存</button><div class="out"></div></form></section>`;
+    wireBack(params.cubId ? { name: 'cub', params: { cubId: params.cubId } } : null);
+    bindForm($('#f'), async (fd) => {
+      const r = await api('cubSave', { cubId: params.cubId, name: fd.get('name'), squad: fd.get('squad'), joinDate: fd.get('joinDate') });
+      toast(params.cubId ? '已儲存' : '已新增，綁定碼已產生');
+      goAdmin('cub', { cubId: r.cubId });
+    });
+  },
+
+  // ───── 單一小狼 ─────
+  async cub(params) {
+    const [d, list] = await Promise.all([api('cubAdminDetail', { cubId: params.cubId }), api('cubList')]);
+    const info = list.cubs.find((c) => c.cubId === params.cubId) || {};
+    const c = d.cub, L = isLeader();
+    let bindHtml = '';
+    if (L && c.status === '在團') {
+      const b = await api('cubBindings', { cubId: c.cubId });
+      bindHtml = `<section class="card"><h2>🔑 綁定碼</h2>
+        <div class="codebox">${esc(info.code || '（無）')}</div><p class="muted small center">還可以使用 ${esc(info.codeUsesLeft)} 次</p>
+        <button class="btn alt" id="copyCode">📋 複製給家長的說明文字</button>
+        <button class="btn ghost small" id="newCode">🔄 重新產生（舊碼立即失效）</button>
+        <h3>已綁定的家長帳號（${b.bindings.length}）</h3>
+        ${b.bindings.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span><br><span class="s">帳號 ${esc(x.username)}・同意第 ${esc(x.consentVersion)} 版</span></span><button class="btn danger small" data-unbind="${esc(x.accountId)}" data-n="${esc(x.nickname)}">解除</button></div>`).join('') || '<p class="muted">還沒有家長綁定。</p>'}</section>`;
+    }
+    const unitRow = (u) => {
+      const pct = u.total ? Math.round(u.done / u.total * 100) : 0;
+      const items = u.items.map((i) => `<li class="${i.done ? 'done' : 'todo'}"><span class="mark">${i.done ? '⭐' : `<input type="checkbox" data-sign="${esc(i.id)}" style="width:22px;height:22px" aria-label="勾選簽核">`}</span>
+        <span class="grow">${esc(i.text)}<span class="when">${i.done ? `${fmtDate(i.date)}・${esc(i.signer)}` : '未完成'}</span></span>
+        ${i.canRevoke ? `<button class="btn danger small" data-revoke="${esc(i.id)}">撤銷</button>` : ''}</li>`).join('');
+      let actions = '';
+      if (L && u.status === '已完成待頒發') actions = `<button class="btn alt small" data-award="${esc(u.unit)}">🏅 頒章</button>`;
+      if (L && u.status === '已頒發') actions = `<button class="btn ghost small" data-aedit="${esc(u.unit)}">修改頒章</button> <button class="btn danger small" data-arevoke="${esc(u.unit)}">撤銷頒章</button>`;
+      const elig = u.status === '已完成待頒發' ? (u.eligible ? `<div class="msg ok small">✅ 已達標（${fmtDate(u.eligibleDate)}）</div>` : `<div class="msg warn small">⏳ ${u.waitingUntil ? '晉級間隔到 ' + fmtDate(u.waitingUntil) + ' 才滿' : u.attendRequired ? '出席 ' + u.attendSinceLast + '／' + u.attendRequired + ' 次' : '上一級尚未頒發'}</div>`) : '';
+      return `<details class="unit bd-${esc(u.status)}"><summary><div class="head"><span class="name">${iconOf(u)} ${esc(unitLabel(u))}</span><span class="pill st-${esc(u.status)}">${esc(u.status)}</span></div>
+        ${u.status === '已頒發' ? `<div class="muted small">🏅 ${fmtDate(u.awardDate)}${u.awardOccasion ? '・' + esc(u.awardOccasion) : ''}</div>` : `<div class="muted small">⭐ ${u.done}／${u.total}</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`}
+        ${elig}</summary><div class="body">${actions}<ul class="items">${items}</ul>
+        ${u.status !== '已頒發' && u.done < u.total && c.status === '在團' ? `<div class="row-flex"><input type="date" class="sdate" value="${todayStr()}" max="${todayStr()}" style="width:auto"><button class="btn green small" data-signunit="${esc(u.unit)}">簽核勾選的項目</button></div>` : ''}</div></details>`;
+    };
+    const prog = d.units.filter((u) => u.category === '進程');
+    const badges = d.units.filter((u) => u.category === '技能章');
+    const att = d.attendance;
+    $app.innerHTML = `${backBtn('小狼名單')}
+      <section class="card hero"><div class="top"><div class="avatar">${c.currentLevel ? LEVEL_ICON[c.currentLevel] : '🌱'}</div>
+        <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">${esc(c.squad || '')}・入團 ${fmtDate(c.joinDate)}（${esc(c.tenure)}）</div>
+        <span class="levelchip">${c.currentLevel ? esc(c.currentLevel) + '級' : '尚未頒發羚羊級'}・${esc(c.status)}</span></div></div>
+        <div class="stats3"><div><b>🐾 ${att.counts.attended}</b>出席</div><div><b>🌙 ${att.counts.leave}</b>請假</div><div><b>${att.rate ? esc(att.rate.text) : '－'}</b>出席率</div></div></section>
+      <section class="card"><div class="row-flex">${L ? '<button class="btn ghost small" id="edit">✏️ 編輯</button><button class="btn ghost small" id="bf">📥 補登頒章</button>' : ''}<button class="btn ghost small" id="pr">🖨️ 列印簽核單</button>
+        ${L && c.status === '在團' ? '<button class="btn danger small" id="leave">標記離團</button>' : ''}${L && c.status !== '已匿名' ? '<button class="btn danger small" id="priv">個資處理</button>' : ''}</div></section>
+      ${bindHtml}
+      <section class="card"><h2>🗺️ 進程</h2>${prog.map(unitRow).join('')}</section>
+      <section class="card"><h2>🎖️ 技能章</h2>${badges.map(unitRow).join('')}</section>`;
+    wireBack();
+    const reload = () => goAdmin('cub', { cubId: c.cubId });
+    const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = (ev) => fn(ev.currentTarget); };
+    on('#edit', () => goAdmin('cubEdit', { cubId: c.cubId }));
+    on('#bf', () => goAdmin('backfill', { cubId: c.cubId }));
+    on('#pr', () => goAdmin('print', { cubIds: [c.cubId] }));
+    on('#priv', () => goAdmin('privacy', { cubId: c.cubId }));
+    on('#leave', (b) => {
+      const dte = prompt(`標記「${c.name}」離團，綁定碼會立即失效。\n請輸入離團日（例如 ${todayStr()}）：`, todayStr());
+      if (dte) act(b, async () => { await api('cubLeave', { cubId: c.cubId, leftDate: dte.trim() }); toast('已標記離團'); reload(); });
+    });
+    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按「我有代碼，要註冊」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
+    on('#newCode', (b) => { if (confirm('重新產生後，舊的綁定碼立即失效（已綁定的家長不受影響）。確定嗎？')) act(b, async () => { await api('cubNewCode', { cubId: c.cubId }); toast('已產生新的綁定碼'); reload(); }); });
+    $$('[data-unbind]').forEach((b) => { b.onclick = () => { if (confirm(`確定要解除「${b.dataset.n}」與 ${c.name} 的綁定嗎？`)) act(b, async () => { await api('cubUnbind', { cubId: c.cubId, accountId: b.dataset.unbind }); reload(); }); }; });
+    $$('[data-revoke]').forEach((b) => { b.onclick = () => { if (confirm('確定要撤銷這一項的簽核嗎？')) act(b, async () => { await api('signoffRevoke', { entries: [{ cubId: c.cubId, itemId: b.dataset.revoke }] }); toast('已撤銷'); reload(); }); }; });
+    $$('[data-signunit]').forEach((b) => {
+      b.onclick = () => {
+        const box = b.closest('.body');
+        const ids = $$('input[data-sign]:checked', box).map((x) => x.dataset.sign);
+        if (!ids.length) return alert('請先勾選要簽核的項目。');
+        act(b, async () => { const r = await api('signoff', { cubIds: [c.cubId], itemIds: ids, date: $('.sdate', box).value }); toast(`已簽核 ${r.added} 項`); reload(); });
+      };
+    });
+    $$('[data-award]').forEach((b) => { b.onclick = () => goAdmin('award', { preset: [{ cubId: c.cubId, unit: b.dataset.award, name: c.name, squad: c.squad, category: LEVELS.includes(b.dataset.award) ? '進程' : '技能章' }], back: { name: 'cub', params } }); });
+    $$('[data-arevoke]').forEach((b) => { b.onclick = () => { if (confirm(`確定要撤銷「${b.dataset.arevoke}」的頒章嗎？（進程級別會退回上一級）`)) act(b, async () => { await api('awardRevoke', { cubId: c.cubId, unit: b.dataset.arevoke }); toast('已撤銷頒章'); reload(); }); }; });
+    $$('[data-aedit]').forEach((b) => {
+      b.onclick = () => {
+        const u = d.units.find((x) => x.unit === b.dataset.aedit);
+        openSheet(`<h2>✏️ 修改頒章：${esc(unitLabel(u))}</h2><form id="ae"><label>頒發日期</label><input type="date" name="date" value="${esc(u.awardDate)}" required>
+          <label>頒發場合</label><input type="text" name="occasion" value="${esc(u.awardOccasion)}"><label>備註</label><input type="text" name="note">
+          <button class="btn" type="submit">儲存</button><div class="out"></div></form>`, (sh, close) => {
+          bindForm($('#ae', sh), async (fd) => {
+            const r = await withConfirm('awardEdit', { cubId: c.cubId, unit: u.unit, date: fd.get('date'), occasion: fd.get('occasion'), note: fd.get('note') });
+            if (r) { close(); toast('已修改'); reload(); }
+          });
+        });
+      };
+    });
+  },
+
+  // ───── 頒章（批次） ─────
+  async award(params) {
+    const h = await api('adminHome');
+    const cands = h.pending.map((p) => Object.assign({ ok: true }, p)).concat(h.waiting.map((p) => Object.assign({ ok: false }, p)));
+    (params.preset || []).forEach((p) => { if (!cands.some((x) => x.cubId === p.cubId && x.unit === p.unit)) cands.unshift(Object.assign({ ok: false }, p)); });
+    const key = (p) => p.cubId + '|' + p.unit;
+    const chosen = new Set((params.preset || []).map(key));
+    if (!params.preset) h.pending.forEach((p) => chosen.add(key(p)));
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🏅 頒章</h2>
+      <p class="muted small">同一場儀式可勾選多位小狼、多個級別或技能章，共用頒發日期與場合。</p>
+      ${cands.length ? cands.map((p) => `<label class="check"><input type="checkbox" data-k="${esc(key(p))}" ${chosen.has(key(p)) ? 'checked' : ''}><span>${esc(p.name)} <span class="s">${esc(p.squad || '')}</span><br>${iconOf(p)} ${esc(unitLabel(p))}${p.ok ? '' : ' <span class="pill st-未開始">尚未達標</span>'}</span></label>`).join('') : '<p class="muted">目前沒有可頒章的項目。上線前已拿到的章請到小狼頁面使用「補登頒章」。</p>'}
+      <form id="f"><label>頒發日期（儀式當天）</label><input type="date" name="date" value="${todayStr()}" required>
+        <label>頒發場合（選填）</label><input type="text" name="occasion" placeholder="例如：11 月團集會">
+        <label>備註（選填）</label><input type="text" name="note">
+        <button class="btn alt" type="submit">🏅 確定頒章</button><div class="out"></div></form></section>`;
+    wireBack(params.back || null);
+    bindForm($('#f'), async (fd) => {
+      const entries = $$('input[data-k]:checked').map((x) => { const [cubId, unit] = x.dataset.k.split('|'); return { cubId, unit }; });
+      if (!entries.length) throw new ApiErr('BAD_INPUT', '請至少勾選一項。');
+      const r = await withConfirm('award', { entries, date: fd.get('date'), occasion: fd.get('occasion'), note: fd.get('note') });
+      if (!r) return;
+      confetti();
+      toast(`頒章完成：${r.added} 筆 🏅`);
+      state.admin.page = params.back || null; renderAdmin();
+    });
+  },
+
+  // ───── 補登 ─────
+  async backfill(params) {
+    const d = await api('cubAdminDetail', { cubId: params.cubId });
+    const avail = d.units.filter((u) => u.status !== '已頒發');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📥 補登頒章：${esc(d.cub.name)}</h2>
+      <div class="msg info small">系統上線時用：直接寫入頒章紀錄，並把該級別或章的所有項目標記完成（備註「上線補登」）。補登不會發任何通知。</div>
+      <form id="f"><label>級別或技能章</label><select class="full" name="unit">${avail.map((u) => `<option value="${esc(u.unit)}">${iconOf(u)} ${esc(unitLabel(u))}</option>`).join('')}</select>
+        <label>頒發日期</label><input type="date" name="date" max="${todayStr()}" required>
+        <label>頒發場合（選填）</label><input type="text" name="occasion">
+        <button class="btn" type="submit">補登</button><div class="out"></div></form></section>`;
+    wireBack({ name: 'cub', params: { cubId: params.cubId } });
+    bindForm($('#f'), async (fd) => {
+      const data = { cubId: params.cubId, unit: fd.get('unit'), date: fd.get('date'), occasion: fd.get('occasion') };
+      let r = await api('backfill', data);
+      if (r.needConfirm) {
+        const yes = confirm(`較低級別（${r.missingLowerLevels.join('、')}）還沒有頒章紀錄。\n\n按「確定」：一併補登（同一個日期）\n按「取消」：只補登這一級`);
+        r = await api('backfill', Object.assign(data, { includeLower: yes }));
+      }
+      toast(`已補登：${r.awarded.join('、')}`);
+      goAdmin('cub', { cubId: params.cubId });
+    });
+  },
+
+  // ───── 更多 ─────
+  async more() {
+    const L = isLeader();
+    const items = [
+      ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
+      ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
+      ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true],
+    ].filter((x) => x[3]);
+    $app.innerHTML = `<section class="card"><h2>☰ 更多功能</h2><div class="menu-grid">${items.map(([k, ic, t]) => `<button data-p="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div></section>
+      <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
+    $$('.menu-grid button').forEach((b) => { b.onclick = () => goAdmin(b.dataset.p); });
+    $('#lo').onclick = logout;
+  },
+
+  async overview() {
+    const d = await api('overview');
+    let squad = '全團';
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📊 進程總覽</h2>${squadChips(d.squads, squad)}<div class="tbl-wrap" id="t"></div>
+      <p class="muted small">數字為完成項目數；🏅 已頒發，⏳ 項目完成等待頒發。點一列看該小狼。</p></section>`;
+    wireBack();
+    const draw = () => {
+      const rows = d.rows.filter((r) => squad === '全團' || r.squad === squad);
+      $('#t').innerHTML = `<table class="tbl"><thead><tr><th>小狼</th>${LEVELS.map((l) => `<th>${LEVEL_ICON[l]}${l}</th>`).join('')}<th>🎖️章</th><th>🐾</th></tr></thead><tbody>
+        ${rows.map((r) => `<tr data-id="${esc(r.cubId)}" style="cursor:pointer"><td><b>${esc(r.name)}</b><br><span class="s">${esc(r.squad || '')}</span></td>${LEVELS.map((l) => { const x = r.levels[l] || { done: 0, total: 0, status: '' }; return `<td class="st-${esc(x.status)}">${x.status === '已頒發' ? '🏅' : x.status === '已完成待頒發' ? '⏳' : x.done + '/' + x.total}</td>`; }).join('')}<td>${r.badges}</td><td>${r.attended}</td></tr>`).join('')}</tbody></table>`;
+      $$('#t tr[data-id]').forEach((tr) => { tr.onclick = () => goAdmin('cub', { cubId: tr.dataset.id }); });
+    };
+    onSquad((s) => { squad = s; draw(); });
+    draw();
+  },
+
+  async attOverview(params) {
+    const from = params.from || '', to = params.to || '';
+    const d = await api('attendanceOverview', { from, to });
+    let squad = '全團';
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🐾 出席總覽</h2>
+      ${d.period ? `<p class="muted small">本年度：${esc(d.period.name)}（${fmtDate(d.period.start)}～${fmtDate(d.period.end)}，總數 ${esc(d.period.total)} 次）</p>` : '<div class="msg warn small">尚未設定本年度的出席總數（更多 → 年度出席），所以不顯示出席率。</div>'}
+      <div class="row-flex"><input type="date" id="from" value="${esc(from)}" style="width:auto"> ～ <input type="date" id="to" value="${esc(to)}" style="width:auto"><button class="btn small" id="go">篩選</button></div>
+      ${squadChips(d.squads, squad)}<div class="tbl-wrap" id="t"></div></section>`;
+    wireBack();
+    const draw = () => {
+      const rows = d.rows.filter((r) => squad === '全團' || r.squad === squad);
+      $('#t').innerHTML = `<table class="tbl"><thead><tr><th>小狼</th><th>出席</th><th>請假</th><th>額外</th><th>出席率</th>${d.meetings.map((m) => `<th title="${esc(m.name)}">${shortDate(m.date)}</th>`).join('')}</tr></thead><tbody>
+        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${r.counts.attended}</td><td>${r.counts.leave}</td><td>${r.extra}</td><td>${esc(r.rate || '－')}</td>${r.cells.map((c) => `<td>${c === '出席' ? '🐾' : c === '請假' ? '🌙' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    };
+    onSquad((s) => { squad = s; draw(); });
+    $('#go').onclick = () => goAdmin('attOverview', { from: $('#from').value, to: $('#to').value });
+    draw();
+  },
+
+  async calendar() {
+    const d = await api('meetingList');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📅 集會行事曆</h2>
+      <form id="f"><label>一次新增多筆（每行一場：日期 名稱）</label>
+        <textarea name="lines" placeholder="2026-11-22 團集會&#10;2026-11-29 露營&#10;2026-12-06"></textarea>
+        <p class="muted small">名稱可省略，預設為「團集會」。</p>
+        <button class="btn" type="submit">新增</button><div class="out"></div></form></section>
+      <section class="card"><h2>📋 全部集會</h2>${d.meetings.slice().reverse().map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span> ${esc(m.name)}<br><span class="s">${m.enabled ? '出席 ' + m.attended + ' 人' : '已取消'}</span></span>
+        <button class="btn ghost small" data-ed="${esc(m.meetingId)}">修改</button><button class="btn ${m.enabled ? 'danger' : 'green'} small" data-tg="${esc(m.meetingId)}" data-en="${m.enabled ? 0 : 1}">${m.enabled ? '取消' : '恢復'}</button></div>`).join('') || '<p class="muted">還沒有集會。</p>'}</section>`;
+    wireBack();
+    bindForm($('#f'), async (fd) => {
+      const r = await api('meetingSave', { lines: fd.get('lines') });
+      toast(`已新增 ${r.added} 場`);
+      if (r.bad.length) alert('以下幾行看不懂，沒有新增：\n' + r.bad.join('\n'));
+      goAdmin('calendar');
+    });
+    $$('[data-tg]').forEach((b) => { b.onclick = () => { if (b.dataset.en === '1' || confirm('取消這場集會？（不會刪除，已點名的紀錄保留，但不再列入出席統計）')) act(b, async () => { await api('meetingSave', { meetingId: b.dataset.tg, enabled: b.dataset.en === '1' }); goAdmin('calendar'); }); }; });
+    $$('[data-ed]').forEach((b) => {
+      b.onclick = () => {
+        const m = d.meetings.find((x) => x.meetingId === b.dataset.ed);
+        openSheet(`<h2>✏️ 修改集會</h2><form id="me"><label>日期</label><input type="date" name="date" value="${esc(m.date)}" required><label>名稱</label><input type="text" name="name" value="${esc(m.name)}"><label>備註</label><input type="text" name="note" value="${esc(m.note || '')}"><button class="btn" type="submit">儲存</button><div class="out"></div></form>`, (sh, close) => {
+          bindForm($('#me', sh), async (fd) => { await api('meetingSave', { meetingId: m.meetingId, date: fd.get('date'), name: fd.get('name'), note: fd.get('note') }); close(); goAdmin('calendar'); });
+        });
+      };
+    });
+  },
+
+  async periods() {
+    const [p, cl] = await Promise.all([api('periodList'), api('cubList')]);
+    const cubs = cl.cubs.filter((c) => c.status === '在團');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🎯 年度出席設定</h2>
+      ${p.periods.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span>${x.name === p.current ? ' <span class="pill st-進行中">目前</span>' : ''}<br><span class="s">${fmtDate(x.start)}～${fmtDate(x.end)}・應出席 ${x.total} 次</span></span></div>`).join('') || '<p class="muted">還沒有設定。</p>'}
+      <h3>新增或修改（同名會覆蓋）</h3>
+      <form id="f"><label>年度名稱</label><input name="name" type="text" placeholder="例如：115學年度" required>
+        <div class="row-flex"><div class="grow"><label>開始日</label><input name="start" type="date" required></div><div class="grow"><label>結束日</label><input name="end" type="date" required></div></div>
+        <label>應出席總數（在基地或外出進行進程的次數）</label><input name="total" type="number" min="0" max="500" required>
+        <button class="btn" type="submit">儲存</button><div class="out"></div></form></section>
+      ${p.periods.length ? `<section class="card"><h2>✨ 額外出席次數</h2><p class="muted small">有參加額外活動的小狼才給。填 0 表示清除。</p>
+        <form id="fx"><label>年度</label><select class="full" name="period">${p.periods.map((x) => `<option ${x.name === p.current ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+          <label>小狼</label><select class="full" name="cubId">${cubs.map((c) => `<option value="${esc(c.cubId)}">${esc(c.name)}（${esc(c.squad || '')}）</option>`).join('')}</select>
+          <label>額外出席次數</label><input name="count" type="number" min="0" max="100" required><label>備註</label><input name="note" type="text" placeholder="例如：參加露營">
+          <button class="btn" type="submit">儲存</button><div class="out"></div></form></section>` : ''}`;
+    wireBack();
+    bindForm($('#f'), async (fd) => { await api('periodSave', Object.fromEntries(fd)); toast('已儲存'); goAdmin('periods'); });
+    bindForm($('#fx'), async (fd, out) => { await api('extraSave', Object.fromEntries(fd)); msg(out, '已儲存。', 'ok'); });
+  },
+
+  async print(params) {
+    const cl = await api('cubList');
+    const pre = new Set(params.cubIds || []);
+    const cubs = cl.cubs.filter((c) => c.status === '在團' || pre.has(c.cubId));
+    let squad = '全團', lv = '狼';
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🖨️ 列印簽核單（A4）</h2>
+      <label>級別</label><div class="chips" id="lv">${LEVELS.map((l) => `<button class="chip ${l === lv ? 'on' : ''}" data-l="${l}">${LEVEL_ICON[l]} ${l}級</button>`).join('')}</div>
+      <label>小狼</label>${squadChips(cl.squads, squad)}<div id="list"></div>
+      <button class="btn" id="go">🖨️ 列印</button></section>`;
+    wireBack(pre.size === 1 ? { name: 'cub', params: { cubId: [...pre][0] } } : null);
+    $$('#lv .chip').forEach((b) => { b.onclick = () => { lv = b.dataset.l; $$('#lv .chip').forEach((x) => x.classList.toggle('on', x === b)); }; });
+    const draw = () => {
+      $('#list').innerHTML = cubs.filter((c) => squad === '全團' || c.squad === squad).map((c) => `<label class="check"><input type="checkbox" data-id="${esc(c.cubId)}" ${pre.size ? (pre.has(c.cubId) ? 'checked' : '') : 'checked'}>${esc(c.name)} <span class="s">${esc(c.squad || '')}</span></label>`).join('');
+    };
+    onSquad((s) => { squad = s; pre.clear(); draw(); });
+    draw();
+    $('#go').onclick = (ev) => act(ev.currentTarget, async () => {
+      const ids = $$('#list input:checked').map((x) => x.dataset.id);
+      if (!ids.length) return alert('請至少選一位小狼。');
+      const r = await api('printData', { unit: lv, cubIds: ids });
+      printSheets(r.unit, r.sheets, r.rule);
+    });
+  },
+
+  async admins() {
+    const [a, acc, inv] = await Promise.all([api('adminList'), api('accountList'), api('inviteList')]);
+    const adminIds = new Set(a.admins.map((x) => x.accountId));
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>👥 管理員</h2>
+      ${a.admins.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span> <span class="pill ${x.role === '團長' ? 'st-已頒發' : 'st-進行中'}">${esc(x.role)}</span>${x.lineLinked ? ' 💬' : ''}<br>
+        <span class="s">帳號 ${esc(x.username)}・加入 ${fmtTime(x.joinedAt)}・指定人 ${esc(x.assignedBy || '－')}</span></span>
+        <button class="btn ghost small" data-ad="${esc(x.accountId)}">管理</button></div>`).join('')}</section>
+      <section class="card"><h2>➕ 從已註冊的帳號指定</h2><p class="muted small">對方已有帳號（例如家長兼服務員）時用。</p>
+        <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
+      <section class="card"><h2>✉️ 邀請新的管理員</h2><p class="muted small">對方沒有孩子在團裡時用。</p>
+        <form id="fi"><label>角色</label><select class="full" name="role"><option>服務員</option><option>團長</option></select>
+          <label>對方姓名</label><input name="name" type="text" required><button class="btn alt" type="submit">產生邀請碼</button><div class="out"></div></form>
+        <h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name)}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('') || '<p class="muted">沒有。</p>'}</section>`;
+    wireBack();
+    const drawCands = () => {
+      const q = $('#q').value.trim();
+      const list = acc.accounts.filter((x) => !adminIds.has(x.accountId) && x.status === '啟用' && (!q || [x.username, x.nickname].concat(x.cubs).some((s) => s.includes(q)))).slice(0, 20);
+      $('#cands').innerHTML = list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span><br><span class="s">帳號 ${esc(x.username)}${x.cubs.length ? '・孩子 ' + esc(x.cubs.join('、')) : ''}</span></span><button class="btn small" data-pick="${esc(x.accountId)}" data-n="${esc(x.nickname)}">指定</button></div>`).join('') || '<p class="muted">沒有符合的帳號。</p>';
+      $$('[data-pick]').forEach((b) => {
+        b.onclick = () => openSheet(`<h2>指定管理員</h2><form id="fa"><label>角色</label><select class="full" name="role"><option>服務員</option><option>團長</option></select>
+          <label>要顯示的姓名</label><input name="name" type="text" value="${esc(b.dataset.n)}" required><button class="btn" type="submit">確認指定</button><div class="out"></div></form>`, (sh, close) => {
+          bindForm($('#fa', sh), async (fd) => { await api('adminAdd', { accountId: b.dataset.pick, role: fd.get('role'), name: fd.get('name') }); close(); toast('已指定，立即生效'); goAdmin('admins'); });
+        });
+      });
+    };
+    $('#q').oninput = drawCands;
+    drawCands();
+    bindForm($('#fi'), async (fd, out) => {
+      const r = await api('inviteCreate', { role: fd.get('role'), name: fd.get('name') });
+      out.innerHTML = `<div class="codebox">${esc(r.code)}</div><pre class="copytext">${esc(r.message)}</pre><button type="button" class="btn alt" id="cp">📋 複製邀請說明文字</button>`;
+      $('#cp').onclick = () => copyText(r.message);
+    });
+    $$('[data-void]').forEach((b) => { b.onclick = () => { if (confirm('作廢這組邀請碼？')) act(b, async () => { await api('inviteVoid', { code: b.dataset.void }); goAdmin('admins'); }); }; });
+    $$('[data-ad]').forEach((b) => {
+      b.onclick = () => {
+        const x = a.admins.find((y) => y.accountId === b.dataset.ad);
+        openSheet(`<h2>管理：${esc(x.name)}</h2><form id="fu"><label>角色</label><select class="full" name="role"><option ${x.role === '服務員' ? 'selected' : ''}>服務員</option><option ${x.role === '團長' ? 'selected' : ''}>團長</option></select>
+          <label>顯示姓名</label><input name="name" type="text" value="${esc(x.name)}" required><button class="btn" type="submit">儲存</button><div class="out"></div></form>
+          <button class="btn danger" id="rm">移除管理員身分</button><p class="muted small">移除後帳號保留，綁定的孩子仍可用家長身分查詢。</p>`, (sh, close) => {
+          bindForm($('#fu', sh), async (fd) => { await api('adminUpdate', { accountId: x.accountId, role: fd.get('role'), name: fd.get('name') }); close(); toast('已更新，立即生效'); goAdmin('admins'); });
+          $('#rm', sh).onclick = (ev) => { if (confirm(`確定移除「${x.name}」的管理員身分？`)) act(ev.currentTarget, async () => { await api('adminRemove', { accountId: x.accountId }); close(); goAdmin('admins'); }); };
+        });
+      };
+    });
+  },
+
+  async accounts() {
+    const acc = await api('accountList');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🔑 帳號管理</h2><input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="list"></div></section>`;
+    wireBack();
+    const draw = () => {
+      const q = $('#q').value.trim();
+      const list = acc.accounts.filter((x) => !q || [x.username, x.nickname].concat(x.cubs).some((s) => s.includes(q)));
+      $('#list').innerHTML = list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span> ${x.role ? `<span class="pill st-進行中">${esc(x.role)}</span>` : ''}${x.status !== '啟用' ? ' <span class="pill st-未開始">停用</span>' : ''}<br>
+        <span class="s">帳號 ${esc(x.username)}${x.cubs.length ? '・孩子 ' + esc(x.cubs.join('、')) : ''}<br>最後登入 ${fmtTime(x.lastLogin)}</span></span><button class="btn ghost small" data-m="${esc(x.accountId)}">管理</button></div>`).join('') || '<p class="muted">沒有符合的帳號。</p>';
+      $$('[data-m]').forEach((b) => {
+        b.onclick = () => {
+          const x = acc.accounts.find((y) => y.accountId === b.dataset.m);
+          openSheet(`<h2>${esc(x.nickname)}（${esc(x.username)}）</h2>
+            <button class="btn alt" id="tc">🔁 產生重設密碼臨時碼</button><div id="tcOut"></div>
+            <button class="btn ghost" id="st">${x.status === '啟用' ? '⛔ 停用帳號' : '✅ 重新啟用'}</button>
+            <button class="btn danger" id="del">🗑️ 刪除帳號（家長要求時）</button>
+            <p class="muted small">刪除帳號會一併刪除登入與綁定紀錄，孩子的資料不受影響。</p>`, (sh, close) => {
+            $('#tc', sh).onclick = (ev) => act(ev.currentTarget, async () => {
+              const r = await api('accountTempCode', { accountId: x.accountId });
+              $('#tcOut', sh).innerHTML = `<div class="codebox">${esc(r.code)}</div><pre class="copytext">${esc(r.message)}</pre><button class="btn alt" id="cp">📋 複製，用 LINE 傳給對方</button>`;
+              $('#cp', sh).onclick = () => copyText(r.message);
+            });
+            $('#st', sh).onclick = (ev) => act(ev.currentTarget, async () => { await api('accountStatus', { accountId: x.accountId, status: x.status === '啟用' ? '停用' : '啟用' }); close(); goAdmin('accounts'); });
+            $('#del', sh).onclick = (ev) => {
+              const u = prompt(`刪除後無法復原。請輸入帳號名稱「${x.username}」確認：`);
+              if (u) act(ev.currentTarget, async () => { await api('accountDelete', { accountId: x.accountId, confirmUsername: u.trim() }); close(); toast('已刪除帳號'); goAdmin('accounts'); });
+            };
+          });
+        };
+      });
+    };
+    $('#q').oninput = draw;
+    draw();
+  },
+
+  async privacy(params) {
+    const cl = await api('cubList');
+    const cubs = cl.cubs.filter((c) => c.status !== '已匿名').sort((a, b) => (a.status === '離團' ? 0 : 1) - (b.status === '離團' ? 0 : 1));
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🔐 個資處理</h2>
+      <div class="msg warn small">針對離團小狼或家長要求時使用。執行後無法復原。</div>
+      <label>小狼</label><select class="full" id="cub">${cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === params.cubId ? 'selected' : ''}>${esc(c.name)}（${esc(c.status)}${c.leftDate ? ' ' + fmtDate(c.leftDate) : ''}）</option>`).join('')}</select>
+      <label>處理方式</label>
+      <label class="check"><input type="radio" name="mode" value="anonymize" checked> 匿名化：姓名改為「已離團小狼＋流水號」、清空小隊、刪除綁定；進程與出席紀錄保留供統計</label>
+      <label class="check"><input type="radio" name="mode" value="delete"> 完全刪除：刪除這位小狼在所有分頁的資料</label>
+      <button class="btn ghost" id="pv">① 預覽會影響幾列資料</button><div id="out"></div></section>`;
+    wireBack(params.cubId ? { name: 'cub', params: { cubId: params.cubId } } : null);
+    $('#pv').onclick = (ev) => act(ev.currentTarget, async () => {
+      const mode = $('input[name=mode]:checked').value, cubId = $('#cub').value;
+      const r = await api('privacyPreview', { cubId, mode });
+      $('#out').innerHTML = `<div class="msg info">${Object.entries(r.counts).map(([k, v]) => `${esc(k)}：${v} 列`).join('\n')}</div>
+        <label>② 請輸入小狼姓名「${esc(r.cubName)}」確認</label><input type="text" id="cn" autocomplete="off">
+        <button class="btn danger" id="ex">③ 確定執行${mode === 'delete' ? '完全刪除' : '匿名化'}</button>`;
+      $('#ex').onclick = (e2) => {
+        if (!confirm('最後確認：執行後無法復原，確定嗎？')) return;
+        act(e2.currentTarget, async () => {
+          await api('privacyExecute', { cubId, mode, confirmName: $('#cn').value.trim() });
+          $('#out').innerHTML = `<div class="msg ok">已完成。</div><div class="msg warn">提醒：既有的每週備份檔仍含這位小狼的資料，會在保留份數輪替後自動消失。</div>
+            <button class="btn ghost" id="pg">立即刪除所有舊備份並重新備份</button>`;
+          $('#pg').onclick = (e3) => { if (confirm('刪除所有舊備份並重新備份一份？')) act(e3.currentTarget, async () => { const b = await api('backupPurge'); toast(b.message); }); };
+        });
+      };
+    });
+  },
+
+  async backup() {
+    const h = await api('adminHome');
+    const b = h.alerts.backup, p = h.alerts.permission;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>💾 備份</h2>
+      ${h.alerts.backupFolderSet ? '' : '<div class="msg warn small">尚未設定備份資料夾（見 SETUP.md 第 7 步）。</div>'}
+      <p>上次備份：${b ? fmtTime(b.at) + '<br>' + esc(b.message) : '還沒有紀錄'}</p>
+      <button class="btn" id="bk">立即備份</button><button class="btn danger" id="pg">刪除所有舊備份並重新備份</button></section>
+      <section class="card"><h2>🛡️ 試算表權限</h2>
+      <p>${p ? (p.ok ? '✅ 權限正常' : '🚨 ' + esc(p.issues.join('；'))) + '<br><span class="s">檢查時間 ' + fmtTime(p.at) + '</span>' : '還沒有檢查過'}</p>
+      <button class="btn ghost" id="pc">檢查試算表權限</button></section>`;
+    wireBack();
+    $('#bk').onclick = (ev) => act(ev.currentTarget, async () => { const r = await api('backupNow'); toast(r.message); goAdmin('backup'); });
+    $('#pg').onclick = (ev) => { if (confirm('刪除備份資料夾裡所有舊備份，再重新備份一份？')) act(ev.currentTarget, async () => { const r = await api('backupPurge'); toast(r.message); goAdmin('backup'); }); };
+    $('#pc').onclick = (ev) => act(ev.currentTarget, async () => { await api('permCheck'); goAdmin('backup'); });
+  },
+
+  async line() {
+    const me = await api('me');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>💬 連結 LINE 通知</h2>
+      <p>${me.lineLinked ? '✅ 你已連結 LINE 通知。小狼達標時會在 LINE 通知你。' : '連結後，小狼達標時官方帳號會在 LINE 通知你。'}</p>
+      <button class="btn alt" id="go">${me.lineLinked ? '重新連結' : '取得配對碼'}</button><div id="out"></div>
+      ${me.lineLinked ? '<button class="btn danger" id="un">解除連結</button>' : ''}</section>`;
+    wireBack();
+    $('#go').onclick = (ev) => act(ev.currentTarget, async () => {
+      const r = await api('lineLinkStart');
+      $('#out').innerHTML = `<div class="codebox">${esc(r.code)}</div><ol class="small"><li>用手機 LINE 加入「22團幼童軍進程系統」官方帳號好友（已加過就略過）</li><li>在聊天室輸入上面這 6 位數字並送出</li><li>收到「已連結」的回覆就完成了</li></ol><p class="muted small">配對碼 ${r.expiresInMin} 分鐘內有效，只能用一次。</p>`;
+    });
+    const un = $('#un');
+    if (un) un.onclick = (ev) => { if (confirm('解除後就不會收到 LINE 通知了，確定嗎？')) act(ev.currentTarget, async () => { await api('lineUnlink'); goAdmin('line'); }); };
+  },
+};
 
 start();
 </script>

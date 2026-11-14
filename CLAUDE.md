@@ -15,7 +15,8 @@
 - 點名系統已寫入 SPEC 7.13（排入階段 4A）。出席與進程的連動已寫入 Logic.js：羚羊 `P-羚羊-7` 依出席自動完成（計算而得、不寫入完成紀錄）、狼鹿豹需「晉級所需出席次數」。出席率已寫入 Logic.js（`attendanceRate`、`periodOf`）。
 - 階段 2 完成（程式與模擬測試）：`setup()`、帳號註冊／登入／憑證、綁定與告知同意、家長查詢 API。72 項測試全過。待團長部署並執行 `setup()` 確認試算表。
 - 階段 3 完成（前端與模擬測試）：`web/index.html` 家長端（登入／註冊三步驟／忘記密碼／重新同意／首頁／進程／技能章／出席／我的資料／列印簽核單），後台為佔位頁。根目錄 `index.html` 轉址到 `web/`。`GAS_URL` 已填入團長的部署網址（2026-11-14），待團長實測。
-- 下一步：階段 4A（核心後台）。
+- 階段 4A 完成（程式與模擬測試）：後台 API（`AdminApi.js`、`Backup.js`、LINE 配對）與後台畫面；網頁改為闖關冒險風格（SPEC 附錄第 19 點）。`npm test` 92 項、`npm run test:web` 全過。
+- **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -106,6 +107,8 @@
 
 ## 前端（web/index.html）
 - 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
+- 結構：工具函式 → 登入／註冊 → 家長畫面（`viewHome` 冒險、`viewMap` 闖關地圖、`viewBadges` 徽章收藏冊、`viewStamps` 集點卡、`renderMine`）→ `printSheets` → 後台（`ADMIN_PAGES` 物件，每個鍵是一頁；`goAdmin(頁名, 參數)` 切換）。
+- 後台需要確認的操作（頒章、修改頒章）用 `withConfirm()`：後端回 `needConfirm` 時跳確認視窗再帶 `confirm:true` 重送。
 - 登入憑證：勾「記住我」存 localStorage，否則存 sessionStorage（關閉瀏覽器即登出）。
 - 任何 API 回 `SESSION_EXPIRED` → `onExpired()` 清憑證、記住目前畫面、顯示登入頁，登入後回原畫面。切換分頁沿用已載入資料，不重新呼叫後端。
 - 所有顯示文字一律經 `esc()` 跳脫（姓名等資料來自試算表）。

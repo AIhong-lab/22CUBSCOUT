@@ -2712,6 +2712,32 @@ registerAdmin_('lineUnlink', 'linkLine', function (req, who) {
   });
 });
 
+// ───────────── 列印簽核單（依小狼或依小隊） ─────────────
+
+/** 一個進程級別、多位小狼的簽核單資料 */
+registerAdmin_('printData', 'printSheet', function (req) {
+  var unit = Logic.clean(req.unit);
+  if (Logic.LEVELS.indexOf(unit) < 0) throw new ApiError(ERR.BAD_INPUT, '請選擇進程級別。');
+  var ids = (req.cubIds || []).map(Logic.clean);
+  var ctx = progressCtx_();
+  var names = adminNames_();
+  var signerOf = {};
+  ctx.completions.forEach(function (c) { if (Logic.isCountedCompletion(c)) signerOf[c.cubId + '|' + c.itemId] = c.signer; });
+  var info = loadUnits_()[Logic.CATEGORY.PROGRESS + '|' + unit] || {};
+  var sheets = loadCubs_().filter(function (c) { return ids.indexOf(c.cubId) >= 0; }).map(function (c) {
+    var u = progressOf_(ctx, c.cubId).units.filter(function (x) { return x.category === Logic.CATEGORY.PROGRESS && x.unit === unit; })[0];
+    return {
+      cub: { name: c.name, squad: c.squad, joinDate: c.joinDate },
+      awardDate: u.awardDate,
+      items: u.items.map(function (i) {
+        var s = signerOf[c.cubId + '|' + i.id];
+        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[s] || (i.auto ? '出席自動計算' : '')) : '' };
+      })
+    };
+  });
+  return { unit: unit, rule: info.rule || '', sheets: sheets };
+});
+
 // ════════════════ Backup.js ════════════════
 /**
  * 備份與試算表權限檢查（SPEC 7.11）

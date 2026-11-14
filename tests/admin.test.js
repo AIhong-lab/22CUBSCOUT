@@ -302,3 +302,16 @@ test('後台首頁：待頒章、快達標、離團逾期提醒、未連結 LINE
   env.sheet('項目總表').getRange(200, 1, 1, 7).setValues([['B-壞-1', '技能章', '', '', '缺章名', 1, '是']]);
   assert.equal(call(L, 'adminHome').alerts.itemErrors[0].row, 200);
 });
+
+test('列印簽核單：依小隊多位小狼、服務員可列印', () => {
+  const { env, call, L, A, cubId } = world();
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '一小隊', joinDate: '2025-09-01' }).cubId;
+  call(A, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '狼').slice(0, 1), date: '2026-11-01' });
+  const r = call(A, 'printData', { unit: '狼', cubIds: [cubId, c2] });
+  assert.equal(r.sheets.length, 2);
+  assert.equal(r.sheets[0].items.length, 32);
+  assert.equal(r.sheets[0].items[0].signer, '陳服務員');
+  assert.equal(r.sheets[1].items[0].done, false);
+  assert.match(r.rule, /參與羚羊級/);
+  assert.equal(call(A, 'printData', { unit: '嚮導', cubIds: [cubId] }).code, 'BAD_INPUT');
+});
