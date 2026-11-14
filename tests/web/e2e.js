@@ -67,8 +67,7 @@ function seed(env) {
   await page.getByText('什麼是「進程」？').waitFor();
   const hp = await text();
   assert.match(hp, /什麼是「技能章」？[\s\S]*3 類 26 個/);
-  assert.match(hp, /家長登入/);
-  assert.match(hp, /管理員（團長、服務員）[\s\S]*不需要打開試算表[\s\S]*管理員登入/);
+  assert.match(hp, /家長／團長登入/);
   assert.equal(new URL(page.url()).hash, '#home');
   await shot('00-home'); await noHScroll('公開首頁');
 
@@ -251,10 +250,7 @@ function seed(env) {
   await page.locator('.msg.err').waitFor();
   assert.match(await text(), /帳號或密碼錯誤/);
 
-  // ═════ 團長後台：從首頁的「管理員登入」進入 ═════
-  await page.locator('#toHome').click();
-  await page.locator('[data-go=admin]').click();
-  await page.getByText('登入後會直接進入管理員後台').waitFor();
+  // ═════ 團長後台 ═════
   await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
   await page.click('button[type=submit]');
   await page.getByText('待頒章').waitFor();
