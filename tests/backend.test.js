@@ -341,3 +341,25 @@ test('randInt_ 支援大範圍且結果均在範圍內（修正：曾因只取 1
   }
   assert.throws(() => env.ctx.randInt_(0));
 });
+
+test('公開標準查詢：不用登入、只有項目與說明、停用項目不顯示、不含任何個人資料', () => {
+  const { env } = fresh();
+  registerParent(env);
+  const r = env.api({ action: 'catalog' });
+  assert.equal(r.ok, true);
+  assert.equal(r.units.filter((u) => u.category === '進程').length, 4);
+  assert.equal(r.units.filter((u) => u.category === '技能章').length, 26);
+  assert.equal(r.units.reduce((s, u) => s + u.items.length, 0), 163);
+  assert.equal(r.units[0].unit, '羚羊', '依排序');
+  assert.match(r.units.find((u) => u.unit === '狼').rule, /參與羚羊級/);
+  assert.equal(r.units.find((u) => u.unit === '嚮導').group, '服務類');
+  const json = JSON.stringify(r);
+  assert.ok(!/測試小狼|parent01|leader01|U[A-Z2-9]{8}|AB2CDE/.test(json), '不含小狼、帳號、綁定碼');
+  assert.deepEqual(Object.keys(r.units[0].items[0]).sort(), ['section', 'text'], '項目只回傳大項與內容，不含項目ID');
+  // 停用項目不顯示（快取 5 分鐘後生效）
+  const row = env.rows('項目總表').findIndex((x) => x[2] === '嚮導') + 2;
+  env.sheet('項目總表').getRange(row, 7).setValues([['否']]);
+  assert.equal(env.api({ action: 'catalog' }).units.find((u) => u.unit === '嚮導').items.length, 2, '快取期間內不變');
+  env.advance(301000);
+  assert.equal(env.api({ action: 'catalog' }).units.find((u) => u.unit === '嚮導').items.length, 1);
+});

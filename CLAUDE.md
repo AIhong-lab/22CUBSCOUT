@@ -17,6 +17,7 @@
 - 階段 3 完成（前端與模擬測試）：`web/index.html` 家長端（登入／註冊三步驟／忘記密碼／重新同意／首頁／進程／技能章／出席／我的資料／列印簽核單），後台為佔位頁。根目錄 `index.html` 轉址到 `web/`。`GAS_URL` 已填入團長的部署網址（2026-11-14），待團長實測。
 - 階段 4A 完成（程式與模擬測試）：後台 API（`AdminApi.js`、`Backup.js`、LINE 配對）與後台畫面；網頁改為闖關冒險風格（SPEC 附錄第 19 點）。`npm test` 92 項、`npm run test:web` 全過。
 - 里程碑一期間新增：小隊清單（SPEC 7.2、附錄第 20 點）：`Logic.parseList`／`changeSquads`、API `squadList`／`squadSave`、後台「更多 → 🏕️ 小隊設定」；`cubSave` 只接受清單內的小隊。
+- 里程碑一期間新增：不用登入的進程與技能章標準查詢（SPEC 第六節第 11 點、附錄第 21 點）：公開 API `catalog`（`PUBLIC_ACTIONS`，只回傳啟用項目與說明，快取 5 分鐘）、前端 `renderCatalog`（網址 `#catalog`）。
 - **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構

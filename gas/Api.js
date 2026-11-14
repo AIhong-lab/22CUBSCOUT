@@ -40,7 +40,8 @@ var PUBLIC_ACTIONS = {
   checkCode: apiCheckCode_,
   register: apiRegister_,
   login: apiLogin_,
-  resetPassword: apiResetPassword_
+  resetPassword: apiResetPassword_,
+  catalog: apiCatalog_
 };
 
 /** 需要登入的動作（第二個參數為 requireAccount_ 的結果） */
@@ -68,6 +69,31 @@ function dispatch_(req) {
 }
 
 // ───────────── 告知同意 ─────────────
+
+/**
+ * 公開標準查詢（不用登入，SPEC 附錄第 21 點）：只回傳啟用中的進程與技能章項目、說明與晉級條件。
+ * 不含任何小狼、家長或管理員的資料。結果快取 5 分鐘以加快速度。
+ */
+function apiCatalog_() {
+  var cache = CacheService.getScriptCache();
+  var hit = cache.get('CATALOG');
+  if (hit) return JSON.parse(hit);
+  var unitsInfo = loadUnits_();
+  var groups = {}, order = [];
+  loadItems_().items.forEach(function (it) {
+    if (!it.enabled) return;
+    var k = it.category + '|' + it.unit;
+    if (!groups[k]) {
+      var info = unitsInfo[k] || {};
+      groups[k] = { category: it.category, unit: it.unit, group: info.group || '', desc: info.desc || '', rule: info.rule || '', order: info.order || 9999, items: [] };
+      order.push(k);
+    }
+    groups[k].items.push({ section: it.section, text: it.text });
+  });
+  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }) };
+  try { cache.put('CATALOG', JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
+  return out;
+}
 
 function apiConsentText_() {
   var c = latestConsent_();

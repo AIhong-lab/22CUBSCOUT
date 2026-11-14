@@ -62,10 +62,36 @@ function seed(env) {
   const text = () => page.locator('#app').innerText();
   const tab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
 
+  // ═════ 不用登入的標準查詢 ═════
+  await page.goto(PAGE + '#catalog');
+  await page.locator('.stage').first().waitFor();
+  assert.equal(await page.locator('.stage').count(), 4);
+  assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務（10 項）[\s\S]*能背誦並說明幼童軍諾言/);
+  await page.locator('.stage[data-unit=豹]').click();
+  assert.match(await page.locator('#lvPanel').innerText(), /豹級任務（26 項）[\s\S]*晉級條件：參與鹿級/);
+  await shot('00a-catalog-map'); await noHScroll('標準查詢・進程');
+  await tab('badges');
+  await page.locator('.badge').first().waitFor();
+  assert.equal(await page.locator('.badge').count(), 26);
+  await page.locator('.badge[data-unit=游泳]').click();
+  assert.match(await page.locator('.sheet').innerText(), /合格標準（2 項）[\s\S]*第五級/);
+  await shot('00b-catalog-badge');
+  await page.locator('.sheet [data-close]').click();
+  await tab('search');
+  await page.fill('#q', '結繩');
+  assert.match(await page.locator('#hits').innerText(), /找到 6 項/);
+  await shot('00c-catalog-search'); await noHScroll('標準查詢・搜尋');
+  assert.ok(!/測試小狼/.test(await page.content()), '查詢頁不含任何孩子的資料');
+  await tab('exit');
+
   // ═════ 家長 ═════
-  await page.goto(PAGE);
   await page.getByText('我有代碼，要註冊').waitFor();
+  assert.equal(await page.locator('nav.tabs').isVisible(), false, '登入頁不顯示底部分頁列');
   await shot('01-login'); await noHScroll('登入頁');
+  await page.locator('#toCatalog').click();
+  await page.locator('.stage').first().waitFor();
+  await tab('exit');
+  await page.getByText('我有代碼，要註冊').waitFor();
 
   // 註冊：錯誤代碼 → 正確代碼 → 不同意
   await page.getByText('我有代碼，要註冊').click();

@@ -150,6 +150,10 @@
   .stage .lv { font-size: 22px; font-weight: 900; }
   .stage .st { font-size: 15px; font-weight: 800; }
   .stage .cnt { font-size: 15px; color: var(--gray); }
+  .stage.open .node { background: conic-gradient(var(--yellow) 100%, #fff 0); }
+  .badge.open .disc { background: conic-gradient(var(--blue) 100%, #fff 0); }
+  .hit { padding: 10px 0; border-bottom: 2px solid var(--gray-soft); cursor: pointer; }
+  .hit mark { background: var(--yellow-soft); color: inherit; border-radius: 4px; padding: 0 2px; }
   .finish { text-align: center; font-size: 15px; font-weight: 800; color: var(--green-dark); }
 
   /* ───── 徽章收藏冊 ───── */
@@ -179,6 +183,7 @@
 
   /* ───── 底部分頁 ───── */
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 3px solid var(--yellow); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 20; box-shadow: 0 -4px 16px rgba(0,0,0,.06); }
+  nav.tabs[hidden] { display: none; } /* 上面的 display:flex 會蓋過 hidden 屬性，需明確隱藏 */
   nav.tabs .inner { display: flex; width: 100%; max-width: 760px; }
   nav.tabs button { flex: 1; border: 0; background: none; padding: 7px 2px 9px; font-size: 13px; font-weight: 800; color: var(--gray); cursor: pointer; }
   nav.tabs button .ic { display: block; font-size: 25px; line-height: 1.25; transition: transform .15s; }
@@ -406,6 +411,11 @@ function renderLogin(opt = {}) {
       </form>
       <button class="linkbtn" id="forgot">忘記密碼？</button>
     </section>
+    <section class="card center">
+      <h2 style="justify-content:center">📖 想先看看要挑戰什麼？</h2>
+      <p class="muted">不用登入，就能查羚羊、狼、鹿、豹每一級的任務，和 26 個技能章的合格標準。</p>
+      <button class="btn green" id="toCatalog">📖 進程與技能章查詢</button>
+    </section>
     <section class="card">
       <h2>🌱 第一次來？</h2>
       <p class="muted">請準備團長給你的「綁定碼」，以及孩子的姓名。</p>
@@ -413,6 +423,7 @@ function renderLogin(opt = {}) {
     </section>`;
   $('#forgot').onclick = renderForgot;
   $('#reg').onclick = () => renderRegister1();
+  $('#toCatalog').onclick = () => renderCatalog('progress');
   bindForm($('#f'), async (fd) => {
     const r = await api('login', { username: fd.get('username'), password: fd.get('password'), remember: !!fd.get('remember') });
     store.set('token', r.token, !!fd.get('remember'));
@@ -560,6 +571,7 @@ async function renderReconsent() {
 // ═════════════ 主流程 ═════════════
 
 async function start() {
+  if (location.hash === '#catalog') return renderCatalog('progress');
   if (!store.get('token')) return renderLogin();
   loading();
   try { state.me = await api('me'); }
@@ -835,8 +847,9 @@ async function renderMine() {
         ・要刪除你的帳號，或刪除孩子的全部資料：請聯絡團長，團長會在後台處理並告訴你結果。<br>
         ・資料有錯誤需要更正：也請聯絡團長。</p>
     </section>
-    <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
+    <section class="card"><button class="btn green" id="toCatalog">📖 進程與技能章標準查詢</button><button class="btn ghost" id="lo">登出</button></section>`;
   $('#lo').onclick = logout;
+  $('#toCatalog').onclick = () => renderCatalog('progress');
   bindForm($('#fn'), async (fd, out) => {
     await api('updateNickname', { nickname: fd.get('nickname') });
     state.me.nickname = fd.get('nickname').trim();
@@ -868,6 +881,104 @@ async function renderMine() {
       });
     };
   });
+}
+
+// ═════════════ 進程與技能章標準查詢（不用登入，不含任何孩子的資料） ═════════════
+
+let catalogData = null;
+const CATALOG_TABS = [['progress', '🗺️', '進程'], ['badges', '🎖️', '技能章'], ['search', '🔍', '搜尋'], ['exit', '🏠', '離開']];
+
+/** 純列表（沒有完成狀態），依大項分組 */
+function catalogItemsHtml(u) {
+  const sections = [];
+  u.items.forEach((it) => {
+    let s = sections.find((x) => x.name === it.section);
+    if (!s) sections.push((s = { name: it.section, items: [] }));
+    s.items.push(it);
+  });
+  const showSec = sections.length > 1 || (sections[0] && sections[0].name !== '－');
+  let n = 0;
+  return sections.map((s) => `${showSec ? `<div class="section-title">${esc(s.name)}</div>` : ''}
+    <ul class="items">${s.items.map((it) => `<li class="todo"><span class="mark">${++n}</span><span>${esc(it.text)}</span></li>`).join('')}</ul>`).join('');
+}
+
+async function renderCatalog(view, opt = {}) {
+  document.getElementById('title').textContent = '📖 進程與技能章查詢';
+  setHeader('');
+  if (view === 'exit') {
+    if (location.hash === '#catalog') history.replaceState(null, '', location.pathname + location.search);
+    return state.me ? route() : start();
+  }
+  setTabs(CATALOG_TABS, view, (v) => renderCatalog(v));
+  scrollTop();
+  if (!catalogData) {
+    loading('正在打開任務手冊……');
+    try { catalogData = await api('catalog'); }
+    catch (e) {
+      if (e.code === 'SESSION_EXPIRED') return;
+      $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
+      $('#re').onclick = () => renderCatalog(view);
+      return;
+    }
+  }
+  const units = catalogData.units;
+  const levels = LEVELS.map((l) => units.find((u) => u.category === '進程' && u.unit === l)).filter(Boolean);
+  const badges = units.filter((u) => u.category === '技能章');
+  const openUnit = (u) => openSheet(`<div class="center"><div style="font-size:64px">${iconOf(u)}</div><h2 style="text-align:center">${esc(unitLabel(u))}${u.category === '技能章' ? '技能章' : ''}</h2>
+    ${u.group ? `<span class="pill st-進行中">${esc(u.group)}</span>` : ''}</div>
+    ${u.desc ? `<p>${esc(u.desc)}</p>` : ''}${u.rule ? `<p class="small"><b>晉級條件：</b>${esc(u.rule)}</p>` : ''}
+    <h3>${u.category === '進程' ? '任務清單' : '合格標準'}（${u.items.length} 項）</h3>${catalogItemsHtml(u)}`);
+
+  if (view === 'progress') {
+    const sel = levels.find((u) => u.unit === opt.sel) || levels[0];
+    $app.innerHTML = `
+      <section class="card"><h2>🗺️ 幼童軍進程</h2>
+        <p class="muted small">幼童軍從羚羊級開始，依序挑戰狼級、鹿級、豹級。點一個關卡看看要完成哪些任務！</p>
+        <div class="map">${levels.map((u) => `<div class="stage open ${u === sel ? 'sel' : ''}" data-unit="${esc(u.unit)}" role="button" tabindex="0">
+          <div class="node"><div class="in">${LEVEL_ICON[u.unit]}</div></div>
+          <div><div class="lv">${esc(u.unit)}級</div><div class="cnt">${u.items.length} 項任務</div></div></div>`).join('')}</div>
+        <div class="finish">🏁 完成豹級，就是全能小狼！</div></section>
+      ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(sel.unit)}級任務（${sel.items.length} 項）</h2>
+        ${sel.desc ? `<p>${esc(sel.desc)}</p>` : ''}${sel.rule ? `<div class="msg info small"><b>晉級條件：</b>${esc(sel.rule)}</div>` : ''}
+        ${catalogItemsHtml(sel)}</section>` : ''}
+      <p class="muted small center">內容依據中華民國童軍總會〈幼童軍活動進程〉。</p>`;
+    $$('.stage').forEach((s) => { s.onclick = () => { renderCatalog('progress', { sel: s.dataset.unit }); const p = $('#lvPanel'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
+  } else if (view === 'badges') {
+    const groups = ['服務類', '健身類', '技巧類'];
+    const other = badges.filter((u) => !groups.includes(u.group));
+    $app.innerHTML = `
+      <section class="card center"><h2 style="justify-content:center">🎖️ 幼童軍技能章</h2>
+        <p class="muted">共 ${badges.length} 個技能章，點徽章看合格標準。</p></section>
+      ${groups.concat(other.length ? ['其他'] : []).map((g) => {
+        const list = g === '其他' ? other : badges.filter((u) => u.group === g);
+        return `<section class="card"><h2>${g === '服務類' ? '🤝' : g === '健身類' ? '🏃' : g === '技巧類' ? '🎨' : '🎖️'} ${esc(g)} <span class="s">${list.length} 個</span></h2>
+          <div class="badges">${list.map((u) => `<button class="badge open" data-unit="${esc(u.unit)}"><div class="disc"><div class="in">${iconOf(u)}</div></div>
+            <div class="nm">${esc(u.unit)}</div><div class="pc">${u.items.length} 項標準</div></button>`).join('')}</div></section>`;
+      }).join('')}
+      <p class="muted small center">內容依據中華民國童軍總會〈幼童軍技能章合格標準〉。</p>`;
+    $$('.badge').forEach((b) => { b.onclick = () => openUnit(badges.find((u) => u.unit === b.dataset.unit)); });
+  } else if (view === 'search') {
+    $app.innerHTML = `<section class="card"><h2>🔍 搜尋任務</h2>
+      <input type="search" id="q" placeholder="例如：結繩、游泳、國旗" value="${esc(opt.q || '')}" autocomplete="off">
+      <div class="chips">${['結繩', '國旗', '運動', '急救', '閱讀', '服務'].map((w) => `<button class="chip" data-w="${w}">${w}</button>`).join('')}</div>
+      <div id="hits"></div></section>`;
+    const draw = () => {
+      const q = $('#q').value.trim();
+      if (!q) { $('#hits').innerHTML = '<p class="muted">輸入關鍵字，找出所有相關的進程任務與技能章標準。</p>'; return; }
+      const mark = (t) => esc(t).split(esc(q)).join(`<mark>${esc(q)}</mark>`);
+      const hits = [];
+      units.forEach((u) => {
+        const nameHit = u.unit.includes(q);
+        u.items.forEach((it) => { if (nameHit || it.text.includes(q) || it.section.includes(q)) hits.push({ u, it }); });
+      });
+      $('#hits').innerHTML = `<p class="muted small">找到 ${hits.length} 項</p>` + hits.map(({ u, it }) => `<div class="hit" data-k="${esc(u.category + '|' + u.unit)}">
+        <span class="pill ${u.category === '進程' ? 'st-已完成待頒發' : 'st-進行中'}">${iconOf(u)} ${esc(unitLabel(u))}${it.section !== '－' ? '・' + mark(it.section) : ''}</span><div>${mark(it.text)}</div></div>`).join('');
+      $$('.hit').forEach((h) => { h.onclick = () => openUnit(units.find((u) => u.category + '|' + u.unit === h.dataset.k)); });
+    };
+    $('#q').oninput = draw;
+    $$('[data-w]').forEach((b) => { b.onclick = () => { $('#q').value = b.dataset.w; draw(); }; });
+    draw();
+  }
 }
 
 // ═════════════ 列印簽核單（A4，家長與後台共用） ═════════════
