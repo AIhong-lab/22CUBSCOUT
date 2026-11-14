@@ -38,7 +38,7 @@ function seed(env) {
 (async () => {
   const env = loadGas();
   seed(env);
-  const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8').replace("const GAS_URL = '';", `const GAS_URL = '${GAS}';`);
+  const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8').replace(/^const GAS_URL = '[^']*';/m, `const GAS_URL = '${GAS}';`);
   const browser = await chromium.launch();
   const context = await browser.newContext({ ...devices['iPhone 13'] });
   const page = await context.newPage();
