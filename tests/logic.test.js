@@ -578,6 +578,9 @@ test('年度出席率：（出席 + 額外）÷ 總數，請假不減少分母',
   assert.equal(r2.text, '83%', '15/18，請假 2 次不影響分母');
   assert.equal(L.attendanceRate(recs, period, 3).count, 5, '加上額外出席次數');
   assert.equal(L.attendanceRate(recs, { ...period, total: 0 }, 0).text, '', '總數未設定不顯示');
+  const over = L.attendanceRate(recs, { ...period, total: 3 }, 5);
+  assert.equal(over.count, 7);
+  assert.equal(over.text, '100%', '最多顯示 100%');
 });
 
 test('依日期找年度出席設定', () => {

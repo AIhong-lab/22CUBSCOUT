@@ -1,0 +1,422 @@
+/**
+ * Web App 進入點與前端 API（階段 2：帳號、綁定、告知同意、家長查詢）
+ * 後台 API 於階段 4A 加入。
+ *
+ * 前端以 fetch POST、Content-Type: text/plain、body 為 JSON 呼叫：
+ *   { action: '動作', token: '登入憑證（需要登入的動作才帶）', ...參數 }
+ * 回應：{ ok: true, ... } 或 { ok: false, code: 錯誤代碼, message: 給使用者看的訊息 }
+ */
+
+function doGet() {
+  return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。');
+}
+
+function doPost(e) {
+  var params = (e && e.parameter) || {};
+  // 網址帶 key 參數 → LINE webhook
+  if (params.key !== undefined) {
+    try { handleWebhook_(e); } catch (err) { console.error(err); }
+    return ContentService.createTextOutput('OK');
+  }
+  var out;
+  try {
+    var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (!req || typeof req !== 'object' || Array.isArray(req)) throw new ApiError(ERR.BAD_INPUT, '請求格式不正確。');
+    out = dispatch_(req);
+  } catch (err) {
+    if (err instanceof ApiError) out = { ok: false, code: err.code, message: err.message };
+    else {
+      console.error(err && err.stack ? err.stack : err); // 只寫進 GAS 執行紀錄，不回給前端
+      out = { ok: false, code: ERR.SERVER_ERROR, message: '系統暫時無法處理，請稍後再試。' };
+    }
+  }
+  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+}
+
+/** 不需登入的動作 */
+var PUBLIC_ACTIONS = {
+  ping: function () { return { serverTime: new Date().toISOString() }; },
+  consentText: apiConsentText_,
+  checkCode: apiCheckCode_,
+  register: apiRegister_,
+  login: apiLogin_,
+  resetPassword: apiResetPassword_
+};
+
+/** 需要登入的動作（第二個參數為 requireAccount_ 的結果） */
+var AUTHED_ACTIONS = {
+  me: apiMe_,
+  logout: apiLogout_,
+  cubDetail: apiCubDetail_,
+  bind: apiBind_,
+  reconsent: apiReconsent_,
+  unbind: apiUnbind_,
+  changePassword: apiChangePassword_,
+  updateNickname: apiUpdateNickname_
+};
+
+function dispatch_(req) {
+  DB_CACHE_ = {};
+  var a = String(req.action || '');
+  var fn;
+  if (Object.prototype.hasOwnProperty.call(PUBLIC_ACTIONS, a)) fn = PUBLIC_ACTIONS[a];
+  else if (Object.prototype.hasOwnProperty.call(AUTHED_ACTIONS, a)) {
+    var who = requireAccount_(req.token);
+    return Object.assign({ ok: true }, AUTHED_ACTIONS[a](req, who));
+  } else throw new ApiError(ERR.BAD_INPUT, '不支援的操作。');
+  return Object.assign({ ok: true }, fn(req));
+}
+
+// ───────────── 告知同意 ─────────────
+
+function apiConsentText_() {
+  var c = latestConsent_();
+  if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
+  return { version: c.version, content: c.content, effective: c.effective };
+}
+
+// ───────────── 綁定碼／邀請碼 ─────────────
+
+/**
+ * 驗證代碼（綁定碼或邀請碼）。失敗一律回同一句訊息並記錄失敗。
+ * @param accountId 已登入時的帳號ID；未登入為 null（套用全站上限）
+ * @return {{kind: 'parent'|'admin', cub?, invite?}}
+ */
+function verifyCode_(code, childName, accountId, settings) {
+  var target = accountId || '未登入';
+  if (accountId) assertNotLocked_('綁定', accountId, settings);
+  else if (Logic.isGlobalBindLocked(loadFailures_(), Date.now(), settings)) {
+    throw new ApiError(ERR.LOCKED, '目前暫停註冊，請稍後再試，或聯絡團長。');
+  }
+  var c = Logic.normalizeCode(code);
+  var result = null;
+  if (c && c.length <= 20) {
+    var cub = loadCubs_().filter(function (x) { return x.code === c; })[0];
+    if (cub && Logic.checkBindCode(cub, childName).ok) result = { kind: 'parent', cub: cub };
+    if (!result) {
+      var inv = loadInvites_().filter(function (x) { return x.code === c; })[0];
+      if (inv && Logic.checkInvite(inv, Date.now()).ok) result = { kind: 'admin', invite: inv };
+    }
+  }
+  if (!result) {
+    recordFailure_('綁定', target);
+    throw new ApiError(ERR.CODE_INVALID, Logic.CODE_ERROR_MESSAGE);
+  }
+  return result;
+}
+
+/** 註冊第一步：只驗證代碼（不建立任何資料） */
+function apiCheckCode_(req) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var r = verifyCode_(req.code, req.childName, null, settings);
+    var out = { kind: r.kind };
+    if (r.kind === 'parent') {
+      var c = latestConsent_();
+      out.consent = c ? { version: c.version, content: c.content } : null;
+    }
+    return out;
+  });
+}
+
+/** 綁定一位小狼（寫入綁定紀錄、綁定碼次數 −1）；已綁定過則只更新同意版本 */
+function bindCub_(accountId, cub, consentVersion) {
+  var now = new Date();
+  var existing = loadBindings_().filter(function (b) { return b.accountId === accountId && b.cubId === cub.cubId; })[0];
+  if (existing) {
+    var row = existing._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
+    row[3] = now; row[4] = consentVersion;
+    updateRows_(SHEET.BINDINGS, [{ row: existing._row, values: row }]);
+    return false;
+  }
+  appendRows_(SHEET.BINDINGS, [[accountId, cub.cubId, now, now, consentVersion]]);
+  var cubRow = cub._raw.slice(0, HEADERS[SHEET.CUBS].length);
+  cubRow[6] = Math.max(0, cub.codeUsesLeft - 1);
+  updateRows_(SHEET.CUBS, [{ row: cub._row, values: cubRow }]);
+  return true;
+}
+
+/** 使用邀請碼成為管理員 */
+function redeemInvite_(accountId, invite) {
+  var now = new Date();
+  var admins = loadAdmins_();
+  if (!admins.some(function (a) { return a.accountId === accountId; })) {
+    appendRows_(SHEET.ADMINS, [[accountId, invite.name, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
+  }
+  var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
+  row[6] = '已使用'; row[7] = accountId; row[8] = now;
+  updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
+  // 推播通知建立邀請碼的團長：階段 5 實作
+}
+
+function requireConsentVersion_(agreedVersion) {
+  var c = latestConsent_();
+  if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
+  if (Number(agreedVersion) !== c.version) throw new ApiError(ERR.NEED_CONSENT, '請先閱讀並勾選同意個資告知內容。');
+  return c.version;
+}
+
+// ───────────── 註冊、登入、密碼 ─────────────
+
+function apiRegister_(req) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var r = verifyCode_(req.code, req.childName, null, settings);
+    checkAccountInput_(req.username, req.password, req.nickname, settings);
+    // 家長：沒有同意就不建立任何資料
+    var version = r.kind === 'parent' ? requireConsentVersion_(req.consentVersion) : null;
+    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+
+    var accounts = loadAccounts_();
+    var accountId = newId_('U', accounts.map(function (a) { return a.accountId; }));
+    var salt = randomHex_(32);
+    var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+    var now = new Date();
+    appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), Logic.clean(req.nickname), hash, salt, '啟用', now, now, '', '']]);
+    if (r.kind === 'parent') {
+      bindCub_(accountId, r.cub, version);
+      logOp_(accountId, '註冊並綁定', r.cub.cubId, '', '帳號 ' + Logic.clean(req.username));
+    } else {
+      redeemInvite_(accountId, r.invite);
+      logOp_(accountId, '以邀請碼註冊管理員', Logic.clean(req.username), '', r.invite.role);
+    }
+    var s = createSession_(accountId, !!req.remember, settings);
+    return { token: s.token, expiresAt: s.expiresAt };
+  });
+}
+
+function apiLogin_(req) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+    assertNotLocked_('登入', name, settings);
+    var acc = findAccountByName_(name);
+    // 帳號不存在也照樣做一次雜湊，讓回應時間一致
+    var ok = Logic.verifyPassword(String(req.password || ''), acc ? acc.salt : 'x', acc ? acc.passwordHash : HASH_ITERATIONS + '$x', hmacHex_);
+    if (!acc || !ok || acc.status !== '啟用') {
+      recordFailure_('登入', name);
+      throw new ApiError(ERR.BAD_LOGIN, '帳號或密碼錯誤。');
+    }
+    var row = acc._raw.slice(0, HEADERS[SHEET.ACCOUNTS].length);
+    row[7] = new Date();
+    updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
+    purgeSessions_(null);
+    var s = createSession_(acc.accountId, !!req.remember, settings);
+    return { token: s.token, expiresAt: s.expiresAt };
+  });
+}
+
+/** 忘記密碼：帳號名稱＋團長給的臨時碼＋新密碼 */
+function apiResetPassword_(req) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+    assertNotLocked_('登入', name, settings);
+    var acc = findAccountByName_(name);
+    var code = Logic.normalizeCode(req.tempCode);
+    if (!acc || !Logic.isTempCodeValid(acc, Date.now()) || sha256Hex_(code) !== acc.tempCodeHash || acc.status !== '啟用') {
+      recordFailure_('登入', name);
+      throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
+    }
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
+    setPassword_(acc, String(req.newPassword)); // 同時清除臨時碼（用過即失效）
+    purgeSessions_(acc.accountId);
+    logOp_(acc.accountId, '以臨時碼重設密碼', acc.username, '', '');
+    return {};
+  });
+}
+
+function apiLogout_(req, who) {
+  return withLock_(function () {
+    var row = readRows_(SHEET.SESSIONS).filter(function (r) { return Logic.clean(r[0]) === who.sessionHash; })[0];
+    if (row) deleteRows_(SHEET.SESSIONS, [row._row]);
+    return {};
+  });
+}
+
+function apiChangePassword_(req, who) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var acc = findAccountById_(who.account.accountId);
+    if (!Logic.verifyPassword(String(req.oldPassword || ''), acc.salt, acc.passwordHash, hmacHex_)) {
+      throw new ApiError(ERR.BAD_INPUT, '目前的密碼不正確。');
+    }
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
+    setPassword_(acc, String(req.newPassword));
+    purgeSessions_(acc.accountId, who.sessionHash); // 其他裝置登出，目前這台保留
+    logOp_(acc.accountId, '修改密碼', acc.username, '', '');
+    return {};
+  });
+}
+
+function apiUpdateNickname_(req, who) {
+  var v = Logic.validateNickname(req.nickname);
+  if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+  return withLock_(function () {
+    var acc = findAccountById_(who.account.accountId);
+    var row = acc._raw.slice(0, HEADERS[SHEET.ACCOUNTS].length);
+    var before = row[2];
+    row[2] = Logic.clean(req.nickname);
+    updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
+    logOp_(acc.accountId, '修改稱呼', acc.username, before, row[2]);
+    return {};
+  });
+}
+
+// ───────────── 已登入：綁定與同意 ─────────────
+
+/** 已登入帳號新增綁定（第二個孩子），或輸入邀請碼成為管理員 */
+function apiBind_(req, who) {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var r = verifyCode_(req.code, req.childName, who.account.accountId, settings);
+    if (r.kind === 'parent') {
+      var version = requireConsentVersion_(req.consentVersion);
+      bindCub_(who.account.accountId, r.cub, version);
+      logOp_(who.account.accountId, '新增綁定', r.cub.cubId, '', '');
+      return { kind: 'parent', cubId: r.cub.cubId };
+    }
+    redeemInvite_(who.account.accountId, r.invite);
+    logOp_(who.account.accountId, '以邀請碼成為管理員', who.account.username, '', r.invite.role);
+    return { kind: 'admin' };
+  });
+}
+
+/** 告知內容改版後重新同意：更新此帳號所有綁定的同意時間與版本 */
+function apiReconsent_(req, who) {
+  return withLock_(function () {
+    var version = requireConsentVersion_(req.consentVersion);
+    var now = new Date();
+    var ups = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; }).map(function (b) {
+      var row = b._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
+      row[3] = now; row[4] = version;
+      return { row: b._row, values: row };
+    });
+    updateRows_(SHEET.BINDINGS, ups);
+    return { updated: ups.length };
+  });
+}
+
+/** 家長自行解除綁定：只刪除自己這個帳號與該小狼的綁定 */
+function apiUnbind_(req, who) {
+  return withLock_(function () {
+    var rows = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === Logic.clean(req.cubId); });
+    if (!rows.length) throw new ApiError(ERR.NOT_FOUND, '找不到這筆綁定。');
+    deleteRows_(SHEET.BINDINGS, rows.map(function (b) { return b._row; }));
+    logOp_(who.account.accountId, '家長解除綁定', Logic.clean(req.cubId), '', '');
+    return {};
+  });
+}
+
+// ───────────── 查詢 ─────────────
+
+/** 登入者的基本資訊、身分、綁定的小狼 */
+function apiMe_(req, who) {
+  var latest = Logic.latestConsentVersion(loadConsents_());
+  var cubs = loadCubs_();
+  var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+  var list = [];
+  mine.forEach(function (b) {
+    var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0];
+    if (!c) return;
+    list.push({ cubId: c.cubId, name: c.name, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
+  });
+  return {
+    username: who.account.username,
+    nickname: who.account.nickname,
+    role: who.admin ? who.admin.role : null,
+    adminName: who.admin ? who.admin.name : null,
+    lineLinked: !!(who.admin && who.admin.lineUserId),
+    cubs: list,
+    latestConsentVersion: latest,
+    needsConsent: mine.some(function (b) { return Logic.needsReconsent(b, latest); })
+  };
+}
+
+/**
+ * 一位已綁定小狼的完整資料（家長畫面用）。回傳欄位採白名單。
+ * 不回傳「是否達標／可晉級」，已完成待頒發一律顯示固定文字。
+ */
+function apiCubDetail_(req, who) {
+  var cubId = Logic.clean(req.cubId);
+  var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
+  // 沒有綁定與小狼不存在回同一句話，不透露小狼是否存在
+  if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
+  if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) {
+    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+  }
+  var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+  if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
+  return buildCubView_(cub, today_());
+}
+
+/** 組出家長畫面要的資料（也供後台列印簽核單共用） */
+function buildCubView_(cub, today) {
+  var settings = loadSettings_().values;
+  var items = loadItems_().items;
+  var units = loadUnits_();
+  var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date); });
+  var mById = {};
+  meetings.forEach(function (m) { mById[m.meetingId] = m; });
+  var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
+  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId }; });
+
+  var progress = Logic.computeCubProgress({
+    cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
+    intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
+    autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
+    levelAttendCount: settings['晉級所需出席次數']
+  });
+
+  // 簽核人帳號ID → 管理員姓名
+  var names = {};
+  loadAdmins_().forEach(function (a) { names[a.accountId] = a.name; });
+
+  var unitViews = progress.units.map(function (u) {
+    var info = units[u.category + '|' + u.unit] || {};
+    return {
+      category: u.category, unit: u.unit, group: info.group || '', desc: info.desc || '', rule: info.rule || '',
+      order: info.order || 9999, status: u.status, statusText: Logic.statusTextForParents(u.status),
+      done: u.done, total: u.total, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
+      attendRequired: u.attendRequired || 0, attendSinceLast: u.attendSinceLast || 0,
+      items: u.items.map(function (i) {
+        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto };
+      })
+    };
+  }).sort(function (a, b) { return a.order - b.order; });
+
+  // 出席：只顯示已到日期的集會；未來的列為即將到來；沒點名的顯示「－」（不記缺席）
+  var statusOf = {};
+  att.forEach(function (a) { statusOf[a.meetingId] = a.status; });
+  var inTeam = meetings.filter(function (m) { return m.date >= cub.joinDate && (!cub.leftDate || m.date <= cub.leftDate); });
+  var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  var upcoming = inTeam.filter(function (m) { return m.date > today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 5);
+  var period = Logic.periodOf(loadPeriods_(), today);
+  var rate = null;
+  if (period) {
+    var extra = loadExtra_().filter(function (x) { return x.period === period.name && x.cubId === cub.cubId; })
+      .reduce(function (s, x) { return s + x.count; }, 0);
+    rate = Logic.attendanceRate(attRecords, period, extra);
+    rate.period = period.name;
+  }
+
+  return {
+    cub: {
+      cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate,
+      tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || ''
+    },
+    nextChallenge: (function (n) {
+      // 白名單：不帶簽核人帳號ID 等內部欄位
+      return { type: n.type, message: n.message, level: n.level || '', items: n.items.map(function (i) { return { section: i.section, text: i.text }; }) };
+    })(Logic.nextChallenge(progress)),
+    units: unitViews,
+    attendance: {
+      meetings: past.map(function (m) { return { date: m.date, name: m.name, status: statusOf[m.meetingId] || '－' }; }),
+      upcoming: upcoming.map(function (m) { return { date: m.date, name: m.name }; }),
+      counts: Logic.attendanceCounts(attRecords),
+      rate: rate
+    }
+  };
+}

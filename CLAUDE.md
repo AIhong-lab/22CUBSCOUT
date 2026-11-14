@@ -10,10 +10,11 @@
   - ① GitHub Pages（text/plain POST）呼叫 GAS：電腦與手機瀏覽器皆成功，單次約 0.9～2.3 秒（含冷啟動）。
   - ② 註冊、登入、記住我、憑證過期回登入畫面、錯誤訊息一致：皆通過。HMAC-SHA256 雜湊 1000 次約 380 毫秒 → 正式版預定 2000 次。
   - ③ LINE webhook 打到 GAS（302 轉址不影響）並以 reply API 回覆：通過。Verify 按鈕結果不作為判斷依據。
-  - `gas/Verify0B.gs`、`web/0b/` 為暫時性驗證程式，階段 2／3 由正式程式取代後刪除；Script Properties 的 `WEBHOOK_KEY`、`LINE_MESSAGING_TOKEN` 沿用。
+  - 0B 驗證程式已於階段 2 刪除；Script Properties 的 `WEBHOOK_KEY`、`LINE_MESSAGING_TOKEN` 沿用。
 - 階段 1 完成：`gas/Logic.js`（純邏輯，GAS 以全域 `Logic` 使用、Node 以 require 使用）＋ `tests/logic.test.js`（46 項，`npm test` 全過；另以故意改壞程式確認測試抓得到錯）。
 - 點名系統已寫入 SPEC 7.13（排入階段 4A）。出席與進程的連動已寫入 Logic.js：羚羊 `P-羚羊-7` 依出席自動完成（計算而得、不寫入完成紀錄）、狼鹿豹需「晉級所需出席次數」。出席率已寫入 Logic.js（`attendanceRate`、`periodOf`）。
-- 下一步：階段 2（GAS 後端基礎）。
+- 階段 2 完成（程式與模擬測試）：`setup()`、帳號註冊／登入／憑證、綁定與告知同意、家長查詢 API。72 項測試全過。待團長部署並執行 `setup()` 確認試算表。
+- 下一步：階段 3（查詢端前端 `web/index.html`）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -81,6 +82,27 @@
 - 序號取「同前綴目前用過的最大序號 + 1」，含已停用項目，永不重用。
 - 章名或大項改名時，項目ID **不變**（ID 只是代號，不跟著名稱走）。
 
+## 後端檔案（gas/）與建置
+| 檔案 | 內容 |
+|---|---|
+| `Logic.js` | 純邏輯（GAS 與 Node 共用） |
+| `Config.js` | 分頁名稱、標題列、純文字欄、錯誤代碼、`ApiError` |
+| `SeedData.js` | **自動產生**：種子項目、晉級條件、預設告知文字（來源 data/items.csv、SPEC 第十二節、PRIVACY.md 標記區塊） |
+| `Db.js` | 試算表批次讀寫、`withLock_`、型別轉換（日期一律轉 'YYYY-MM-DD'）、各分頁讀成物件 |
+| `Auth.js` | 亂數（取自 UUID）、HMAC 雜湊、失敗紀錄與鎖定、登入憑證 |
+| `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
+| `Webhook.js` | LINE webhook（密鑰與格式檢查） |
+| `Setup.js` | `setup()`、`cleanup0B()` |
+
+- `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。
+- 測試：`tests/logic.test.js`（純邏輯）、`tests/backend.test.js`（用 `tests/gas-mock.js` 模擬試算表跑完整 API 流程，也測合併檔）。
+- 新增 API：家長端加在 `AUTHED_ACTIONS`／`PUBLIC_ACTIONS`；後台 API（4A）必須先用 `Logic.can(role, 動作)` 檢查。回傳欄位一律白名單組裝，不可直接回傳試算表列。
+- 簽核人、建立人等欄位存「帳號ID」，顯示時再換成管理員姓名；帳號ID 不可送到家長端。
+
+## 常見維護工作
+- **總會更新進程／技能章內容**（SPEC 附錄第 14 點）：從 https://www.scout.org.tw/autopage/70/466 取得新版原文 → 與試算表「項目總表」逐條比對 → 列出修改／新增／停用清單給團長確認 → 經後台或試算表執行（ID 不變、只停用不刪除）→ 同步更新 data/items.csv 與 SPEC 第十二節 → `npm run build`。
+- **改告知同意文字**：試算表「告知同意內容」新增一列（版本 +1）；家長下次登入會被要求重新同意。PRIVACY.md 只影響新架設的系統。
+
 ## 部署指令（細節見 docs/SETUP.md）
 ```bash
 cd gas
@@ -91,7 +113,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 ```
 
 ## Script Properties（只存在 GAS，不進 repo）
-預定鍵（階段 0B／2 定案）：`LINE_MESSAGING_TOKEN`、`WEBHOOK_KEY`、`BACKUP_FOLDER_ID`、`SPREADSHEET_ID`、`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
+`SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）；之後階段：`BACKUP_FOLDER_ID`、`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
 
 ## 維護守則（SPEC 第十四節，必須遵守）
 - 改任何功能前先讀 CLAUDE.md、docs/SPEC.md 與相關檔案；改完同步更新 SPEC.md、CLAUDE.md 與 CHANGELOG.md。

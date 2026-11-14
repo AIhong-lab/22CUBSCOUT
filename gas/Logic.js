@@ -832,7 +832,8 @@ var Logic = (function () {
     var ex = Number(extra) > 0 ? Math.floor(Number(extra)) : 0;
     var total = Number(period.total) > 0 ? Math.floor(Number(period.total)) : 0;
     var count = c.attended + ex;
-    var rate = total ? count / total : null;
+    // 出席 + 額外出席可能超過總數；最多顯示 100%（SPEC 附錄第 13 點）
+    var rate = total ? Math.min(1, count / total) : null;
     return {
       attended: c.attended, leave: c.leave, extra: ex, total: total, count: count, rate: rate,
       text: rate === null ? '' : Math.round(rate * 100) + '%'
