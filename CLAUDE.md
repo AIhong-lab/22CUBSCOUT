@@ -5,16 +5,18 @@
 
 ## 目前進度
 - 階段 0A 完成：規格、專案結構、種子資料。
-- 下一步：階段 0B 技術驗證（LIFF ID token、GAS 驗證與過期重登、webhook 回覆）。
+- 2026-11-14 改為帳號密碼登入（見 SPEC 附錄第 7 點），已改寫 SPEC 本文。
+- 下一步：階段 0B 技術驗證（GitHub Pages 呼叫 GAS、註冊登入與憑證過期、webhook 回覆）。
 - 尚未有任何程式碼部署到 Google 或 LINE。
 
 ## 架構
-- 前端：`web/index.html`，原生 HTML/CSS/JS + LIFF SDK，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
+- 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
 - 後端：Google Apps Script Web App（`gas/`，用 clasp 管理），資料庫是 Google 試算表。
-- LINE：同一 Provider 下的 LINE Login channel（掛 LIFF，開啟加入好友選項）＋ Messaging API channel（官方帳號）。
+- 登入：家長、服務員、團長都用帳號密碼。註冊需綁定碼（家長，另需輸入小孩姓名核對）或邀請碼（管理員）。密碼加鹽多次雜湊；登入後發隨機憑證，前端存瀏覽器，後端只存雜湊。忘記密碼由團長產生臨時碼。
+- LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。
 - 前端呼叫 GAS：`fetch` POST，`Content-Type: text/plain`，body 放 JSON（避免 CORS 預檢）。
-- `doPost` 同時接前端 API 與 LINE webhook：網址帶 `key=` 參數且符合 Script Properties 的 webhook 密鑰 → 當 webhook；否則當前端 API（body 需帶 ID token）。
-- ID token 過期時後端回明確錯誤代碼（預定 `TOKEN_EXPIRED`），前端自動 `liff.login()` 取新 token 重送一次。
+- `doPost` 同時接前端 API 與 LINE webhook：網址帶 `key=` 參數且符合 Script Properties 的 webhook 密鑰 → 當 webhook；否則當前端 API（body 帶登入憑證）。
+- 憑證過期或無效時後端回明確錯誤代碼（預定 `SESSION_EXPIRED`），前端清除憑證回登入畫面，登入後回到原畫面。
 
 ## 目錄結構
 | 路徑 | 用途 |
@@ -36,15 +38,17 @@
 | 分頁 | 欄位 |
 |---|---|
 | 小狼名單 | 小狼ID、姓名、小隊、入團日、目前級別、綁定碼、綁定碼剩餘次數、狀態（在團/離團/已匿名）、離團日 |
-| 綁定紀錄 | LINE userId、LINE 顯示名稱、小狼ID、綁定時間、同意時間、同意版本 |
-| 管理員 | LINE userId、姓名、LINE 顯示名稱、角色（團長/服務員）、加入時間、指定人 |
-| 管理員邀請 | 邀請碼、角色、姓名、建立人、建立時間、到期時間、狀態（未使用/已使用/已作廢）、使用者 userId、使用時間 |
+| 帳號 | 帳號ID、帳號名稱、稱呼、密碼雜湊、密碼鹽、狀態（啟用/停用）、建立時間、最後登入時間、臨時碼雜湊、臨時碼到期時間 |
+| 登入工作階段 | 憑證雜湊、帳號ID、建立時間、到期時間 |
+| 綁定紀錄 | 帳號ID、小狼ID、綁定時間、同意時間、同意版本 |
+| 管理員 | 帳號ID、姓名、角色（團長/服務員）、加入時間、指定人、LINE userId、LINE 連結時間 |
+| 管理員邀請 | 邀請碼、角色、姓名、建立人、建立時間、到期時間、狀態（未使用/已使用/已作廢）、使用者帳號ID、使用時間 |
 | 項目總表 | 項目ID、類別（進程/技能章）、級別或章名、大項、項目內容、排序、啟用（是/否） |
 | 級別與章說明 | 名稱、類別、分類（服務類/健身類/技巧類，進程留空）、說明、晉級條件、排序 |
 | 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間 |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |
-| 綁定失敗紀錄 | LINE userId、時間 |
+| 失敗紀錄 | 類型（登入/綁定）、對象（帳號名稱、帳號ID 或「未登入」）、時間 |
 | 告知同意內容 | 版本、內容、生效日 |
 | 設定 | 鍵、值、說明 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
@@ -73,7 +77,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試
 ```
 
 ## Script Properties（只存在 GAS，不進 repo）
-預定鍵（階段 0B／2 定案）：`LINE_LOGIN_CHANNEL_ID`、`LINE_MESSAGING_TOKEN`、`WEBHOOK_KEY`、`BACKUP_FOLDER_ID`、`SPREADSHEET_ID`、`LIFF_URL`。
+預定鍵（階段 0B／2 定案）：`LINE_MESSAGING_TOKEN`、`WEBHOOK_KEY`、`BACKUP_FOLDER_ID`、`SPREADSHEET_ID`、`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
 
 ## 維護守則（SPEC 第十四節，必須遵守）
 - 改任何功能前先讀 CLAUDE.md、docs/SPEC.md 與相關檔案；改完同步更新 SPEC.md、CLAUDE.md 與 CHANGELOG.md。
@@ -87,10 +91,12 @@ npm test               # 在 repo 根目錄跑純邏輯測試
 - 規格沒寫到的地方，先問，不要自行擴充功能。第二期功能（ROADMAP.md）在團長說要做之前不要實作。
 
 ## 絕對不能做的事
-- 前端（repo 是公開的）出現 LIFF ID 與 GAS 網址以外的任何設定值或金鑰。
-- 相信前端傳來的 userId；一律以後端驗證 ID token 取得的 userId 為準。
+- 前端（repo 是公開的）出現 GAS 網址以外的任何設定值或金鑰。
+- 相信前端傳來的帳號ID 或身分；一律以後端用登入憑證查出的帳號為準。
+- 存明碼密碼，或讓密碼、臨時碼、登入憑證出現在日誌、錯誤訊息、API 回應中。
+- 登入錯誤訊息透露帳號是否存在。
 - 後台 API 只靠前端隱藏按鈕做權限控制。
-- API 回傳其他人的 userId，或回傳白名單以外的欄位。
+- API 回傳其他人的帳號ID、LINE userId，或回傳白名單以外的欄位。
 - 錯誤訊息透露某位小狼是否存在、或輸入的是綁定碼還是邀請碼。
 - 逐格讀寫試算表（一律 getValues/setValues 批次），或寫入時不加 LockService。
 - 收集生日、身分證字號、電話、地址、照片。
