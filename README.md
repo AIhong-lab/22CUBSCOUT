@@ -15,4 +15,4 @@
 - 變更紀錄：[docs/CHANGELOG.md](docs/CHANGELOG.md)
 
 ## 目前進度
-階段 2 完成（後端基礎）。下一步是階段 3（家長查詢網頁）。
+階段 3 完成（家長查詢網頁 https://aihong-lab.github.io/22CUBSCOUT/ ）。下一步是階段 4A（核心後台）。

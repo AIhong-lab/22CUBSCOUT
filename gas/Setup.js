@@ -44,7 +44,8 @@ function dataRowCount_(name) {
 function ensureSheet_(name, report) {
   var ss = ss_();
   var sh = ss.getSheetByName(name);
-  if (!sh) { sh = ss.insertSheet(name); report.created.push(name); }
+  // 新分頁依序排在最後面（insertSheet 不給位置時會插在最前面）
+  if (!sh) { sh = ss.insertSheet(name, ss.getSheets().length); report.created.push(name); }
   var header = HEADERS[name];
   if (sh.getLastRow() === 0) {
     sh.getRange(1, 1, 1, header.length).setValues([header]);

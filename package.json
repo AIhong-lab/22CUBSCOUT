@@ -5,7 +5,8 @@
   "description": "幼童軍進程與技能章查詢系統：純邏輯測試",
   "scripts": {
     "test": "node tools/build.js && node --test tests/*.test.js",
-    "build": "node tools/build.js"
+    "build": "node tools/build.js",
+    "test:web": "node tools/build.js && node tests/web/e2e.js"
   },
   "engines": {
     "node": ">=18"

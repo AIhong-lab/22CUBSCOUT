@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>22團幼童軍進程</title>
+<!--
+  幼童軍進程與技能章查詢系統：前端（查詢端與後台同一頁，依身分顯示）
+  ⚠️ 本 repo 為公開：這個檔案只能放 GAS 網址，其他任何設定值、金鑰都不可以出現在這裡。
+-->
+<style>
+  :root {
+    --blue: #1f4e9c; --blue-dark: #163a75; --blue-soft: #e8eefa;
+    --yellow: #ffc928; --yellow-soft: #fff6d6;
+    --green: #1d7a3a; --green-soft: #e3f3e8;
+    --gray: #6b7385; --gray-soft: #eef0f4;
+    --red: #b3261e; --red-soft: #fce8e6;
+    --bg: #f5f7fb; --card: #ffffff; --text: #1d2433; --line: #dfe4ee;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 18px/1.65 system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  button, input, select, textarea { font: inherit; }
+  a { color: var(--blue); }
+
+  header.top { background: var(--blue); color: #fff; padding: 14px 16px 12px; border-bottom: 6px solid var(--yellow); position: sticky; top: 0; z-index: 10; }
+  header.top .row { display: flex; align-items: center; gap: 10px; max-width: 720px; margin: 0 auto; }
+  header.top h1 { font-size: 20px; margin: 0; flex: 1; letter-spacing: .5px; }
+  header.top select { max-width: 55%; font-size: 17px; padding: 8px 10px; border-radius: 10px; border: 0; background: #fff; color: var(--text); }
+  .mode-switch { background: var(--yellow); color: var(--text); border: 0; border-radius: 999px; padding: 6px 12px; font-size: 15px; cursor: pointer; }
+
+  main { max-width: 720px; margin: 0 auto; padding: 16px 16px 110px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(20, 40, 80, .08); }
+  .card h2 { margin: 0 0 10px; font-size: 21px; color: var(--blue); display: flex; align-items: center; gap: 8px; }
+  .card h3 { margin: 0; font-size: 19px; }
+  .muted { color: var(--gray); font-size: 16px; }
+  .small { font-size: 15px; }
+  .center { text-align: center; }
+
+  label { display: block; margin: 14px 0 6px; font-weight: 600; }
+  input[type=text], input[type=password], input[type=date], select.full, textarea {
+    width: 100%; font-size: 18px; padding: 13px 14px; border: 2px solid #cfd6e4; border-radius: 12px; background: #fff;
+  }
+  input:focus, select:focus, textarea:focus { outline: 3px solid var(--yellow); border-color: var(--blue); }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 600; margin: 14px 0; }
+  .check input { width: 24px; height: 24px; margin-top: 3px; flex: none; }
+  .btn { display: inline-block; width: 100%; min-height: 52px; font-size: 19px; font-weight: 700; padding: 12px 18px; border: 0; border-radius: 14px; background: var(--blue); color: #fff; cursor: pointer; margin-top: 14px; }
+  .btn:active { transform: translateY(1px); }
+  .btn.alt { background: var(--yellow); color: var(--text); }
+  .btn.ghost { background: transparent; color: var(--blue); border: 2px solid var(--blue); }
+  .btn.danger { background: var(--red-soft); color: var(--red); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .linkbtn { background: none; border: 0; color: var(--blue); text-decoration: underline; padding: 8px 0; font-size: 17px; cursor: pointer; }
+  .msg { padding: 12px 14px; border-radius: 12px; margin-top: 12px; white-space: pre-wrap; }
+  .msg.err { background: var(--red-soft); color: var(--red); }
+  .msg.ok { background: var(--green-soft); color: var(--green); }
+  .msg.info { background: var(--blue-soft); color: var(--blue-dark); }
+
+  .hero { text-align: center; padding: 26px 18px; }
+  .hero .badge { font-size: 54px; line-height: 1; }
+  .hero h2 { justify-content: center; font-size: 24px; margin-top: 10px; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; }
+  .kv dt { color: var(--gray); }
+  .kv dd { margin: 0; font-weight: 600; }
+
+  .pill { display: inline-block; padding: 2px 12px; border-radius: 999px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .st-已頒發 { background: var(--green-soft); color: var(--green); }
+  .st-已完成待頒發 { background: var(--blue-soft); color: var(--blue-dark); }
+  .st-進行中 { background: var(--yellow-soft); color: #7a5a00; }
+  .st-未開始 { background: var(--gray-soft); color: var(--gray); }
+
+  .unit { border: 2px solid var(--line); border-radius: 14px; margin-top: 12px; overflow: hidden; }
+  .unit > summary { list-style: none; cursor: pointer; padding: 14px; display: block; }
+  .unit > summary::-webkit-details-marker { display: none; }
+  .unit .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .unit .name { font-size: 20px; font-weight: 800; }
+  .unit .body { padding: 0 14px 14px; border-top: 1px dashed var(--line); }
+  .unit .more { color: var(--blue); font-size: 15px; margin-top: 6px; }
+  .unit[open] .more { display: none; }
+  .bar { height: 12px; background: var(--gray-soft); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), #3f7ad6); border-radius: 999px; }
+  .bar.full > span { background: linear-gradient(90deg, #f0b400, var(--yellow)); }
+
+  ul.items { list-style: none; padding: 0; margin: 8px 0 0; }
+  ul.items li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--gray-soft); }
+  ul.items li:last-child { border-bottom: 0; }
+  ul.items .mark { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; font-weight: 800; margin-top: 1px; }
+  ul.items .done .mark { background: var(--green); color: #fff; }
+  ul.items .todo .mark { background: var(--gray-soft); color: var(--gray); }
+  ul.items .when { display: block; color: var(--gray); font-size: 15px; }
+  .section-title { margin: 14px 0 0; font-weight: 800; color: var(--blue-dark); }
+
+  .next li { font-weight: 600; }
+  .congrats { font-size: 20px; font-weight: 800; color: var(--blue-dark); margin: 0 0 6px; white-space: pre-wrap; }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat { background: var(--blue-soft); border-radius: 14px; padding: 12px; text-align: center; }
+  .stat b { display: block; font-size: 28px; color: var(--blue-dark); line-height: 1.2; }
+  .stat.big { grid-column: 1 / -1; background: var(--yellow-soft); }
+  .stat.big b { font-size: 36px; color: #7a5a00; }
+  table.list { width: 100%; border-collapse: collapse; }
+  table.list td { padding: 10px 4px; border-bottom: 1px solid var(--gray-soft); vertical-align: top; }
+  .att-出席 { color: var(--green); font-weight: 800; }
+  .att-請假 { color: #7a5a00; font-weight: 800; }
+
+  details.fold > summary { cursor: pointer; font-weight: 800; color: var(--blue); padding: 6px 0; }
+  .consent { background: var(--bg); border-radius: 12px; padding: 14px; max-height: 50vh; overflow: auto; white-space: pre-wrap; font-size: 16px; border: 1px solid var(--line); }
+
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 10; }
+  nav.tabs .inner { display: flex; width: 100%; max-width: 720px; }
+  nav.tabs button { flex: 1; border: 0; background: none; padding: 8px 2px 10px; font-size: 14px; color: var(--gray); cursor: pointer; }
+  nav.tabs button .ic { display: block; font-size: 24px; line-height: 1.2; }
+  nav.tabs button.on { color: var(--blue); font-weight: 800; }
+  nav.tabs button.on .ic { transform: scale(1.12); }
+
+  .loading { text-align: center; padding: 50px 0; color: var(--gray); }
+  .spinner { width: 42px; height: 42px; border: 5px solid var(--blue-soft); border-top-color: var(--blue); border-radius: 50%; margin: 0 auto 12px; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ───── 列印簽核單（A4） ───── */
+  #print { display: none; }
+  @media print {
+    @page { size: A4; margin: 14mm; }
+    body.printing > *:not(#print) { display: none !important; }
+    body.printing #print { display: block; color: #000; font-size: 12pt; line-height: 1.5; }
+    #print h1 { font-size: 18pt; margin: 0 0 4pt; }
+    #print .meta { margin-bottom: 10pt; }
+    #print table { width: 100%; border-collapse: collapse; }
+    #print th, #print td { border: 1px solid #000; padding: 5pt 6pt; vertical-align: top; }
+    #print th { background: #eee; }
+    #print tr { page-break-inside: avoid; }
+    #print .foot { margin-top: 14pt; font-size: 10pt; }
+  }
+</style>
+</head>
+<body>
+<header class="top"><div class="row"><h1 id="title">🐺 22團幼童軍進程</h1><span id="headerRight"></span></div></header>
+<main id="app"><div class="loading"><div class="spinner"></div>載入中……</div></main>
+<nav class="tabs" id="tabs" hidden><div class="inner"></div></nav>
+<div id="print"></div>
+
+<script>
+'use strict';
+// ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
+const GAS_URL = '';
+
+// ───────────── 小工具 ─────────────
+const $app = document.getElementById('app');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDate = (d) => (d ? d.replace(/^(\d{4})-(\d{2})-(\d{2})$/, (m, y, mo, da) => `${y}/${+mo}/${+da}`) : '');
+const STATUS_ORDER = { '進行中': 0, '已完成待頒發': 1, '已頒發': 2, '未開始': 3 };
+const LEVEL_ICON = { '羚羊': '🦌', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
+
+// 瀏覽器儲存：無痕模式等可能失敗，失敗時不讓頁面壞掉
+const store = {
+  get(k) { try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v, persist) { try { (persist ? localStorage : sessionStorage).setItem(k, v); (persist ? sessionStorage : localStorage).removeItem(k); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) {} },
+};
+
+const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent', returnTo: null };
+
+class ApiErr extends Error { constructor(code, message) { super(message); this.code = code; } }
+
+/** 呼叫後端：text/plain + JSON，避免 CORS 預檢 */
+async function api(action, data) {
+  if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
+  let res;
+  try {
+    res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {})),
+    });
+  } catch (e) {
+    throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。');
+  }
+  let json;
+  try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
+  if (!json.ok) {
+    if (json.code === 'SESSION_EXPIRED') { onExpired(); throw new ApiErr('SESSION_EXPIRED', json.message); }
+    throw new ApiErr(json.code, json.message);
+  }
+  return json;
+}
+
+/** 登入過期：清除憑證、回登入畫面，登入後回到原本的畫面 */
+function onExpired() {
+  store.del('token');
+  state.returnTo = { view: state.view, cubId: state.cubId, mode: state.mode };
+  state.me = null;
+  renderLogin({ notice: '登入已過期，請重新登入。登入後會回到剛才的畫面。' });
+}
+
+function loading(text) { $app.innerHTML = `<div class="loading"><div class="spinner"></div>${esc(text || '載入中……')}</div>`; }
+function msg(el, text, kind) { el.innerHTML = text ? `<div class="msg ${kind || 'err'}">${esc(text)}</div>` : ''; }
+function setTabs(show) { document.getElementById('tabs').hidden = !show; }
+function setHeader(html) { document.getElementById('headerRight').innerHTML = html || ''; }
+function bindForm(form, handler) {
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const btn = form.querySelector('button[type=submit]');
+    const out = form.querySelector('.out');
+    if (btn) btn.disabled = true;
+    if (out) msg(out, '');
+    try { await handler(new FormData(form), out); }
+    catch (e) { if (e.code !== 'SESSION_EXPIRED' && out) msg(out, e.message); }
+    finally { if (btn && document.body.contains(btn)) btn.disabled = false; }
+  });
+}
+function scrollTop() { window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' }); }
+
+// ───────────── 登入、註冊、忘記密碼 ─────────────
+
+function renderLogin(opt = {}) {
+  setTabs(false); setHeader(''); scrollTop();
+  $app.innerHTML = `
+    <section class="card hero"><div class="badge">⚜️</div><h2>歡迎來到 22 團幼童軍</h2>
+      <p class="muted">查詢孩子的進程、技能章與出席紀錄</p></section>
+    <section class="card">
+      <h2>登入</h2>
+      ${opt.notice ? `<div class="msg info">${esc(opt.notice)}</div>` : ''}
+      <form id="f">
+        <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+        <label for="p">密碼</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+        <label class="check"><input type="checkbox" name="remember" checked> 記住我（這台裝置下次不用再登入）</label>
+        <button class="btn" type="submit">登入</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="forgot">忘記密碼？</button>
+    </section>
+    <section class="card">
+      <h2>第一次使用？</h2>
+      <p class="muted">請準備團長給你的「綁定碼」，以及孩子的姓名。</p>
+      <button class="btn alt" id="reg">我有代碼，要註冊</button>
+    </section>`;
+  document.getElementById('forgot').onclick = renderForgot;
+  document.getElementById('reg').onclick = () => renderRegister1();
+  bindForm(document.getElementById('f'), async (fd) => {
+    const r = await api('login', { username: fd.get('username'), password: fd.get('password'), remember: !!fd.get('remember') });
+    store.set('token', r.token, !!fd.get('remember'));
+    await start();
+  });
+}
+
+function renderForgot() {
+  setTabs(false); scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>忘記密碼</h2>
+      <div class="msg info">請先聯絡團長，團長會用 LINE 傳一組「臨時碼」給你。臨時碼有使用期限，而且只能用一次。</div>
+      <form id="f">
+        <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" required>
+        <label for="t">臨時碼</label><input id="t" name="tempCode" type="text" autocapitalize="characters" autocomplete="off" required>
+        <label for="p">新密碼（至少 8 個字）</label><input id="p" name="newPassword" type="password" autocomplete="new-password" required>
+        <label for="p2">再輸入一次新密碼</label><input id="p2" name="newPassword2" type="password" autocomplete="new-password" required>
+        <button class="btn" type="submit">設定新密碼</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="back">← 回登入</button>
+    </section>`;
+  document.getElementById('back').onclick = () => renderLogin();
+  bindForm(document.getElementById('f'), async (fd, out) => {
+    if (fd.get('newPassword') !== fd.get('newPassword2')) return msg(out, '兩次輸入的新密碼不一樣。');
+    await api('resetPassword', { username: fd.get('username'), tempCode: fd.get('tempCode'), newPassword: fd.get('newPassword') });
+    renderLogin({ notice: '新密碼設定好了，請用新密碼登入。' });
+  });
+}
+
+/** 註冊第 1 步：代碼與小孩姓名 */
+function renderRegister1(prev = {}) {
+  setTabs(false); scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>註冊 1／3：輸入代碼</h2>
+      <form id="f">
+        <label for="c">綁定碼（團長給的英文數字）</label>
+        <input id="c" name="code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(prev.code || '')}" required>
+        <label for="n">孩子的姓名</label>
+        <input id="n" name="childName" type="text" autocomplete="off" value="${esc(prev.childName || '')}">
+        <p class="muted small">服務員用「邀請碼」註冊時，孩子姓名請留空。</p>
+        <button class="btn" type="submit">下一步</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="back">← 回登入</button>
+    </section>`;
+  document.getElementById('back').onclick = () => renderLogin();
+  bindForm(document.getElementById('f'), async (fd) => {
+    const code = fd.get('code'), childName = fd.get('childName');
+    const r = await api('checkCode', { code, childName });
+    renderRegister2({ code, childName, kind: r.kind, consent: r.consent });
+  });
+}
+
+/** 註冊第 2 步：帳號密碼 */
+function renderRegister2(ctx) {
+  scrollTop();
+  const isAdmin = ctx.kind === 'admin';
+  $app.innerHTML = `
+    <section class="card">
+      <h2>註冊 2／${isAdmin ? 2 : 3}：設定帳號</h2>
+      ${isAdmin ? '<div class="msg ok">這是管理員邀請碼，註冊後就能進入後台。</div>' : `<div class="msg ok">代碼正確！孩子：${esc(ctx.childName)}</div>`}
+      <form id="f">
+        <label for="u">帳號（4～20 個英文字母、數字或底線，例如 wang_mom）</label>
+        <input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(ctx.username || '')}" required>
+        <label for="p">密碼（至少 8 個字）</label><input id="p" name="password" type="password" autocomplete="new-password" required>
+        <label for="p2">再輸入一次密碼</label><input id="p2" name="password2" type="password" autocomplete="new-password" required>
+        <label for="nk">${isAdmin ? '你的稱呼' : '你的稱呼（孩子姓名＋稱呼，例如「王小明媽媽」）'}</label>
+        <input id="nk" name="nickname" type="text" value="${esc(ctx.nickname || '')}" placeholder="${isAdmin ? '例如：陳服務員' : esc('例如：' + ctx.childName + '媽媽')}" required>
+        <label class="check"><input type="checkbox" name="remember" checked> 記住我（這台裝置下次不用再登入）</label>
+        <button class="btn" type="submit">${isAdmin ? '完成註冊' : '下一步：閱讀個資說明'}</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="back">← 上一步</button>
+    </section>`;
+  document.getElementById('back').onclick = () => renderRegister1(ctx);
+  bindForm(document.getElementById('f'), async (fd, out) => {
+    if (fd.get('password') !== fd.get('password2')) return msg(out, '兩次輸入的密碼不一樣。');
+    if (!/^[A-Za-z0-9_]{4,20}$/.test(fd.get('username').trim())) return msg(out, '帳號需為 4～20 個英文字母、數字或底線。');
+    if (fd.get('password').length < 8) return msg(out, '密碼至少 8 個字。');
+    const next = Object.assign({}, ctx, { username: fd.get('username').trim(), password: fd.get('password'), nickname: fd.get('nickname').trim(), remember: !!fd.get('remember') });
+    if (isAdmin) return doRegister(next, out);
+    renderRegister3(next);
+  });
+}
+
+/** 註冊第 3 步：個資告知同意（不同意就不建立任何資料） */
+function renderRegister3(ctx) {
+  scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>註冊 3／3：個資說明</h2>
+      <p class="muted">請閱讀以下說明，同意後才會建立帳號。</p>
+      <div class="consent">${esc(ctx.consent ? ctx.consent.content : '')}</div>
+      <form id="f">
+        <label class="check"><input type="checkbox" name="agree" required> 我已閱讀並同意上述說明</label>
+        <button class="btn" type="submit">同意並完成註冊</button>
+        <div class="out"></div>
+      </form>
+      <button class="btn ghost" id="no">不同意（不建立帳號）</button>
+      <button class="linkbtn" id="back">← 上一步</button>
+    </section>`;
+  document.getElementById('back').onclick = () => renderRegister2(ctx);
+  document.getElementById('no').onclick = () => renderLogin({ notice: '沒有建立帳號，也沒有留下任何資料。有問題歡迎聯絡團長。' });
+  bindForm(document.getElementById('f'), async (fd, out) => doRegister(ctx, out));
+}
+
+async function doRegister(ctx, out) {
+  try {
+    const r = await api('register', {
+      code: ctx.code, childName: ctx.childName, username: ctx.username, password: ctx.password,
+      nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined,
+    });
+    store.set('token', r.token, ctx.remember);
+    await start();
+  } catch (e) {
+    // 帳號名稱重複等問題要回第 2 步修改
+    if (e.code === 'NAME_TAKEN' || e.code === 'BAD_INPUT') { renderRegister2(Object.assign({}, ctx, { error: e.message })); msg(document.querySelector('.out'), e.message); return; }
+    if (e.code === 'CODE_INVALID' || e.code === 'LOCKED') { renderRegister1(ctx); msg(document.querySelector('.out'), e.message); return; }
+    throw e;
+  }
+}
+
+// ───────────── 重新同意（告知內容改版） ─────────────
+
+async function renderReconsent() {
+  setTabs(false); loading();
+  const c = await api('consentText');
+  scrollTop();
+  $app.innerHTML = `
+    <section class="card">
+      <h2>個資說明已更新</h2>
+      <p class="muted">團長更新了個資說明（第 ${esc(c.version)} 版），請閱讀並同意後繼續使用。</p>
+      <div class="consent">${esc(c.content)}</div>
+      <form id="f">
+        <label class="check"><input type="checkbox" name="agree" required> 我已閱讀並同意上述說明</label>
+        <button class="btn" type="submit">同意並繼續</button>
+        <div class="out"></div>
+      </form>
+      <p class="muted small">如果不同意，請登出並聯絡團長，團長可以協助刪除你的帳號。</p>
+      <button class="btn ghost" id="lo">登出</button>
+    </section>`;
+  document.getElementById('lo').onclick = logout;
+  bindForm(document.getElementById('f'), async () => { await api('reconsent', { consentVersion: c.version }); await start(); });
+}
+
+// ───────────── 主流程 ─────────────
+
+async function start() {
+  if (!store.get('token')) return renderLogin();
+  loading();
+  try {
+    state.me = await api('me');
+  } catch (e) {
+    if (e.code === 'SESSION_EXPIRED') return;
+    $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" onclick="start()">再試一次</button></section>`;
+    return;
+  }
+  if (state.me.needsConsent) return renderReconsent();
+  const back = state.returnTo; state.returnTo = null;
+  // 管理員預設進後台；有綁定小狼的可切換到家長畫面
+  state.mode = back ? back.mode : (state.me.role ? 'admin' : 'parent');
+  if (back && back.cubId && state.me.cubs.some((c) => c.cubId === back.cubId)) state.cubId = back.cubId;
+  if (!state.cubId || !state.me.cubs.some((c) => c.cubId === state.cubId)) state.cubId = (state.me.cubs[0] || {}).cubId || null;
+  state.view = back ? back.view : 'home';
+  route();
+}
+
+function route() {
+  if (state.mode === 'admin') return renderAdmin();
+  return renderParent();
+}
+
+async function logout() {
+  try { await api('logout'); } catch (e) {}
+  store.del('token');
+  state.me = null; state.detail = null; state.cubId = null;
+  renderLogin({ notice: '已登出。' });
+}
+
+// ───────────── 後台（階段 4A 開放） ─────────────
+
+function renderAdmin() {
+  setTabs(false); scrollTop();
+  setHeader(`<button class="mode-switch" id="toParent">切換到家長畫面</button>`);
+  document.getElementById('toParent').onclick = () => { state.mode = 'parent'; route(); };
+  $app.innerHTML = `
+    <section class="card">
+      <h2>🛠️ 團長後台</h2>
+      <p>你好，<b>${esc(state.me.adminName || state.me.nickname)}</b>（${esc(state.me.role)}）</p>
+      <div class="msg info">後台功能（小狼名單與綁定碼、點名、簽核、頒章、帳號管理）將在下一階段開放。</div>
+    </section>
+    <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
+  document.getElementById('lo').onclick = logout;
+}
+
+// ───────────── 家長畫面 ─────────────
+
+const TABS = [
+  ['home', '🏠', '首頁'], ['progress', '🐺', '進程'], ['badges', '🎖️', '技能章'], ['attendance', '📅', '出席'], ['mine', '👤', '我的'],
+];
+
+function renderTabs() {
+  const nav = document.querySelector('#tabs .inner');
+  nav.innerHTML = TABS.map(([k, ic, t]) => `<button data-v="${k}" class="${state.view === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
+  nav.querySelectorAll('button').forEach((b) => { b.onclick = () => { state.view = b.dataset.v; renderParent(true); }; });
+  setTabs(true);
+}
+
+function renderParentHeader() {
+  const me = state.me;
+  let html = '';
+  if (me.cubs.length > 1) {
+    html += `<select id="cubSel" aria-label="切換孩子">${me.cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === state.cubId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>`;
+  }
+  if (me.role) html += ` <button class="mode-switch" id="toAdmin">後台</button>`;
+  setHeader(html);
+  const sel = document.getElementById('cubSel');
+  if (sel) sel.onchange = () => { state.cubId = sel.value; state.detail = null; renderParent(); };
+  const ta = document.getElementById('toAdmin');
+  if (ta) ta.onclick = () => { state.mode = 'admin'; route(); };
+}
+
+/** keep=true 時沿用已載入的資料（切換分頁不重新呼叫後端） */
+async function renderParent(keep) {
+  renderParentHeader();
+  renderTabs();
+  scrollTop();
+  if (state.view === 'mine') return renderMine();
+  if (!state.cubId) return renderNoCub();
+  if (!keep || !state.detail || state.detail.cub.cubId !== state.cubId) {
+    loading();
+    try { state.detail = await api('cubDetail', { cubId: state.cubId }); }
+    catch (e) {
+      if (e.code === 'SESSION_EXPIRED') return;
+      if (e.code === 'NEED_CONSENT') return renderReconsent();
+      $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
+      document.getElementById('re').onclick = () => renderParent();
+      return;
+    }
+  }
+  ({ home: viewHome, progress: viewProgress, badges: viewBadges, attendance: viewAttendance })[state.view](state.detail);
+}
+
+function renderNoCub() {
+  $app.innerHTML = `
+    <section class="card hero"><div class="badge">🧒</div><h2>還沒有綁定孩子</h2>
+      <p class="muted">到「我的」頁面輸入團長給的綁定碼，就能看到孩子的紀錄。</p>
+      <button class="btn alt" id="go">前往新增綁定</button></section>`;
+  document.getElementById('go').onclick = () => { state.view = 'mine'; renderParent(true); };
+}
+
+// 共用：一個級別／技能章的卡片
+function unitCard(u, opt = {}) {
+  const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
+  const sections = [];
+  u.items.forEach((it) => {
+    let s = sections.find((x) => x.name === it.section);
+    if (!s) sections.push((s = { name: it.section, items: [] }));
+    s.items.push(it);
+  });
+  const showSections = sections.length > 1 || (sections[0] && sections[0].name !== '－');
+  const itemsHtml = sections.map((s) => `
+    ${showSections ? `<div class="section-title">${esc(s.name)}</div>` : ''}
+    <ul class="items">${s.items.map((it) => `
+      <li class="${it.done ? 'done' : 'todo'}"><span class="mark">${it.done ? '✓' : ''}</span>
+        <span>${esc(it.text)}<span class="when">${it.done ? `已完成 ${fmtDate(it.date)}${it.auto ? '（依出席紀錄）' : ''}` : '待挑戰'}</span></span></li>`).join('')}
+    </ul>`).join('');
+  const sub = u.status === '已頒發'
+    ? `<div class="muted">🏅 頒發日期 ${fmtDate(u.awardDate)}${u.awardOccasion ? `・${esc(u.awardOccasion)}` : ''}</div>`
+    : `<div class="muted">完成 ${u.done}／${u.total} 項</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`;
+  const pending = u.status === '已完成待頒發' ? `<div class="msg info small">${esc(u.statusText)}</div>` : '';
+  const attend = u.attendRequired ? `<div class="muted small">晉級出席要求：上一級頒發後已出席 ${u.attendSinceLast}／${u.attendRequired} 次</div>` : '';
+  return `
+    <details class="unit" ${opt.open ? 'open' : ''}>
+      <summary>
+        <div class="head"><span class="name">${opt.icon ? opt.icon + ' ' : ''}${esc(u.unit)}${u.category === '進程' ? '級' : ''}</span>
+          <span class="pill st-${esc(u.status)}">${esc(u.status === '已完成待頒發' ? '等待頒發' : u.status)}</span></div>
+        ${sub}${pending}
+        ${opt.showDesc !== false && u.desc ? `<div class="small" style="margin-top:6px">${esc(u.desc)}</div>` : ''}
+        <div class="more">點我看詳細項目 ▾</div>
+      </summary>
+      <div class="body">
+        ${opt.showRule && u.rule ? `<p class="small"><b>晉級條件：</b>${esc(u.rule)}</p>` : ''}
+        ${attend}
+        ${itemsHtml}
+        ${opt.print ? `<button class="btn ghost print-btn" data-unit="${esc(u.unit)}">🖨️ 列印這一級的簽核單</button>` : ''}
+      </div>
+    </details>`;
+}
+
+function viewHome(d) {
+  const c = d.cub, n = d.nextChallenge;
+  const challenging = d.units.filter((u) => u.status === '進行中' || u.status === '已完成待頒發')
+    .sort((a, b) => (a.category === b.category ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status] : a.category === '進程' ? -1 : 1));
+  const got = d.units.filter((u) => u.status === '已頒發').sort((a, b) => (a.awardDate < b.awardDate ? 1 : -1));
+  const notStarted = d.units.filter((u) => u.category === '技能章' && u.status === '未開始');
+  let next;
+  if (n.type === 'allDone') next = `<p class="congrats">🎉 ${esc(n.message)}</p>`;
+  else if (n.type === 'pending') next = `<p class="congrats">${esc(n.message)}</p>`;
+  else next = `${n.message ? `<p class="congrats">🎉 ${esc(n.message)}</p>` : ''}
+    <p class="muted">${esc(n.level)}級還沒完成的項目：</p>
+    <ul class="items next">${n.items.map((i) => `<li class="todo"><span class="mark">☆</span><span>${esc(i.text)}</span></li>`).join('')}</ul>`;
+  $app.innerHTML = `
+    <section class="card">
+      <h2>${esc(c.name)}</h2>
+      <dl class="kv">
+        <dt>小隊</dt><dd>${esc(c.squad || '－')}</dd>
+        <dt>入團日</dt><dd>${fmtDate(c.joinDate)}</dd>
+        <dt>在團時間</dt><dd>${esc(c.tenure)}</dd>
+        <dt>目前級別</dt><dd>${c.currentLevel ? esc(c.currentLevel) + '級' : '準備挑戰羚羊級'}</dd>
+      </dl>
+    </section>
+    <section class="card"><h2>⭐ 下一步挑戰</h2>${next}</section>
+    <section class="card"><h2>💪 正在挑戰的</h2>
+      ${challenging.length ? challenging.map((u) => unitCard(u)).join('') : '<p class="muted">目前沒有進行中的項目。</p>'}</section>
+    <section class="card"><h2>🏅 已經拿到的</h2>
+      ${got.length ? got.map((u) => unitCard(u)).join('') : '<p class="muted">還沒有拿到章，一起加油！</p>'}</section>
+    ${notStarted.length ? `<section class="card"><details class="fold"><summary>🌱 還沒開始的技能章（${notStarted.length} 個）</summary>
+      ${notStarted.map((u) => unitCard(u)).join('')}</details></section>` : ''}`;
+}
+
+function viewProgress(d) {
+  const levels = ['羚羊', '狼', '鹿', '豹'];
+  const units = levels.map((l) => d.units.find((u) => u.category === '進程' && u.unit === l)).filter(Boolean);
+  $app.innerHTML = `<section class="card"><h2>🐺 進程</h2><p class="muted small">羚羊 → 狼 → 鹿 → 豹，點卡片看每一項。</p>
+    ${units.map((u) => unitCard(u, { icon: LEVEL_ICON[u.unit], showRule: true, print: true })).join('')}</section>`;
+  $app.querySelectorAll('.print-btn').forEach((b) => { b.onclick = (ev) => { ev.preventDefault(); printSheet(d, b.dataset.unit); }; });
+}
+
+function viewBadges(d) {
+  const groups = ['服務類', '健身類', '技巧類'];
+  const badges = d.units.filter((u) => u.category === '技能章');
+  const other = badges.filter((u) => !groups.includes(u.group));
+  $app.innerHTML = groups.concat(other.length ? ['其他'] : []).map((g) => {
+    const list = g === '其他' ? other : badges.filter((u) => u.group === g);
+    const got = list.filter((u) => u.status === '已頒發').length;
+    return `<section class="card"><h2>🎖️ ${esc(g)}</h2><p class="muted small">已拿到 ${got}／${list.length} 個</p>
+      ${list.map((u) => unitCard(u)).join('')}</section>`;
+  }).join('');
+}
+
+function viewAttendance(d) {
+  const a = d.attendance, r = a.rate;
+  $app.innerHTML = `
+    <section class="card"><h2>📅 出席統計</h2>
+      <div class="stats">
+        ${r ? `<div class="stat big"><b>${esc(r.text)}</b>${esc(r.period)} 出席率</div>
+          <div class="stat"><b>${r.attended}</b>本年度出席</div><div class="stat"><b>${r.leave}</b>本年度請假</div>
+          ${r.extra ? `<div class="stat"><b>${r.extra}</b>額外出席</div><div class="stat"><b>${r.total}</b>本年度總次數</div>` : ''}`
+        : `<div class="stat"><b>${a.counts.attended}</b>出席</div><div class="stat"><b>${a.counts.leave}</b>請假</div>`}
+      </div>
+      ${r ? `<p class="muted small">出席率 =（出席 ＋ 額外出席）÷ 本年度總次數。請假不算出席。</p>` : ''}
+    </section>
+    ${a.upcoming.length ? `<section class="card"><h2>🔜 即將到來</h2><table class="list">${a.upcoming.map((m) => `<tr><td>${fmtDate(m.date)}</td><td>${esc(m.name)}</td></tr>`).join('')}</table></section>` : ''}
+    <section class="card"><h2>📋 出席紀錄</h2>
+      ${a.meetings.length ? `<table class="list">${a.meetings.map((m) => `<tr><td>${fmtDate(m.date)}</td><td>${esc(m.name)}</td><td class="att-${esc(m.status)}">${esc(m.status)}</td></tr>`).join('')}</table>
+        <p class="muted small">「－」表示當天沒有點名紀錄。</p>` : '<p class="muted">還沒有集會紀錄。</p>'}
+    </section>`;
+}
+
+// ───────────── 我的資料 ─────────────
+
+async function renderMine() {
+  const me = state.me;
+  loading();
+  let consent = null;
+  try { consent = await api('consentText'); } catch (e) { if (e.code === 'SESSION_EXPIRED') return; }
+  $app.innerHTML = `
+    <section class="card"><h2>👤 我的帳號</h2>
+      <dl class="kv"><dt>帳號</dt><dd>${esc(me.username)}</dd><dt>稱呼</dt><dd>${esc(me.nickname)}</dd>
+      ${me.role ? `<dt>身分</dt><dd>${esc(me.role)}</dd>` : ''}</dl>
+      <details class="fold" style="margin-top:10px"><summary>修改稱呼</summary>
+        <form id="fn"><input name="nickname" type="text" value="${esc(me.nickname)}" required><button class="btn" type="submit">儲存</button><div class="out"></div></form></details>
+      <details class="fold"><summary>修改密碼</summary>
+        <form id="fp"><label>目前的密碼</label><input name="oldPassword" type="password" autocomplete="current-password" required>
+          <label>新密碼（至少 8 個字）</label><input name="newPassword" type="password" autocomplete="new-password" required>
+          <label>再輸入一次新密碼</label><input name="newPassword2" type="password" autocomplete="new-password" required>
+          <button class="btn" type="submit">修改密碼</button><div class="out"></div></form></details>
+    </section>
+    <section class="card"><h2>🧒 綁定的孩子</h2>
+      ${me.cubs.length ? me.cubs.map((c) => `
+        <div class="unit" style="padding:14px">
+          <div class="head"><span class="name">${esc(c.name)}</span></div>
+          <div class="muted small">同意個資說明：第 ${esc(c.consentVersion)} 版${c.consentAt ? '，' + esc(new Date(c.consentAt).toLocaleString('zh-TW')) : ''}</div>
+          <button class="btn danger unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>
+        </div>`).join('') : '<p class="muted">目前沒有綁定任何孩子。</p>'}
+      <details class="fold" style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary>＋ 新增綁定（另一個孩子）</summary>
+        <form id="fb">
+          <label>綁定碼</label><input name="code" type="text" autocapitalize="characters" autocomplete="off" required>
+          <label>孩子的姓名</label><input name="childName" type="text" autocomplete="off">
+          <p class="muted small">服務員邀請碼也在這裡輸入（孩子姓名留空）。</p>
+          ${consent ? `<label class="check"><input type="checkbox" name="agree"> 我已閱讀並同意下方的個資說明（第 ${esc(consent.version)} 版）</label>` : ''}
+          <button class="btn" type="submit">新增綁定</button><div class="out"></div>
+        </form></details>
+    </section>
+    <section class="card"><h2>📄 個資說明</h2>
+      <details class="fold"><summary>看完整內容（第 ${esc(consent ? consent.version : '')} 版）</summary><div class="consent">${esc(consent ? consent.content : '')}</div></details>
+      <h3 style="margin-top:12px">如何要求刪除資料？</h3>
+      <p class="small">・不想再查看：按上方「解除綁定」，孩子的紀錄不受影響。<br>
+        ・要刪除你的帳號，或刪除孩子的全部資料：請聯絡團長，團長會在後台處理並告訴你結果。<br>
+        ・資料有錯誤需要更正：也請聯絡團長。</p>
+    </section>
+    <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
+  document.getElementById('lo').onclick = logout;
+  bindForm(document.getElementById('fn'), async (fd, out) => {
+    await api('updateNickname', { nickname: fd.get('nickname') });
+    state.me.nickname = fd.get('nickname').trim();
+    msg(out, '已儲存。', 'ok');
+  });
+  bindForm(document.getElementById('fp'), async (fd, out) => {
+    if (fd.get('newPassword') !== fd.get('newPassword2')) return msg(out, '兩次輸入的新密碼不一樣。');
+    await api('changePassword', { oldPassword: fd.get('oldPassword'), newPassword: fd.get('newPassword') });
+    document.getElementById('fp').reset();
+    msg(out, '密碼已修改。其他裝置需要重新登入。', 'ok');
+  });
+  bindForm(document.getElementById('fb'), async (fd, out) => {
+    const childName = (fd.get('childName') || '').trim();
+    if (childName && consent && !fd.get('agree')) return msg(out, '請先勾選同意個資說明。');
+    const r = await api('bind', { code: fd.get('code'), childName, consentVersion: consent ? consent.version : undefined });
+    state.me = await api('me');
+    if (r.kind === 'parent') { state.cubId = r.cubId; state.detail = null; state.view = 'home'; return renderParent(); }
+    state.mode = 'admin'; route();
+  });
+  $app.querySelectorAll('.unbind').forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm(`確定要解除與「${b.dataset.name}」的綁定嗎？\n解除後你就看不到這個孩子的資料（孩子的紀錄不受影響），之後需要團長的綁定碼才能再綁定。`)) return;
+      b.disabled = true;
+      try {
+        await api('unbind', { cubId: b.dataset.id });
+        state.me = await api('me');
+        if (state.cubId === b.dataset.id) { state.cubId = (state.me.cubs[0] || {}).cubId || null; state.detail = null; }
+        renderParent(true);
+      } catch (e) { b.disabled = false; if (e.code !== 'SESSION_EXPIRED') alert(e.message); }
+    };
+  });
+}
+
+// ───────────── 列印簽核單（A4） ─────────────
+
+function printSheet(d, unitName) {
+  const u = d.units.find((x) => x.category === '進程' && x.unit === unitName);
+  if (!u) return;
+  const rows = u.items.map((it, i) => `<tr><td style="width:7%">${i + 1}</td><td style="width:13%">${esc(it.section === '－' ? '' : it.section)}</td>
+    <td>${esc(it.text)}</td><td style="width:16%">${it.done ? fmtDate(it.date) : ''}</td><td style="width:16%">${it.done ? esc(it.signer) : ''}</td></tr>`).join('');
+  document.getElementById('print').innerHTML = `
+    <h1>22團幼童軍　${esc(unitName)}級進程簽核單</h1>
+    <div class="meta">姓名：${esc(d.cub.name)}　　小隊：${esc(d.cub.squad || '　　　　')}　　入團日：${fmtDate(d.cub.joinDate)}　　列印日期：${fmtDate(new Date().toISOString().slice(0, 10))}</div>
+    <table><thead><tr><th>#</th><th>大項</th><th>項目</th><th>完成日期</th><th>簽核人</th></tr></thead><tbody>${rows}</tbody></table>
+    ${u.rule ? `<p class="foot">晉級條件：${esc(u.rule)}</p>` : ''}
+    <p class="foot">${u.status === '已頒發' ? `頒發日期：${fmtDate(u.awardDate)}` : '頒發日期：＿＿＿＿＿＿＿＿　　團長簽名：＿＿＿＿＿＿＿＿'}</p>`;
+  // printing 樣式只在列印時生效，螢幕上看不到，不需要事後移除
+  document.body.classList.add('printing');
+  window.print();
+}
+
+start();
+</script>
+</body>
+</html>

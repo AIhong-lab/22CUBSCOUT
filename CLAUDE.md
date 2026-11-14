@@ -14,7 +14,8 @@
 - 階段 1 完成：`gas/Logic.js`（純邏輯，GAS 以全域 `Logic` 使用、Node 以 require 使用）＋ `tests/logic.test.js`（46 項，`npm test` 全過；另以故意改壞程式確認測試抓得到錯）。
 - 點名系統已寫入 SPEC 7.13（排入階段 4A）。出席與進程的連動已寫入 Logic.js：羚羊 `P-羚羊-7` 依出席自動完成（計算而得、不寫入完成紀錄）、狼鹿豹需「晉級所需出席次數」。出席率已寫入 Logic.js（`attendanceRate`、`periodOf`）。
 - 階段 2 完成（程式與模擬測試）：`setup()`、帳號註冊／登入／憑證、綁定與告知同意、家長查詢 API。72 項測試全過。待團長部署並執行 `setup()` 確認試算表。
-- 下一步：階段 3（查詢端前端 `web/index.html`）。
+- 階段 3 完成（前端與模擬測試）：`web/index.html` 家長端（登入／註冊三步驟／忘記密碼／重新同意／首頁／進程／技能章／出席／我的資料／列印簽核單），後台為佔位頁。根目錄 `index.html` 轉址到 `web/`。待團長提供 GAS 網址填入 `GAS_URL` 後實測。
+- 下一步：階段 4A（核心後台）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -98,6 +99,14 @@
 - 測試：`tests/logic.test.js`（純邏輯）、`tests/backend.test.js`（用 `tests/gas-mock.js` 模擬試算表跑完整 API 流程，也測合併檔）。
 - 新增 API：家長端加在 `AUTHED_ACTIONS`／`PUBLIC_ACTIONS`；後台 API（4A）必須先用 `Logic.can(role, 動作)` 檢查。回傳欄位一律白名單組裝，不可直接回傳試算表列。
 - 簽核人、建立人等欄位存「帳號ID」，顯示時再換成管理員姓名；帳號ID 不可送到家長端。
+
+## 前端（web/index.html）
+- 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
+- 登入憑證：勾「記住我」存 localStorage，否則存 sessionStorage（關閉瀏覽器即登出）。
+- 任何 API 回 `SESSION_EXPIRED` → `onExpired()` 清憑證、記住目前畫面、顯示登入頁，登入後回原畫面。切換分頁沿用已載入資料，不重新呼叫後端。
+- 所有顯示文字一律經 `esc()` 跳脫（姓名等資料來自試算表）。
+- 列印：`printSheet()` 把簽核單寫入 `#print`，`@media print` 只印該區塊（A4）。
+- 測試：`npm run test:web`（Playwright，後端接 `tests/gas-mock.js`；設 `SHOT_DIR` 可存截圖）。不在 `npm test` 內。
 
 ## 常見維護工作
 - **總會更新進程／技能章內容**（SPEC 附錄第 14 點）：從 https://www.scout.org.tw/autopage/70/466 取得新版原文 → 與試算表「項目總表」逐條比對 → 列出修改／新增／停用清單給團長確認 → 經後台或試算表執行（ID 不變、只停用不刪除）→ 同步更新 data/items.csv 與 SPEC 第十二節 → `npm run build`。

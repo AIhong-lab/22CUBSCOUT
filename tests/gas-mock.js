@@ -70,6 +70,7 @@ class Spreadsheet {
   getId() { return 'TEST-SPREADSHEET'; }
   getSheetByName(n) { return this.sheets.get(n) || null; }
   insertSheet(n) { const s = new Sheet(n); this.sheets.set(n, s); return s; }
+  getSheets() { return [...this.sheets.values()]; }
 }
 
 function loadGas(opts = {}) {
