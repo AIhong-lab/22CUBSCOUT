@@ -31,7 +31,7 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   const env = loadGas();
   const r = env.ctx.setup();
   const names = Object.values(env.ctx.SHEET);
-  assert.equal(names.length, 19);
+  assert.equal(names.length, 20);
   for (const n of names) {
     assert.ok(env.sheet(n), '缺分頁 ' + n);
     assert.deepEqual(env.sheet(n).getRange(1, 1, 1, env.ctx.HEADERS[n].length).getValues()[0], [...env.ctx.HEADERS[n]]);
@@ -40,6 +40,7 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   }
   assert.equal(env.rows('項目總表').length, 163);
   assert.equal(env.rows('級別與章說明').length, 30);
+  assert.equal(env.rows('進程細項').length, 375, '團自訂細項只匯入一次');
   assert.equal(env.rows('告知同意內容').length, 1);
   assert.match(env.rows('告知同意內容')[0][1], /我們會記錄哪些資料/);
   assert.equal(env.rows('設定').length, 20);
@@ -355,11 +356,67 @@ test('公開標準查詢：不用登入、只有項目與說明、停用項目�
   assert.equal(r.units.find((u) => u.unit === '嚮導').group, '服務類');
   const json = JSON.stringify(r);
   assert.ok(!/測試小狼|parent01|leader01|U[A-Z2-9]{8}|AB2CDE/.test(json), '不含小狼、帳號、綁定碼');
-  assert.deepEqual(Object.keys(r.units[0].items[0]).sort(), ['section', 'text'], '項目只回傳大項與內容，不含項目ID');
+  assert.deepEqual(Object.keys(r.units[0].items[0]).sort(), ['details', 'section', 'text'], '項目只回傳大項、內容與細項，不含項目ID');
   // 停用項目不顯示（快取 5 分鐘後生效）
   const row = env.rows('項目總表').findIndex((x) => x[2] === '嚮導') + 2;
   env.sheet('項目總表').getRange(row, 7).setValues([['否']]);
   assert.equal(env.api({ action: 'catalog' }).units.find((u) => u.unit === '嚮導').items.length, 2, '快取期間內不變');
   env.advance(301000);
   assert.equal(env.api({ action: 'catalog' }).units.find((u) => u.unit === '嚮導').items.length, 1);
+});
+
+test('進程細項：公開查詢、家長畫面、後台小狼頁都帶細項；停用與錯誤列不顯示；技能章沒有細項', () => {
+  const { env, leaderToken } = fresh();
+  const reg = registerParent(env);
+  const r = env.api({ action: 'catalog' });
+  const lion = r.units.find((u) => u.unit === '羚羊');
+  const vow = lion.items[0];
+  assert.equal(vow.details.length, 1);
+  assert.deepEqual(Object.keys(vow.details[0]).sort(), ['group', 'life', 'standard', 'subs']);
+  assert.equal(vow.details[0].group, '背誦與了解諾言規律');
+  assert.equal(vow.details[0].subs.length, 4);
+  assert.equal(vow.details[0].standard, '不看稿背誦＋口述舉例');
+  assert.equal(lion.items[6].details.length, 0, '參加團集會 4 次（出席自動完成）沒有細項');
+  assert.equal(lion.items[7].details.length, 3, '叢林奇談掛 3 組');
+  assert.ok(r.units.filter((u) => u.category === '技能章').every((u) => u.items.every((i) => i.details.length === 0)));
+  assert.equal(r.units.reduce((s, u) => s + u.items.reduce((t, i) => t + i.details.reduce((x, g) => x + g.subs.length, 0), 0), 0), 375);
+
+  const view = env.api({ action: 'cubDetail', token: reg.token, cubId: 'C1' });
+  assert.equal(view.ok, true, JSON.stringify(view));
+  assert.equal(view.units.find((u) => u.unit === '羚羊').items[0].details[0].subs[0], '能完整背出諾言');
+  const adm = env.api({ action: 'cubAdminDetail', token: leaderToken, cubId: 'C1' });
+  assert.equal(adm.units.find((u) => u.unit === '羚羊').items[0].details[0].group, '背誦與了解諾言規律');
+
+  // 團長在試算表停用一條、寫錯一個項目ID：停用的不顯示，錯誤列略過
+  const sh = env.sheet('進程細項');
+  sh.getRange(2, 7).setValues([['否']]);
+  sh.getRange(3, 1).setValues([['P-不存在-1']]);
+  env.advance(301000);
+  const after = env.api({ action: 'catalog' }).units.find((u) => u.unit === '羚羊').items[0].details[0];
+  assert.equal(after.subs.length, 2);
+  assert.equal(after.standard, '', '通過標準寫在被停用的第一列時，這組就不顯示通過標準');
+});
+
+test('進程細項：舊系統還沒重跑 setup（沒有細項分頁）時照常運作', () => {
+  const { env } = fresh();
+  env.ctx.ss_().deleteSheet(env.sheet('進程細項'));
+  env.ctx.DB_CACHE_ = {};
+  const r = env.api({ action: 'catalog' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.units[0].items[0].details.length, 0);
+});
+
+test('跨級簽核：還在羚羊級的小狼可以先簽豹級的項目（依團集會實際完成的內容給）', () => {
+  const { env, leaderToken } = fresh();
+  const reg = registerParent(env);
+  const r = env.api({ action: 'signoff', token: leaderToken, cubIds: ['C1'], itemIds: ['P-豹-勞作-1'], date: '2026-11-01' });
+  assert.equal(r.added, 1, JSON.stringify(r));
+  const adm = env.api({ action: 'cubAdminDetail', token: leaderToken, cubId: 'C1' });
+  const leopard = adm.units.find((u) => u.unit === '豹');
+  assert.equal(leopard.done, 1);
+  assert.equal(leopard.status, '進行中');
+  assert.equal(leopard.items.find((i) => i.text.includes('鐵鎚')).done, true);
+  const view = env.api({ action: 'cubDetail', token: reg.token, cubId: 'C1' });
+  assert.equal(view.units.find((u) => u.unit === '豹').items.find((i) => i.text.includes('鐵鎚')).date, '2026-11-01', '家長看得到');
+  assert.equal(view.cub.currentLevel, '', '目前級別不受影響');
 });

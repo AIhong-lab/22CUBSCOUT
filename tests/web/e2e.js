@@ -79,6 +79,13 @@ function seed(env) {
   assert.equal(await page.locator('.stage').count(), 4);
   assert.equal(await page.locator('.badge').count(), 0, '進程頁不混入技能章');
   assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務（10 項）[\s\S]*能背誦並說明幼童軍諾言/);
+  // 本團細項：收合在官方項目下面，點開才看到細項與通過標準
+  const sub = page.locator('#lvPanel details.sub').first();
+  assert.match(await sub.locator('summary').innerText(), /本團細項 4 條/);
+  assert.ok(!(await sub.locator('li').first().isVisible()), '預設收合');
+  await sub.locator('summary').click();
+  assert.match(await sub.innerText(), /能完整背出諾言[\s\S]*通過標準：不看稿背誦＋口述舉例[\s\S]*生活應用：/);
+  await shot('00a1-details'); await noHScroll('細項展開');
   await page.locator('.stage[data-unit=豹]').click();
   assert.match(await page.locator('#lvPanel').innerText(), /豹級任務（26 項）[\s\S]*晉級條件：參與鹿級/);
   await page.fill('#q', '結繩');
@@ -167,6 +174,7 @@ function seed(env) {
   assert.match(panel, /晉級條件：參與羚羊級幼童軍6個月以上/);
   assert.match(panel, /完成！2026\/1\/10/);
   assert.match(panel, /待挑戰/);
+  assert.ok(await page.locator('#lvPanel details.sub').count() > 10, '家長的闖關地圖也看得到本團細項');
   await shot('04-map'); await noHScroll('闖關地圖');
   await page.locator('#printBtn').click();
   assert.equal(await page.evaluate(() => window.__printed), 1);

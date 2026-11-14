@@ -76,9 +76,10 @@ function dispatch_(req) {
  */
 function apiCatalog_() {
   var cache = CacheService.getScriptCache();
-  var hit = cache.get('CATALOG');
+  var hit = cache.get('CATALOG2');
   if (hit) return JSON.parse(hit);
   var unitsInfo = loadUnits_();
+  var byItem = loadDetails_().byItem;
   var groups = {}, order = [];
   loadItems_().items.forEach(function (it) {
     if (!it.enabled) return;
@@ -88,10 +89,10 @@ function apiCatalog_() {
       groups[k] = { category: it.category, unit: it.unit, group: info.group || '', desc: info.desc || '', rule: info.rule || '', order: info.order || 9999, items: [] };
       order.push(k);
     }
-    groups[k].items.push({ section: it.section, text: it.text });
+    groups[k].items.push({ section: it.section, text: it.text, details: detailsView_(byItem, it.id) });
   });
   var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }) };
-  try { cache.put('CATALOG', JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
+  try { cache.put('CATALOG2', JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
   return out;
 }
 
@@ -383,6 +384,7 @@ function buildCubView_(cub, today) {
   var settings = loadSettings_().values;
   var items = loadItems_().items;
   var units = loadUnits_();
+  var byItem = loadDetails_().byItem;
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date); });
   var mById = {};
   meetings.forEach(function (m) { mById[m.meetingId] = m; });
@@ -408,7 +410,7 @@ function buildCubView_(cub, today) {
       done: u.done, total: u.total, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
       attendRequired: u.attendRequired || 0, attendSinceLast: u.attendSinceLast || 0,
       items: u.items.map(function (i) {
-        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto };
+        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto, details: detailsView_(byItem, i.id) };
       })
     };
   }).sort(function (a, b) { return a.order - b.order; });

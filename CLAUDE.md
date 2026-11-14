@@ -18,6 +18,7 @@
 - 階段 4A 完成（程式與模擬測試）：後台 API（`AdminApi.js`、`Backup.js`、LINE 配對）與後台畫面；網頁改為闖關冒險風格（SPEC 附錄第 19 點）。`npm test` 92 項、`npm run test:web` 全過。
 - 里程碑一期間新增：小隊清單（SPEC 7.2、附錄第 20 點）：`Logic.parseList`／`changeSquads`、API `squadList`／`squadSave`、後台「更多 → 🏕️ 小隊設定」；`cubSave` 只接受清單內的小隊。
 - 里程碑一期間新增：公開頁面（SPEC 第六節第 11 點、附錄第 21、22 點）：公開 API `catalog`（`PUBLIC_ACTIONS`，只回傳啟用項目與說明，快取 5 分鐘）；前端 `renderHome`（首頁 `#home`）、`renderCatalog('progress'|'badges')`（`#progress`、`#badges`），`setHash` 更新網址方便分享；未登入者預設看首頁。
+- 里程碑一期間新增：進程細項（SPEC 附錄第 24、27 點）：團自訂細項掛在官方項目下，只顯示不勾選、不影響達標；`Logic.parseDetails`／`buildDetailSeed`、`loadDetails_`／`detailsView_`（白名單 group/standard/life/subs）；catalog（快取鍵 `CATALOG2`）、`buildCubView_`、`cubAdminDetail` 的項目帶 `details`；前端 `detailsHtml()`。技能章不掛細項；晉級所需技能章枚數先不做。
 - **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構
@@ -42,6 +43,7 @@
 | `gas/` | GAS 後端、`appsscript.json`、`.clasp.json`（scriptId 由團長填） |
 | `web/index.html` | 前端 |
 | `data/items.csv` | 種子資料，只供 `setup()` 第一次匯入 |
+| `data/details.csv` | 團自訂進程細項種子（掛在官方項目ID下），只供 `setup()` 在「進程細項」分頁為空時匯入 |
 | `tests/` | 純邏輯 Node 測試，`npm test` |
 
 純邏輯寫在 `gas/Logic.js`，不依賴 `SpreadsheetApp`，GAS 與 Node 測試共用：
@@ -61,6 +63,7 @@
 | 管理員邀請 | 邀請碼、角色、姓名、建立人、建立時間、到期時間、狀態（未使用/已使用/已作廢）、使用者帳號ID、使用時間 |
 | 項目總表 | 項目ID、類別（進程/技能章）、級別或章名、大項、項目內容、排序、啟用（是/否） |
 | 級別與章說明 | 名稱、類別、分類（服務類/健身類/技巧類，進程留空）、說明、晉級條件、排序 |
+| 進程細項 | 項目ID、分組、細項內容、通過標準、生活應用、排序、啟用（是/否） |
 | 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間 |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |

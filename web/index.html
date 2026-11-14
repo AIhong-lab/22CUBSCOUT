@@ -86,6 +86,12 @@
   .bar.full > span { background: repeating-linear-gradient(45deg, var(--yellow) 0 12px, #ffd85c 12px 24px); }
   .consent { background: var(--bg); border-radius: 16px; padding: 14px; max-height: 50vh; overflow: auto; white-space: pre-wrap; font-size: 16px; border: 2px solid var(--gray-line); }
   details > summary.fold { cursor: pointer; font-weight: 900; color: var(--blue); padding: 6px 0; }
+  details.sub { margin-top: 6px; font-size: 15px; }
+  details.sub > summary { cursor: pointer; color: var(--blue); font-weight: 700; }
+  details.sub .g { margin: 6px 0 2px; font-weight: 900; }
+  details.sub ul { margin: 2px 0 4px; padding-left: 1.4em; list-style: disc; }
+  details.sub li { display: list-item; padding: 2px 0; border: 0; min-height: 0; font-size: 15px; }
+  details.sub .std { color: var(--gray); margin: 0 0 4px; }
 
   /* ───── 登入頁 ───── */
   .welcome { text-align: center; padding: 26px 18px 18px; background: linear-gradient(180deg, var(--sky), #fff); }
@@ -659,6 +665,17 @@ function renderNoCub() {
   $('#go').onclick = () => { state.view = 'mine'; renderParent(true); };
 }
 
+/** 進程細項（團自訂，只顯示不勾選）：收合在項目下面，點開才看到 */
+function detailsHtml(it) {
+  const gs = it.details || [];
+  if (!gs.length) return '';
+  const n = gs.reduce((a, g) => a + g.subs.length, 0);
+  const many = gs.length > 1;
+  return `<details class="sub" onclick="event.stopPropagation()"><summary>📋 本團細項 ${n} 條</summary>${gs.map((g) => `
+    ${many && g.group ? `<div class="g">${esc(g.group)}</div>` : ''}<ul>${g.subs.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    ${g.standard ? `<p class="std">✅ 通過標準：${esc(g.standard)}</p>` : ''}${g.life ? `<p class="std">🏠 生活應用：${esc(g.life)}</p>` : ''}`).join('')}</details>`;
+}
+
 /** 單一級別或技能章的任務清單（依大項分組） */
 function itemsHtml(u) {
   const sections = [];
@@ -672,7 +689,7 @@ function itemsHtml(u) {
     ${showSec ? `<div class="section-title">${esc(s.name)}</div>` : ''}
     <ul class="items">${s.items.map((it) => `
       <li class="${it.done ? 'done' : 'todo'}"><span class="mark">${it.done ? '⭐' : ''}</span>
-        <span>${esc(it.text)}<span class="when">${it.done ? `完成！${fmtDate(it.date)}${it.auto ? '（出席自動完成）' : ''}` : '待挑戰'}</span></span></li>`).join('')}
+        <span>${esc(it.text)}<span class="when">${it.done ? `完成！${fmtDate(it.date)}${it.auto ? '（出席自動完成）' : ''}` : '待挑戰'}</span>${detailsHtml(it)}</span></li>`).join('')}
     </ul>`).join('');
 }
 
@@ -934,7 +951,7 @@ function catalogItemsHtml(u, q) {
   const showSec = sections.length > 1 || (sections[0] && sections[0].name !== '－');
   let n = 0;
   return sections.map((x) => `${showSec ? `<div class="section-title">${mark(x.name)}</div>` : ''}
-    <ul class="items">${x.items.map((it) => `<li class="todo"><span class="mark">${++n}</span><span>${mark(it.text)}</span></li>`).join('')}</ul>`).join('');
+    <ul class="items">${x.items.map((it) => `<li class="todo"><span class="mark">${++n}</span><span>${mark(it.text)}${detailsHtml(it)}</span></li>`).join('')}</ul>`).join('');
 }
 
 function openUnitSheet(u) {
@@ -977,7 +994,7 @@ function renderHome() {
         <li><b>團長、服務員</b>：直接進入管理員後台，點名、簽核進程與技能章、頒章，不需要打開試算表。</li></ul>
       <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '🔑 登入'}</button>
     </section>
-    <p class="muted small center">進程與技能章內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉。<br>查詢頁不會顯示任何孩子的資料。</p>`;
+    <p class="muted small center">進程與技能章內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉；進程項目下的「本團細項」由本團自訂。<br>查詢頁不會顯示任何孩子的資料。</p>`;
   $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
 }
 
@@ -999,7 +1016,7 @@ async function renderCatalog(view, opt = {}) {
   const searchBox = (ph) => `<input type="search" id="q" placeholder="${ph}" autocomplete="off" value="${esc(opt.q || '')}"><div id="hits"></div>`;
   const hitsOf = (list, q) => {
     const out = [];
-    list.forEach((u) => u.items.forEach((it) => { if (u.unit.includes(q) || it.text.includes(q) || it.section.includes(q)) out.push({ u, it }); }));
+    list.forEach((u) => u.items.forEach((it) => { if (u.unit.includes(q) || it.text.includes(q) || it.section.includes(q) || (it.details || []).some((g) => g.group.includes(q) || g.subs.some((t) => t.includes(q)))) out.push({ u, it }); }));
     return out;
   };
   const drawHits = (list) => {
@@ -1337,7 +1354,7 @@ const ADMIN_PAGES = {
     const unitRow = (u) => {
       const pct = u.total ? Math.round(u.done / u.total * 100) : 0;
       const items = u.items.map((i) => `<li class="${i.done ? 'done' : 'todo'}"><span class="mark">${i.done ? '⭐' : `<input type="checkbox" data-sign="${esc(i.id)}" style="width:22px;height:22px" aria-label="勾選簽核">`}</span>
-        <span class="grow">${esc(i.text)}<span class="when">${i.done ? `${fmtDate(i.date)}・${esc(i.signer)}` : '未完成'}</span></span>
+        <span class="grow">${esc(i.text)}<span class="when">${i.done ? `${fmtDate(i.date)}・${esc(i.signer)}` : '未完成'}</span>${detailsHtml(i)}</span>
         ${i.canRevoke ? `<button class="btn danger small" data-revoke="${esc(i.id)}">撤銷</button>` : ''}</li>`).join('');
       let actions = '';
       if (L && u.status === '已完成待頒發') actions = `<button class="btn alt small" data-award="${esc(u.unit)}">🏅 頒章</button>`;

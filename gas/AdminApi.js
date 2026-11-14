@@ -279,6 +279,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
   var signerOf = {};
   ctx.completions.forEach(function (c) { if (c.cubId === cub.cubId && Logic.isCountedCompletion(c)) signerOf[c.itemId] = c.signer; });
   var units = loadUnits_();
+  var byItem = loadDetails_().byItem;
   var att = ctx.attByCub[cub.cubId] || [];
   var period = Logic.periodOf(loadPeriods_(), ctx.today);
   var rate = null;
@@ -297,7 +298,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
         lastCompletionDate: u.lastCompletionDate, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
         items: u.items.map(function (i) {
           var s = signerOf[i.id];
-          return { id: i.id, section: i.section, text: i.text, done: i.done, date: i.date, auto: i.auto, signer: i.done ? (names[s] || (i.auto ? '出席自動計算' : s || '')) : '', canRevoke: !!(i.done && !i.auto && s && Logic.canRevokeSignoff(who.admin.role, who.account.accountId, s)) };
+          return { id: i.id, section: i.section, text: i.text, done: i.done, date: i.date, auto: i.auto, signer: i.done ? (names[s] || (i.auto ? '出席自動計算' : s || '')) : '', canRevoke: !!(i.done && !i.auto && s && Logic.canRevokeSignoff(who.admin.role, who.account.accountId, s)), details: detailsView_(byItem, i.id) };
         })
       };
     }).sort(function (a, b) { return a.order - b.order; }),

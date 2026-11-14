@@ -612,3 +612,25 @@ test('小隊清單異動：新增、改名、刪除（使用中不可刪）、�
   assert.deepEqual(L.changeSquads(['甲', '乙', '丙'], { type: 'move', name: '丙', dir: 'up' }).list, ['甲', '丙', '乙']);
   assert.deepEqual(L.changeSquads(['甲', '乙'], { type: 'move', name: '甲', dir: 'up' }).list, ['甲', '乙'], '已在最上面不動');
 });
+
+test('進程細項：種子轉列、依項目與分組合併、通過標準取該組第一個有填的值、錯誤列回報列號', () => {
+  const seed = L.buildDetailSeed('項目ID,分組,細項內容,通過標準,生活應用\nP-羚羊-1,甲,一,標準甲,生活甲\nP-羚羊-1,甲,二,,\nP-羚羊-1,乙,三,標準乙,\n,,空白,,\n');
+  assert.deepEqual(seed.map((r) => [...r]), [
+    ['P-羚羊-1', '甲', '一', '標準甲', '生活甲', 10, '是'],
+    ['P-羚羊-1', '甲', '二', '', '', 20, '是'],
+    ['P-羚羊-1', '乙', '三', '標準乙', '', 30, '是']
+  ]);
+  const head = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
+  const rows = [head, ...seed,
+    ['P-狼-國旗-1', '', '四', '', '', 5, '是'],
+    ['P-狼-國旗-1', '', '停用的', '', '', 6, '否'],
+    ['P-沒有-1', '', '五', '', '', 7, '是'],
+    ['P-羚羊-1', '甲', '', '', '', 8, '是'],
+    ['P-羚羊-1', '甲', '六', '', '', 9, '可能']];
+  const r = L.parseDetails(rows, { 'P-羚羊-1': true, 'P-狼-國旗-1': true });
+  assert.deepEqual(JSON.parse(JSON.stringify(r.byItem)), {
+    'P-羚羊-1': [{ group: '甲', standard: '標準甲', life: '生活甲', subs: ['一', '二'] }, { group: '乙', standard: '標準乙', life: '', subs: ['三'] }],
+    'P-狼-國旗-1': [{ group: '', standard: '', life: '', subs: ['四'] }]
+  });
+  assert.deepEqual(r.errors.map((e) => e.row), [7, 8, 9]);
+});

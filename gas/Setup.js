@@ -20,6 +20,10 @@ function setup() {
     var seed = Logic.buildSeed(SEED.itemsCsv, SEED.progressRules);
     if (dataRowCount_(SHEET.ITEMS) === 0) { appendRows_(SHEET.ITEMS, seed.itemRows); report.seeded.push(SHEET.ITEMS + ' ' + seed.itemRows.length + ' 列'); }
     if (dataRowCount_(SHEET.UNITS) === 0) { appendRows_(SHEET.UNITS, seed.unitRows); report.seeded.push(SHEET.UNITS + ' ' + seed.unitRows.length + ' 列'); }
+    if (dataRowCount_(SHEET.DETAILS) === 0) {
+      var details = Logic.buildDetailSeed(SEED.detailsCsv);
+      if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
+    }
     if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
 
     // 設定：只補上缺少的鍵，不改既有值

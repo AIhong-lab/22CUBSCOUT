@@ -71,6 +71,7 @@ class Spreadsheet {
   getSheetByName(n) { return this.sheets.get(n) || null; }
   insertSheet(n) { const s = new Sheet(n); this.sheets.set(n, s); return s; }
   getSheets() { return [...this.sheets.values()]; }
+  deleteSheet(s) { for (const [k, v] of this.sheets) if (v === s) this.sheets.delete(k); }
 }
 
 function loadGas(opts = {}) {

@@ -165,6 +165,19 @@ function loadInvites_() {
 
 function loadItems_() { return Logic.parseItems(readAll_(SHEET.ITEMS)); }
 
+/** 進程細項（團自訂，只顯示）：{byItem, errors}；分頁不存在（尚未重跑 setup）時視為沒有細項 */
+function loadDetails_() {
+  if (!ss_().getSheetByName(SHEET.DETAILS)) return { byItem: {}, errors: [] };
+  var ids = {};
+  loadItems_().items.forEach(function (it) { ids[it.id] = true; });
+  return Logic.parseDetails(readAll_(SHEET.DETAILS), ids);
+}
+
+/** 細項白名單（只回傳這四個欄位） */
+function detailsView_(byItem, itemId) {
+  return (byItem[itemId] || []).map(function (g) { return { group: g.group, standard: g.standard, life: g.life, subs: g.subs.slice() }; });
+}
+
 /** 級別與章說明（容錯：略過空白列與名稱空白列） */
 function loadUnits_() {
   var map = {};

@@ -21,6 +21,7 @@ var SHEET = {
   INVITES: '管理員邀請',
   ITEMS: '項目總表',
   UNITS: '級別與章說明',
+  DETAILS: '進程細項',
   COMPLETIONS: '完成紀錄',
   AWARDS: '頒章紀錄',
   MEETINGS: '集會行事曆',
@@ -44,6 +45,7 @@ HEADERS[SHEET.ADMINS] = ['帳號ID', '姓名', '角色', '加入時間', '指定
 HEADERS[SHEET.INVITES] = ['邀請碼', '角色', '姓名', '建立人', '建立時間', '到期時間', '狀態', '使用者帳號ID', '使用時間'];
 HEADERS[SHEET.ITEMS] = ['項目ID', '類別', '級別或章名', '大項', '項目內容', '排序', '啟用'];
 HEADERS[SHEET.UNITS] = ['名稱', '類別', '分類', '說明', '晉級條件', '排序'];
+HEADERS[SHEET.DETAILS] = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
 HEADERS[SHEET.COMPLETIONS] = ['小狼ID', '項目ID', '完成日期', '簽核人', '備註', '回報人', '回報狀態'];
 HEADERS[SHEET.AWARDS] = ['小狼ID', '級別或章名', '頒發日期', '頒發場合', '備註', '簽核人', '登錄時間'];
 HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間'];
@@ -66,6 +68,7 @@ TEXT_COLUMNS[SHEET.BINDINGS] = [1, 2];
 TEXT_COLUMNS[SHEET.ADMINS] = [1];
 TEXT_COLUMNS[SHEET.INVITES] = [1, 8];
 TEXT_COLUMNS[SHEET.ITEMS] = [1];
+TEXT_COLUMNS[SHEET.DETAILS] = [1];
 TEXT_COLUMNS[SHEET.COMPLETIONS] = [1, 2, 3, 4];
 TEXT_COLUMNS[SHEET.AWARDS] = [1, 3, 6];
 TEXT_COLUMNS[SHEET.MEETINGS] = [1, 2];

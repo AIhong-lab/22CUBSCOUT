@@ -310,6 +310,50 @@ var Logic = (function () {
     return { itemRows: itemRows, unitRows: unitRows };
   }
 
+  // ───────────── 進程細項（團自訂，只顯示、不勾選；SPEC 附錄第 24、27 點） ─────────────
+
+  /** 細項種子：data/details.csv（項目ID,分組,細項內容,通過標準,生活應用）→ 「進程細項」分頁的列 */
+  function buildDetailSeed(csvText) {
+    return parseCsv(csvText || '').slice(1).filter(function (r) { return clean(r[0]) && clean(r[2]); }).map(function (r, i) {
+      return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), (i + 1) * 10, '是'];
+    });
+  }
+
+  /**
+   * 讀「進程細項」分頁（含標題列）。同一項目、同一分組的細項合成一組；
+   * 通過標準、生活應用取該組第一個有填的值（團長只要填在每組第一列）。
+   * @param {Object} itemIds 項目總表中存在的項目ID（{id: true}）；找不到的列回報錯誤、不顯示
+   * @return {{byItem: Object<string, Array<{group, standard, life, subs: string[]}>>, errors: Array}}
+   */
+  function parseDetails(rows, itemIds) {
+    var list = [], errors = [];
+    (rows || []).slice(1).forEach(function (r, i) {
+      var rowNo = i + 2;
+      var c = [0, 1, 2, 3, 4, 5, 6].map(function (j) { return clean(r[j]); });
+      if (c.every(function (x) { return x === ''; })) return;
+      var reason = null;
+      if (!c[0]) reason = '缺少項目ID';
+      else if (itemIds && !itemIds[c[0]]) reason = '項目總表找不到這個項目ID';
+      else if (!c[2]) reason = '缺少細項內容';
+      else if (c[6] !== '是' && c[6] !== '否') reason = '啟用欄只能是「是」或「否」';
+      if (reason) { errors.push({ row: rowNo, id: c[0], reason: reason }); return; }
+      if (c[6] !== '是') return;
+      var order = Number(c[5]);
+      list.push({ itemId: c[0], group: c[1], text: c[2], standard: c[3], life: c[4], order: c[5] !== '' && isFinite(order) ? order : 9999, row: rowNo });
+    });
+    list.sort(function (a, b) { return a.order - b.order || a.row - b.row; });
+    var byItem = {};
+    list.forEach(function (d) {
+      var groups = byItem[d.itemId] || (byItem[d.itemId] = []);
+      var g = groups.filter(function (x) { return x.group === d.group; })[0];
+      if (!g) groups.push((g = { group: d.group, standard: '', life: '', subs: [] }));
+      if (!g.standard && d.standard) g.standard = d.standard;
+      if (!g.life && d.life) g.life = d.life;
+      g.subs.push(d.text);
+    });
+    return { byItem: byItem, errors: errors };
+  }
+
   // ───────────── 完成紀錄與狀態判定 ─────────────
 
   /** 第二期預留：只有「回報狀態為空或已確認」才算完成 */
@@ -903,7 +947,7 @@ var Logic = (function () {
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
     clean: clean, parseCsv: parseCsv, toCsv: toCsv,
     parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, parseList: parseList, changeSquads: changeSquads,
-    parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed,
+    parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed, buildDetailSeed: buildDetailSeed, parseDetails: parseDetails,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
     isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,

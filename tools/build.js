@@ -15,6 +15,7 @@ const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.
 
 function buildSeedData() {
   const itemsCsv = read('data/items.csv');
+  const detailsCsv = read('data/details.csv');
   // 晉級條件：取 SPEC 第十二節「進程晉級條件」清單
   const spec = read('docs/SPEC.md');
   const sec = spec.slice(spec.indexOf('### 進程晉級條件'), spec.indexOf('### 進程項目'));
@@ -30,9 +31,9 @@ function buildSeedData() {
   const b = priv.indexOf('<!-- 告知同意文字結束 -->');
   if (a < 0 || b < 0) throw new Error('PRIVACY.md 缺少告知同意文字標記');
   const consentText = priv.slice(a + '<!-- 告知同意文字開始 -->'.length, b).trim();
-  return '/**\n * 種子資料（自動產生，請勿手動修改；改 data/items.csv、docs/SPEC.md、docs/PRIVACY.md 後執行 npm run build）\n' +
+  return '/**\n * 種子資料（自動產生，請勿手動修改；改 data/items.csv、data/details.csv、docs/SPEC.md、docs/PRIVACY.md 後執行 npm run build）\n' +
     ' * 只供 setup() 第一次匯入；匯入後試算表才是唯一來源。\n */\n' +
-    'var SEED = ' + JSON.stringify({ itemsCsv, progressRules: rules, consentText }, null, 1) + ';\n';
+    'var SEED = ' + JSON.stringify({ itemsCsv, detailsCsv, progressRules: rules, consentText }, null, 1) + ';\n';
 }
 
 function main() {
