@@ -84,12 +84,23 @@ function loadGas(opts = {}) {
     static now() { return clock; }
   }
   DateCtor = FakeDate;
+  const ui = {
+    answers: [], alerts: [], menus: [],
+    ButtonSet: { OK: 'OK', OK_CANCEL: 'OK_CANCEL' }, Button: { OK: 'OK', CANCEL: 'CANCEL' },
+    prompt() { const a = ui.answers.shift(); return { getSelectedButton: () => (a === null ? 'CANCEL' : 'OK'), getResponseText: () => a || '' }; },
+    alert(...a) { ui.alerts.push(a.filter((x) => typeof x === 'string').join('\n')); },
+    createMenu(title) { const m = { title, items: [], addItem(t, f) { m.items.push([t, f]); return m; }, addSeparator() { return m; }, addToUi() { ui.menus.push(m); } }; return m; },
+  };
   const logs = [];
   const ctx = {
     console: { log() {}, error(...a) { logs.push(['error', ...a]); } },
     JSON, Math, String, Number, Array, Object, RegExp, isNaN, parseInt, isFinite, Error,
     Date: FakeDate,
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, ProtectionType: { RANGE: 'RANGE' } },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ss, openById: () => ss, ProtectionType: { RANGE: 'RANGE' },
+      // 試算表選單的對話框：ui.answers 依序提供 prompt 的回答，ui.alerts 收集跳出的訊息
+      getUi: () => ui,
+    },
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); },
       deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
@@ -117,7 +128,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows,
+    ctx, ss, props, logs, api, sheet, rows, ui,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

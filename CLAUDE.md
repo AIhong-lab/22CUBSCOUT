@@ -93,6 +93,7 @@
 | `Auth.js` | 亂數（取自 UUID）、HMAC 雜湊、失敗紀錄與鎖定、登入憑證 |
 | `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
 | `Webhook.js` | LINE webhook（密鑰與格式檢查） |
+| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）、`createInvite_`（產生邀請碼，選單與後台共用）、`inviteMessage_`；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。

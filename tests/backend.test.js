@@ -291,3 +291,45 @@ test('合併檔 dist/Code.gs 可獨立運作', () => {
   assert.equal(env.api({ action: 'ping' }).ok, true);
   assert.equal(env.rows('項目總表').length, 163);
 });
+
+test('試算表選單：自動產生服務員邀請碼，對方可用它註冊成服務員', () => {
+  const { env } = fresh();
+  env.ctx.onOpen();
+  assert.equal(env.ui.menus[0].title, '🐺 幼童軍系統');
+  assert.ok(env.ui.menus[0].items.every(([, fn]) => typeof env.ctx[fn] === 'function' && !fn.endsWith('_')), '選單函式存在且非私有');
+  env.ui.answers.push('陳服務員');
+  env.ctx.menuInviteAssistant();
+  const row = env.rows('管理員邀請').find((r) => r[2] === '陳服務員');
+  assert.ok(row);
+  assert.match(row[0], /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/, '長度 = 綁定碼長度 + 2，排除易混淆字元');
+  assert.equal(row[1], '服務員');
+  assert.equal(row[6], '未使用');
+  assert.equal(row[5].getTime() - row[4].getTime(), 24 * 3600000, '有效時數依設定（預設 24 小時）');
+  assert.match(env.ui.alerts.at(-1), new RegExp(row[0]));
+  assert.match(env.ui.alerts.at(-1), /aihong-lab\.github\.io\/22CUBSCOUT/);
+  const r = env.api({ action: 'register', code: row[0], childName: '', username: 'helper01', password: 'helperpass1', nickname: '陳服務員' });
+  assert.equal(r.ok, true);
+  const me = env.api({ action: 'me', token: r.token });
+  assert.equal(me.role, '服務員');
+  assert.equal(me.adminName, '陳服務員');
+  assert.equal(env.api({ action: 'register', code: row[0], childName: '', username: 'helper02', password: 'helperpass1', nickname: 'x' }).code, 'CODE_INVALID', '只能用一次');
+});
+
+test('試算表選單：取消或沒填姓名就不產生', () => {
+  const { env } = fresh();
+  const before = env.rows('管理員邀請').length;
+  env.ui.answers.push(null);
+  env.ctx.menuInviteAssistant();
+  env.ui.answers.push('   ');
+  env.ctx.menuInviteLeader();
+  assert.equal(env.rows('管理員邀請').length, before);
+});
+
+test('邀請碼過期後不能使用', () => {
+  const { env } = fresh();
+  env.ui.answers.push('林服務員');
+  env.ctx.menuInviteAssistant();
+  const code = env.rows('管理員邀請').find((r) => r[2] === '林服務員')[0];
+  env.advance(25 * 3600000);
+  assert.equal(env.api({ action: 'checkCode', code, childName: '' }).code, 'CODE_INVALID');
+});
