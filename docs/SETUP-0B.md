@@ -88,3 +88,11 @@
 
 - Apps Script 執行 `cleanup0B()` 清除測試帳號（WEBHOOK_KEY 與 LINE_MESSAGING_TOKEN 會保留，正式版繼續用）。
 - 試算表、Apps Script 專案、LINE 設定都保留，階段 2 直接沿用。
+
+---
+
+## 驗證結果（2026-11-14）
+- ① 通過：電腦與手機瀏覽器皆可呼叫 GAS，單次約 0.9～2.3 秒。
+- ② 通過：註冊（雜湊 1000 次 380 毫秒）、登入、記住我、過期回登入畫面、錯誤訊息一致。
+- ③ 通過：LINE 傳訊後同一分鐘收到回覆。曾因 Webhook URL 的密鑰與 `WEBHOOK_KEY` 不一致而略過事件，修正後正常。
+- 後續待辦：執行 `cleanup0B()`；重新發行曾在截圖中露出的 Channel secret 與 Channel access token。

@@ -6,10 +6,12 @@
 ## 目前進度
 - 階段 0A 完成：規格、專案結構、種子資料。
 - 2026-11-14 改為帳號密碼登入（見 SPEC 附錄第 7 點），已改寫 SPEC 本文。
-- 階段 0B 程式已寫好、本機模擬測試通過，**等團長依 docs/SETUP-0B.md 實測**：
-  - `gas/Verify0B.gs`、`web/0b/index.html` 是暫時性驗證程式，階段 2／3 由正式程式取代後刪除。
-  - 測試資料只存 Script Properties（`T0B_` 開頭），`cleanup0B()` 清除。
-- 0B 三項全通過才進階段 1。
+- 階段 0B 技術驗證通過（2026-11-14 團長實測）：
+  - ① GitHub Pages（text/plain POST）呼叫 GAS：電腦與手機瀏覽器皆成功，單次約 0.9～2.3 秒（含冷啟動）。
+  - ② 註冊、登入、記住我、憑證過期回登入畫面、錯誤訊息一致：皆通過。HMAC-SHA256 雜湊 1000 次約 380 毫秒 → 正式版預定 2000 次。
+  - ③ LINE webhook 打到 GAS（302 轉址不影響）並以 reply API 回覆：通過。Verify 按鈕結果不作為判斷依據。
+  - `gas/Verify0B.gs`、`web/0b/` 為暫時性驗證程式，階段 2／3 由正式程式取代後刪除；Script Properties 的 `WEBHOOK_KEY`、`LINE_MESSAGING_TOKEN` 沿用。
+- 下一步：階段 1（純邏輯函式與 Node 測試）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
