@@ -1,8 +1,9 @@
-# 22 團幼童軍進程系統　操作手冊
+# 22 團幼童軍進程系統　操作手冊（完整版・團長用）
 
 > 對象：家長、服務員、團長。依身分閱讀對應的章節即可。
 > 網址：**https://aihong-lab.github.io/22CUBSCOUT/**（建議加到手機桌面或 LINE 記事本）
 > 本手冊隨系統更新；最新版在 GitHub 的 `docs/MANUAL.md`。
+> 另有單獨的 [家長版](MANUAL-parent.md) 與 [服務員版](MANUAL-staff.md)，可以直接分享給家長與服務員。
 
 ---
 

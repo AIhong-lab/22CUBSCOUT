@@ -7,7 +7,7 @@
 - 資料：Google 試算表（只放在團長的 Google 帳號，repo 裡沒有任何孩子的資料或金鑰）
 
 ## 文件
-- **操作手冊（家長、服務員、團長）：[docs/MANUAL.md](docs/MANUAL.md)**
+- **操作手冊**：[家長版](docs/MANUAL-parent.md)｜[服務員版](docs/MANUAL-staff.md)｜[完整版（團長）](docs/MANUAL.md)
 - 需求規格：[docs/SPEC.md](docs/SPEC.md)
 - 設定步驟：[docs/SETUP.md](docs/SETUP.md)
 - 手動測試：[docs/TESTING.md](docs/TESTING.md)
