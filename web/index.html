@@ -324,6 +324,7 @@ function setTabs(list, cur, onPick) {
 function setHeader(html) { document.getElementById('headerRight').innerHTML = html || ''; }
 function scrollTop() { window.scrollTo(0, 0); }
 function toast(text) {
+  $$('.toast').forEach((x) => x.remove()); // 只保留最新的一個
   const t = document.createElement('div');
   t.className = 'toast'; t.textContent = text;
   document.body.appendChild(t);
@@ -1085,13 +1086,20 @@ const ADMIN_PAGES = {
   // ───── 新增／編輯小狼 ─────
   async cubEdit(params) {
     let cub = { name: '', squad: '', joinDate: todayStr() };
+    const sq = await api('squadList');
     if (params.cubId) cub = (await api('cubAdminDetail', { cubId: params.cubId })).cub;
+    const names = sq.squads.map((x) => x.name);
+    const opts = [''].concat(names);
+    if (cub.squad && !names.includes(cub.squad)) opts.push(cub.squad); // 不在清單的舊名稱仍可保留
     $app.innerHTML = `${backBtn()}<section class="card"><h2>${params.cubId ? '✏️ 編輯小狼' : '＋ 新增小狼'}</h2>
       <form id="f"><label>姓名</label><input name="name" type="text" value="${esc(cub.name)}" required>
-        <label>小隊</label><input name="squad" type="text" value="${esc(cub.squad)}" placeholder="例如：一小隊">
+        <label>小隊</label><select class="full" name="squad">${opts.map((n) => `<option value="${esc(n)}" ${n === (cub.squad || '') ? 'selected' : ''}>${n ? esc(n) + (names.includes(n) ? '' : '（不在清單）') : '（不分小隊）'}</option>`).join('')}</select>
+        ${names.length ? '' : '<div class="msg warn small">還沒有設定小隊清單。請先到「更多 → 🏕️ 小隊設定」新增小隊。</div>'}
+        <button type="button" class="linkbtn" id="toSq">🏕️ 管理小隊清單</button>
         <label>入團日（可填過去日期）</label><input name="joinDate" type="date" value="${esc(cub.joinDate)}" required>
         <button class="btn" type="submit">儲存</button><div class="out"></div></form></section>`;
     wireBack(params.cubId ? { name: 'cub', params: { cubId: params.cubId } } : null);
+    $('#toSq').onclick = () => goAdmin('squads');
     bindForm($('#f'), async (fd) => {
       const r = await api('cubSave', { cubId: params.cubId, name: fd.get('name'), squad: fd.get('squad'), joinDate: fd.get('joinDate') });
       toast(params.cubId ? '已儲存' : '已新增，綁定碼已產生');
@@ -1235,7 +1243,7 @@ const ADMIN_PAGES = {
   async more() {
     const L = isLeader();
     const items = [
-      ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
+      ['award', '🏅', '頒章', L], ['squads', '🏕️', '小隊設定', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
       ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
       ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true],
     ].filter((x) => x[3]);
@@ -1243,6 +1251,36 @@ const ADMIN_PAGES = {
       <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
     $$('.menu-grid button').forEach((b) => { b.onclick = () => goAdmin(b.dataset.p); });
     $('#lo').onclick = logout;
+  },
+
+  async squads() {
+    const d = await api('squadList');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🏕️ 小隊設定</h2>
+      <p class="muted small">新增或編輯小狼時，只能從這裡的小隊選擇。排列順序也會用在點名、簽核與名單。</p>
+      ${d.squads.map((x, i) => `<div class="list-row" style="display:block"><div><span class="t">${esc(x.name)}</span>　<span class="s">在團 ${x.count} 位</span></div>
+        <div class="row-flex"><button class="btn ghost small" data-mv="up" data-n="${esc(x.name)}" ${i === 0 ? 'disabled' : ''} aria-label="上移">▲</button>
+        <button class="btn ghost small" data-mv="down" data-n="${esc(x.name)}" ${i === d.squads.length - 1 ? 'disabled' : ''} aria-label="下移">▼</button>
+        <button class="btn ghost small" data-rn="${esc(x.name)}">改名</button>
+        <button class="btn danger small" data-del="${esc(x.name)}" data-c="${x.count}">刪除</button></div></div>`).join('') || '<p class="muted">還沒有小隊。</p>'}
+      ${d.notInList.length ? `<div class="msg warn small">以下小隊名稱有小狼在用，但不在清單裡（可能是直接改了試算表）：${esc(d.notInList.map((x) => x.name + '（' + x.count + ' 位）').join('、'))}。可以把它們加進清單，或編輯小狼改到清單內的小隊。</div>` : ''}
+      <form id="f"><label>新增小隊</label><input name="name" type="text" placeholder="例如：黑豹小隊" maxlength="20" required>
+        <button class="btn alt" type="submit">＋ 新增</button><div class="out"></div></form></section>`;
+    wireBack();
+    const save = async (data) => { await api('squadSave', data); goAdmin('squads'); };
+    bindForm($('#f'), async (fd) => { await save({ type: 'add', name: fd.get('name') }); toast('已新增小隊'); });
+    $$('[data-mv]').forEach((b) => { b.onclick = () => act(b, () => save({ type: 'move', name: b.dataset.n, dir: b.dataset.mv })); });
+    $$('[data-rn]').forEach((b) => {
+      b.onclick = () => {
+        const to = prompt(`把「${b.dataset.rn}」改名為：\n（這個小隊的小狼會一起更新）`, b.dataset.rn);
+        if (to && to.trim() && to.trim() !== b.dataset.rn) act(b, async () => { const r = await api('squadSave', { type: 'rename', name: b.dataset.rn, newName: to.trim() }); toast(`已改名，更新 ${r.moved} 位小狼`); goAdmin('squads'); });
+      };
+    });
+    $$('[data-del]').forEach((b) => {
+      b.onclick = () => {
+        if (+b.dataset.c > 0) return alert(`「${b.dataset.del}」還有 ${b.dataset.c} 位在團小狼，請先把他們換到其他小隊再刪除。`);
+        if (confirm(`確定刪除小隊「${b.dataset.del}」？`)) act(b, () => save({ type: 'remove', name: b.dataset.del }));
+      };
+    });
   },
 
   async overview() {

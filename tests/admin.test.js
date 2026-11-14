@@ -14,6 +14,8 @@ function world() {
   const call = (token, action, data = {}) => env.api({ action, token, ...data });
   const inv = call(L.token, 'inviteCreate', { role: '服務員', name: '陳服務員' });
   const A = env.api({ action: 'register', code: inv.code, childName: '', username: 'helper01', password: 'helperpass1', nickname: '陳服務員' });
+  call(L.token, 'squadSave', { type: 'add', name: '一小隊' });
+  call(L.token, 'squadSave', { type: 'add', name: '二小隊' });
   const cub = call(L.token, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-03-01' });
   const v = env.api({ action: 'consentText' }).version;
   const P = env.api({ action: 'register', code: cub.code, childName: '測試小狼甲', username: 'parent01', password: 'parentpass1', nickname: '測試小狼甲媽媽', consentVersion: v });
@@ -314,4 +316,28 @@ test('列印簽核單：依小隊多位小狼、服務員可列印', () => {
   assert.equal(r.sheets[1].items[0].done, false);
   assert.match(r.rule, /參與羚羊級/);
   assert.equal(call(A, 'printData', { unit: '嚮導', cubIds: [cubId] }).code, 'BAD_INPUT');
+});
+
+test('小隊清單：新增、新增小狼只能選清單內、改名同步更新小狼、使用中不可刪', () => {
+  const { env, call, L, A, cubId } = world();
+  assert.match(call(L, 'cubSave', { name: '測試小狼乙', squad: '黑豹小隊', joinDate: '2025-09-01' }).message, /不在小隊清單/);
+  assert.equal(call(A, 'squadSave', { type: 'add', name: '黑豹小隊' }).code, 'FORBIDDEN', '服務員不可改小隊');
+  call(L, 'squadSave', { type: 'add', name: '黑豹小隊' });
+  call(L, 'squadSave', { type: 'add', name: '灰狼小隊' });
+  assert.equal(env.rows('設定').find((r) => r[0] === '小隊清單')[1], '一小隊、二小隊、黑豹小隊、灰狼小隊');
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '黑豹小隊', joinDate: '2025-09-01' }).cubId;
+  assert.ok(c2);
+  assert.deepEqual([...call(L, 'cubList').squads], ['一小隊', '二小隊', '黑豹小隊', '灰狼小隊'], '依清單順序');
+  // 直接改試算表造成「不在清單」的舊名稱：仍會出現在小隊選項後面，避免小狼被藏起來
+  const row = env.rows('小狼名單').findIndex((x) => x[0] === cubId) + 2;
+  env.sheet('小狼名單').getRange(row, 3).setValues([['舊小隊']]);
+  assert.deepEqual([...call(L, 'cubList').squads].slice(-1), ['舊小隊']);
+  assert.deepEqual(call(L, 'squadList').notInList.map((x) => x.name), ['舊小隊']);
+  const r = call(L, 'squadSave', { type: 'rename', name: '黑豹小隊', newName: '豹豹小隊' });
+  assert.equal(r.moved, 1);
+  assert.equal(env.rows('小狼名單').find((x) => x[0] === c2)[2], '豹豹小隊');
+  assert.match(call(L, 'squadSave', { type: 'remove', name: '豹豹小隊' }).message, /還有在團小狼/);
+  call(L, 'squadSave', { type: 'move', name: '灰狼小隊', dir: 'up' });
+  assert.deepEqual([...call(L, 'squadSave', { type: 'remove', name: '灰狼小隊' }).squads], ['一小隊', '二小隊', '豹豹小隊']);
+  assert.equal(call(L, 'cubSave', { cubId, name: '測試小狼甲', squad: '', joinDate: '2025-03-01' }).ok, true, '小隊可留空');
 });

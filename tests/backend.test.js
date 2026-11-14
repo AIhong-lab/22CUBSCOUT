@@ -42,7 +42,7 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   assert.equal(env.rows('級別與章說明').length, 30);
   assert.equal(env.rows('告知同意內容').length, 1);
   assert.match(env.rows('告知同意內容')[0][1], /我們會記錄哪些資料/);
-  assert.equal(env.rows('設定').length, 19);
+  assert.equal(env.rows('設定').length, 20);
   assert.match(r.firstLeaderInvite.code, /^[A-Z2-9]{8}$/);
   assert.ok(env.logs.some(([, m]) => String(m).includes(r.firstLeaderInvite.code)), '邀請碼印在執行紀錄');
   assert.ok(env.props.SPREADSHEET_ID && env.props.WEBHOOK_KEY);

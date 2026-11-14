@@ -127,6 +127,7 @@ var Logic = (function () {
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
     { key: '晉級所需出席次數', type: 'int', def: 0, min: 0, max: 100, desc: '狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
+    { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
     { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算）' },
     { key: '快達標門檻（剩幾項以內）', type: 'int', def: 2, min: 1, max: 10, desc: '' },
@@ -151,6 +152,11 @@ var Logic = (function () {
     var values = {}, errors = [];
     SETTINGS.forEach(function (s) {
       var f = found[s.key];
+      if (s.type === 'list') {
+        // 小隊清單：可為空；頓號、逗號或換行分隔，去重複
+        values[s.key] = parseList(f ? f.value : '');
+        return;
+      }
       if (!f || clean(f.value) === '') {
         values[s.key] = s.def;
         errors.push({ key: s.key, row: f ? f.row : null, value: '', reason: f ? '空白，已使用預設值' : '缺少此設定，已使用預設值' });
@@ -176,10 +182,51 @@ var Logic = (function () {
     return { values: values, errors: errors };
   }
 
+  /** 清單字串 → 陣列（頓號、逗號、換行分隔，去前後空白與重複，每項最多 20 字） */
+  function parseList(v) {
+    var out = [];
+    String(v == null ? '' : v).split(/[、,，\n\r]+/).forEach(function (x) {
+      x = clean(x).slice(0, 20);
+      if (x && out.indexOf(x) < 0) out.push(x);
+    });
+    return out;
+  }
+
+  /**
+   * 小隊清單異動（新增／改名／刪除／移動），回傳新清單；不合法丟出錯誤訊息。
+   * @param inUse 目前在團小狼使用中的小隊名稱（刪除時檢查）
+   */
+  function changeSquads(list, op, inUse) {
+    var cur = list.slice();
+    var name = clean(op.name).slice(0, 20), to = clean(op.newName).slice(0, 20);
+    var i = cur.indexOf(name);
+    if (op.type === 'add') {
+      if (!name) return { ok: false, error: '請輸入小隊名稱。' };
+      if (/[、,，]/.test(op.name)) return { ok: false, error: '小隊名稱不能含頓號或逗號。' };
+      if (i >= 0) return { ok: false, error: '已經有這個小隊了。' };
+      cur.push(name);
+    } else if (op.type === 'rename') {
+      if (i < 0) return { ok: false, error: '找不到這個小隊。' };
+      if (!to) return { ok: false, error: '請輸入新的小隊名稱。' };
+      if (/[、,，]/.test(op.newName)) return { ok: false, error: '小隊名稱不能含頓號或逗號。' };
+      if (to !== name && cur.indexOf(to) >= 0) return { ok: false, error: '已經有這個小隊了。' };
+      cur[i] = to;
+    } else if (op.type === 'remove') {
+      if (i < 0) return { ok: false, error: '找不到這個小隊。' };
+      if ((inUse || []).indexOf(name) >= 0) return { ok: false, error: '還有在團小狼屬於「' + name + '」，請先把他們換到其他小隊。' };
+      cur.splice(i, 1);
+    } else if (op.type === 'move') {
+      if (i < 0) return { ok: false, error: '找不到這個小隊。' };
+      var j = i + (op.dir === 'up' ? -1 : 1);
+      if (j >= 0 && j < cur.length) { cur[i] = cur[j]; cur[j] = name; }
+    } else return { ok: false, error: '不支援的操作。' };
+    return { ok: true, list: cur };
+  }
+
   /** setup() 用：設定分頁初始內容（含標題列） */
   function defaultSettingsRows() {
     return [['鍵', '值', '說明']].concat(SETTINGS.map(function (s) {
-      return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.def, s.desc];
+      return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.type === 'list' ? s.def.join('、') : s.def, s.desc];
     }));
   }
 
@@ -855,7 +902,7 @@ var Logic = (function () {
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
     clean: clean, parseCsv: parseCsv, toCsv: toCsv,
-    parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows,
+    parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, parseList: parseList, changeSquads: changeSquads,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
     isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,

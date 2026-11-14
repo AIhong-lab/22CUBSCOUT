@@ -588,3 +588,27 @@ test('依日期找年度出席設定', () => {
   assert.equal(L.periodOf(ps, '2026-11-14').name, '115學年度');
   assert.equal(L.periodOf(ps, '2024-01-01'), null);
 });
+
+// ───── 小隊清單 ─────
+
+test('小隊清單：解析、預設為空、不算設定錯誤', () => {
+  assert.deepEqual(L.parseList('黑豹小隊、灰狼小隊,白鹿小隊，黑豹小隊\n 星星小隊 '), ['黑豹小隊', '灰狼小隊', '白鹿小隊', '星星小隊']);
+  const d = L.parseSettings(L.defaultSettingsRows());
+  assert.deepEqual(d.values['小隊清單'], []);
+  assert.equal(d.errors.length, 0);
+  assert.deepEqual(L.parseSettings([['鍵', '值'], ['小隊清單', '甲隊、乙隊']]).values['小隊清單'], ['甲隊', '乙隊']);
+});
+
+test('小隊清單異動：新增、改名、刪除（使用中不可刪）、移動', () => {
+  let r = L.changeSquads([], { type: 'add', name: '黑豹小隊' });
+  assert.deepEqual(r.list, ['黑豹小隊']);
+  assert.equal(L.changeSquads(r.list, { type: 'add', name: '黑豹小隊' }).ok, false, '不可重複');
+  assert.equal(L.changeSquads(r.list, { type: 'add', name: '甲、乙' }).ok, false, '不可含分隔符號');
+  r = L.changeSquads(['黑豹小隊', '灰狼小隊'], { type: 'rename', name: '黑豹小隊', newName: '豹豹小隊' });
+  assert.deepEqual(r.list, ['豹豹小隊', '灰狼小隊']);
+  assert.equal(L.changeSquads(['甲', '乙'], { type: 'rename', name: '甲', newName: '乙' }).ok, false, '改名不可撞名');
+  assert.match(L.changeSquads(['甲', '乙'], { type: 'remove', name: '甲' }, ['甲']).error, /還有在團小狼/);
+  assert.deepEqual(L.changeSquads(['甲', '乙'], { type: 'remove', name: '甲' }, ['乙']).list, ['乙']);
+  assert.deepEqual(L.changeSquads(['甲', '乙', '丙'], { type: 'move', name: '丙', dir: 'up' }).list, ['甲', '丙', '乙']);
+  assert.deepEqual(L.changeSquads(['甲', '乙'], { type: 'move', name: '甲', dir: 'up' }).list, ['甲', '乙'], '已在最上面不動');
+});

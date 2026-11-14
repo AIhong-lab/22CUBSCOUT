@@ -124,10 +124,19 @@ registerAdmin_('cubList', 'viewRoster', function (req, who) {
   return { cubs: cubs, squads: squadsOf_(cubs) };
 });
 
+/** 小隊清單：依「設定」的小隊清單順序；在團小狼使用中但不在清單的舊名稱附在後面，避免小狼被藏起來 */
 function squadsOf_(cubs) {
-  var s = {};
-  cubs.forEach(function (c) { if (c.squad && c.status === '在團') s[c.squad] = true; });
-  return Object.keys(s).sort();
+  var list = loadSettings_().values['小隊清單'].slice();
+  cubs.forEach(function (c) { if (c.squad && c.status === '在團' && list.indexOf(c.squad) < 0) list.push(c.squad); });
+  return list;
+}
+
+/** 新增／編輯小狼時檢查小隊必須在清單內（清單為空時只能留空） */
+function requireSquad_(squad) {
+  if (!squad) return '';
+  var list = loadSettings_().values['小隊清單'];
+  if (list.indexOf(squad) < 0) throw new ApiError(ERR.BAD_INPUT, '「' + squad + '」不在小隊清單中，請先到「更多 → 小隊設定」新增。');
+  return squad;
 }
 
 registerAdmin_('cubSave', 'manageCubs', function (req, who) {
@@ -135,6 +144,7 @@ registerAdmin_('cubSave', 'manageCubs', function (req, who) {
   if (!name || name.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
   return withLock_(function () {
     var settings = loadSettings_().values;
+    squad = requireSquad_(squad);
     if (req.cubId) {
       var cub = findCub_(req.cubId);
       var row = cubRow_(cub);
@@ -867,4 +877,46 @@ registerAdmin_('printData', 'printSheet', function (req) {
     };
   });
   return { unit: unit, rule: info.rule || '', sheets: sheets };
+});
+
+// ───────────── 小隊設定 ─────────────
+
+registerAdmin_('squadList', 'viewRoster', function () {
+  var count = {};
+  loadCubs_().forEach(function (c) { if (c.status === '在團' && c.squad) count[c.squad] = (count[c.squad] || 0) + 1; });
+  var list = loadSettings_().values['小隊清單'];
+  var extra = Object.keys(count).filter(function (k) { return list.indexOf(k) < 0; });
+  return {
+    squads: list.map(function (n) { return { name: n, count: count[n] || 0 }; }),
+    notInList: extra.map(function (n) { return { name: n, count: count[n] }; })
+  };
+});
+
+/**
+ * 小隊清單異動：type = add / rename / remove / move（dir: up/down）
+ * 改名時同步更新所有使用該小隊名稱的小狼（含已離團），並寫操作日誌。
+ */
+registerAdmin_('squadSave', 'manageCubs', function (req, who) {
+  return withLock_(function () {
+    var cubs = loadCubs_();
+    var inUse = cubs.filter(function (c) { return c.status === '在團' && c.squad; }).map(function (c) { return c.squad; });
+    var cur = loadSettings_().values['小隊清單'];
+    var r = Logic.changeSquads(cur, { type: Logic.clean(req.type), name: req.name, newName: req.newName, dir: req.dir }, inUse);
+    if (!r.ok) throw new ApiError(ERR.BAD_INPUT, r.error);
+    var row = readRows_(SHEET.SETTINGS).filter(function (x) { return Logic.clean(x[0]) === '小隊清單'; })[0];
+    var values = ['小隊清單', r.list.join('、'), (Logic.SETTINGS.filter(function (x) { return x.key === '小隊清單'; })[0] || {}).desc || ''];
+    if (row) updateRows_(SHEET.SETTINGS, [{ row: row._row, values: values }]);
+    else appendRows_(SHEET.SETTINGS, [values]);
+    var moved = 0;
+    if (req.type === 'rename') {
+      var from = Logic.clean(req.name), to = Logic.clean(req.newName);
+      var ups = cubs.filter(function (c) { return c.squad === from; }).map(function (c) {
+        var x = cubRow_(c); x[2] = to; return { row: c._row, values: x };
+      });
+      updateRows_(SHEET.CUBS, ups);
+      moved = ups.length;
+    }
+    logOp_(who.account.accountId, '小隊設定', Logic.clean(req.type), cur.join('、'), r.list.join('、') + (moved ? '（更新 ' + moved + ' 位小狼）' : ''));
+    return { squads: r.list, moved: moved };
+  });
 });

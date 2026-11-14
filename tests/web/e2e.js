@@ -31,6 +31,8 @@ function seed(env) {
   put('集會行事曆', dates.map((d, i) => ['M' + i, d, `${+d.slice(5, 7)}/${+d.slice(8)} 團集會`, '', '是', leaderId, new Date()]));
   put('出席紀錄', [['M0', 'C1', '出席', leaderId, ''], ['M1', 'C1', '請假', leaderId, ''], ['M2', 'C1', '出席', leaderId, ''], ['M4', 'C1', '出席', leaderId, '']]);
   put('年度出席設定', [['115學年度', '2026-08-01', '2027-07-31', 18, '']]);
+  const sr = env.rows('設定').findIndex((r) => r[0] === '小隊清單') + 2;
+  env.sheet('設定').getRange(sr, 2).setValues([['一小隊、二小隊']]);
   put('額外出席', [['115學年度', 'C1', 2, '露營', leaderId, new Date()]]);
 }
 
@@ -242,11 +244,22 @@ function seed(env) {
   // 小狼：新增
   await tab('cubs');
   await page.getByText('＋ 新增小狼').click();
-  await page.fill('input[name=name]', '測試小狼丙'); await page.fill('input[name=squad]', '二小隊'); await page.fill('input[name=joinDate]', '2026-09-01');
+  await page.fill('input[name=name]', '測試小狼丙'); await page.selectOption('select[name=squad]', '二小隊'); await page.fill('input[name=joinDate]', '2026-09-01');
   await page.click('form#f button[type=submit]');
   await page.locator('.codebox').waitFor();
   assert.match(await page.locator('.codebox').innerText(), /^[A-Z2-9]{6}$/);
   await shot('12-cub'); await noHScroll('小狼頁');
+
+  // 小隊設定：新增
+  await tab('more');
+  await page.locator('.menu-grid button[data-p=squads]').click();
+  await page.locator('[data-rn=二小隊]').waitFor();
+  assert.match(await text(), /一小隊[\s\S]*在團 1 位[\s\S]*二小隊[\s\S]*在團 2 位/);
+  await page.fill('form#f input[name=name]', '黑豹小隊');
+  await page.click('form#f button[type=submit]');
+  await page.locator('[data-rn=黑豹小隊]').waitFor();
+  await shot('12b-squads'); await noHScroll('小隊設定');
+  assert.equal(env.rows('設定').find((r) => r[0] === '小隊清單')[1], '一小隊、二小隊、黑豹小隊');
 
   // 簽核：小隊批次（選二小隊 → 進程・羚羊級 → 兩項）→ 復原
   await tab('sign');
