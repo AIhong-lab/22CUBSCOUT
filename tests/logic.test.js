@@ -353,6 +353,7 @@ function privacyData() {
     '頒章紀錄': [['小狼ID', '級別或章名'], ['C1', '羚羊'], ['C2', '羚羊']],
     '通知紀錄': [['小狼ID', '級別或章名'], ['C1', '狼']],
     '出席紀錄': [['集會ID', '小狼ID', '狀態'], ['M1', 'C1', '出席'], ['M1', 'C2', '請假'], ['M2', 'C1', '請假']],
+    '額外出席': [['年度名稱', '小狼ID', '額外出席次數'], ['115學年度', 'C1', 2]],
     '操作日誌': [['時間', '操作人', '動作', '對象', '修改前', '修改後'],
       ['t', 'A1', '新增小狼', '測試小狼甲', '', '測試小狼甲／一小隊'],
       ['t', 'A1', '新增小狼', '測試小狼乙', '', '']]
@@ -362,7 +363,7 @@ function privacyData() {
 test('完全刪除涵蓋所有相關分頁', () => {
   const plan = L.planPrivacy(privacyData(), 'C1', 'delete');
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2], '出席紀錄': [2, 4] });
+  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2], '出席紀錄': [2, 4], '額外出席': [2] });
   assert.deepEqual(Object.keys(plan.deleteRows).sort(), Object.keys(L.CUB_ID_COLUMNS).sort());
   assert.equal(plan.updateRows['操作日誌'].length, 1);
   const v = plan.updateRows['操作日誌'][0].values;
@@ -380,7 +381,7 @@ test('匿名化：改名加流水號、清空小隊與綁定碼、刪除綁定�
   assert.equal(row.values[5], '');
   assert.equal(row.values[7], '已匿名');
   assert.deepEqual(plan.deleteRows, { '綁定紀錄': [2, 4] });
-  assert.ok(!plan.deleteRows['完成紀錄'] && !plan.deleteRows['頒章紀錄'] && !plan.deleteRows['出席紀錄'], '統計用紀錄保留');
+  assert.ok(!plan.deleteRows['完成紀錄'] && !plan.deleteRows['頒章紀錄'] && !plan.deleteRows['出席紀錄'] && !plan.deleteRows['額外出席'], '統計用紀錄保留');
   assert.ok(!plan.updateRows['操作日誌'].some((u) => u.values.join('').includes('測試小狼甲')));
 });
 
@@ -565,4 +566,22 @@ test('出席相關設定的預設與格式檢查', () => {
   const bad = L.parseSettings([['鍵', '值'], ['出席自動完成項目ID', '羚羊第七項']]);
   assert.equal(bad.values['出席自動完成項目ID'], 'P-羚羊-7');
   assert.ok(bad.errors.some((e) => e.key === '出席自動完成項目ID'));
+});
+
+test('年度出席率：（出席 + 額外）÷ 總數，請假不減少分母', () => {
+  const recs = [att('2025-08-30'), att('2025-09-06'), att('2025-09-13', '請假'), att('2026-03-01'), att('2026-08-01')];
+  const period = { start: '2025-09-01', end: '2026-07-31', total: 18 };
+  const r = L.attendanceRate(recs, period, 0);
+  assert.deepEqual([r.attended, r.leave, r.total], [2, 1, 18], '只算年度期間內');
+  assert.equal(r.text, '11%');
+  const r2 = L.attendanceRate([...Array(15)].map((_, i) => att('2025-10-' + String(i + 1).padStart(2, '0'))).concat([att('2025-11-01', '請假'), att('2025-11-02', '請假')]), period, 0);
+  assert.equal(r2.text, '83%', '15/18，請假 2 次不影響分母');
+  assert.equal(L.attendanceRate(recs, period, 3).count, 5, '加上額外出席次數');
+  assert.equal(L.attendanceRate(recs, { ...period, total: 0 }, 0).text, '', '總數未設定不顯示');
+});
+
+test('依日期找年度出席設定', () => {
+  const ps = [{ name: '114學年度', start: '2025-08-01', end: '2026-07-31' }, { name: '115學年度', start: '2026-08-01', end: '2027-07-31' }];
+  assert.equal(L.periodOf(ps, '2026-11-14').name, '115學年度');
+  assert.equal(L.periodOf(ps, '2024-01-01'), null);
 });

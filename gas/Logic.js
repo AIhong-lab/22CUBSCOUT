@@ -723,7 +723,8 @@ var Logic = (function () {
     '完成紀錄': 0,
     '頒章紀錄': 0,
     '通知紀錄': 0,
-    '出席紀錄': 1
+    '出席紀錄': 1,
+    '額外出席': 1
   };
 
   /**
@@ -818,6 +819,35 @@ var Logic = (function () {
     };
   }
 
+  /**
+   * 年度出席率 =（年度期間內「出席」次數 + 額外出席次數）÷ 應出席總數。
+   * 請假不減少分母。總數未設定（0）時不顯示出席率。
+   * @param records [{date, status}] 這位小狼、啟用中集會的出席紀錄
+   * @param period {start, end, total} 年度出席設定（日期含頭尾）
+   * @param extra 團長設定的額外出席次數
+   */
+  function attendanceRate(records, period, extra) {
+    var inPeriod = (records || []).filter(function (a) { return a.date >= period.start && a.date <= period.end; });
+    var c = attendanceCounts(inPeriod);
+    var ex = Number(extra) > 0 ? Math.floor(Number(extra)) : 0;
+    var total = Number(period.total) > 0 ? Math.floor(Number(period.total)) : 0;
+    var count = c.attended + ex;
+    var rate = total ? count / total : null;
+    return {
+      attended: c.attended, leave: c.leave, extra: ex, total: total, count: count, rate: rate,
+      text: rate === null ? '' : Math.round(rate * 100) + '%'
+    };
+  }
+
+  /** 找出某日期所屬的年度出席設定（多個年度重疊時取開始日最晚者） */
+  function periodOf(periods, date) {
+    var hit = null;
+    (periods || []).forEach(function (p) {
+      if (isDateStr(p.start) && isDateStr(p.end) && date >= p.start && date <= p.end && (!hit || p.start > hit.start)) hit = p;
+    });
+    return hit;
+  }
+
   return {
     LEVELS: LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
@@ -827,7 +857,7 @@ var Logic = (function () {
     parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
-    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, statusTextForParents: statusTextForParents,
+    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
