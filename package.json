@@ -1,0 +1,12 @@
+{
+  "name": "22cubscout",
+  "version": "0.0.0",
+  "private": true,
+  "description": "幼童軍進程與技能章查詢系統：純邏輯測試",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,26 @@
+# clasp 登入憑證（含 Google OAuth token），絕不可進版控
+.clasprc.json
+**/.clasprc.json
+
+# 任何金鑰、token、環境變數檔
+*.key
+*.pem
+*.p12
+.env
+.env.*
+secrets*.json
+credentials*.json
+token*.json
+
+# 試算表匯出、備份檔（可能含小狼個資）
+*.xlsx
+backup/
+exports/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 系統檔
+.DS_Store
+Thumbs.db

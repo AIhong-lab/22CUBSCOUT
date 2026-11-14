@@ -1,0 +1,18 @@
+# 幼童軍進程與技能章查詢系統
+
+家長從 LINE 官方帳號打開網頁，就能看到孩子的入團時間、已拿到與正在挑戰的進程和技能章。團長與服務員從同一個入口進後台，管理名單、簽核項目、登錄頒章；條件達成時，LINE 會主動通知團長。
+
+- 前端：GitHub Pages 上的單一網頁（LINE LIFF）
+- 後端：Google Apps Script
+- 資料：Google 試算表（只放在團長的 Google 帳號，repo 裡沒有任何孩子的資料或金鑰）
+
+## 文件
+- 需求規格：[docs/SPEC.md](docs/SPEC.md)
+- 設定步驟：[docs/SETUP.md](docs/SETUP.md)
+- 手動測試：[docs/TESTING.md](docs/TESTING.md)
+- 個資說明：[docs/PRIVACY.md](docs/PRIVACY.md)
+- 第二期規劃：[docs/ROADMAP.md](docs/ROADMAP.md)
+- 變更紀錄：[docs/CHANGELOG.md](docs/CHANGELOG.md)
+
+## 目前進度
+階段 0A 完成（規格、專案結構、種子資料）。下一步是階段 0B 技術驗證。
