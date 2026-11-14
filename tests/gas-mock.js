@@ -46,7 +46,10 @@ class Range {
 }
 
 class Sheet {
-  constructor(name) { Object.assign(this, { name, data: [], maxRows: 1000, textCols: new Set(), protections: [], frozen: 0, writes: 0 }); }
+  constructor(name) { Object.assign(this, { name, data: [], maxRows: 1000, textCols: new Set(), protections: [], frozen: 0, writes: 0, hidden: false }); }
+  isSheetHidden() { return this.hidden; }
+  hideSheet() { this.hidden = true; return this; }
+  showSheet() { this.hidden = false; return this; }
   getName() { return this.name; }
   getLastRow() {
     for (let i = this.data.length - 1; i >= 0; i--) if ((this.data[i] || []).some((v) => v !== '' && v !== undefined && v !== null)) return i + 1;
@@ -71,6 +74,12 @@ class Spreadsheet {
   getSheetByName(n) { return this.sheets.get(n) || null; }
   insertSheet(n) { const s = new Sheet(n); this.sheets.set(n, s); return s; }
   getSheets() { return [...this.sheets.values()]; }
+  setActiveSheet(s) { this.active = s; return s; }
+  moveActiveSheet(pos) {
+    const list = [...this.sheets.entries()].filter(([, v]) => v !== this.active);
+    list.splice(pos - 1, 0, [this.active.getName(), this.active]);
+    this.sheets = new Map(list);
+  }
   deleteSheet(s) { for (const [k, v] of this.sheets) if (v === s) this.sheets.delete(k); }
 }
 

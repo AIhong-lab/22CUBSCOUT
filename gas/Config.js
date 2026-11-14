@@ -35,6 +35,12 @@ var SHEET = {
   LOG: '操作日誌'
 };
 
+/**
+ * 團長平常需要自己打開修改的分頁（SPEC 附錄第 30 點）；排在最前面且一律顯示。
+ * 其他分頁是系統自己寫入的紀錄，setup() 會把它們隱藏起來（只是隱藏，資料不動）。
+ */
+var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, SHEET.CONSENT];
+
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
 HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日'];

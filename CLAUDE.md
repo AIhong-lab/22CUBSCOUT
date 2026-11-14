@@ -76,6 +76,7 @@
 | 設定 | 鍵、值、說明 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 
+- 試算表只顯示 `EDITABLE_SHEETS`（Config.js）的 5 個分頁，其他系統分頁由 setup() 隱藏（SPEC 附錄第 30 點）；新增分頁時要決定它屬於哪一種。
 - 完成紀錄的「回報人、回報狀態」是第二期預留欄，第一期留空；判定邏輯只把「回報狀態為空或『已確認』」視為完成。
 - 進程級別順序：羚羊 → 狼 → 鹿 → 豹。豹級頒發後進程全部完成，沒有下一級。
 
@@ -103,7 +104,7 @@
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員與邀請碼、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`（編輯器手動執行一次） |
 | `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）、`createInvite_`（產生邀請碼，選單與後台共用）、`inviteMessage_`；選單呼叫的函式名稱不可底線結尾 |
-| `Setup.js` | `setup()`、`cleanup0B()` |
+| `Setup.js` | `setup()`、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。
 - 測試：`tests/logic.test.js`（純邏輯）、`tests/backend.test.js`（用 `tests/gas-mock.js` 模擬試算表跑完整 API 流程，也測合併檔）。

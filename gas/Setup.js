@@ -32,6 +32,7 @@ function setup() {
     var missing = Logic.defaultSettingsRows().slice(1).filter(function (r) { return !have[r[0]]; });
     if (missing.length) { appendRows_(SHEET.SETTINGS, missing); report.seeded.push(SHEET.SETTINGS + ' 補上 ' + missing.length + ' 項'); }
 
+    report.hidden = organizeSheets_(true);
     report.firstLeaderInvite = ensureFirstLeaderInvite_();
     printSetupReport_(report);
     return report;
@@ -89,8 +90,38 @@ function ensureFirstLeaderInvite_() {
   return { code: code, expiresAt: exp.getTime(), reused: false };
 }
 
+/**
+ * 整理分頁：要編輯的分頁排最前面並顯示；系統分頁依 hide 隱藏或全部顯示。
+ * 只改分頁的順序與顯示狀態，不動任何資料；不屬於本系統的分頁不處理。
+ * @return {number} 隱藏的分頁數
+ */
+function organizeSheets_(hide) {
+  var ss = ss_();
+  // 先顯示要編輯的分頁（試算表至少要有一個看得到的分頁，才能隱藏其他的）
+  EDITABLE_SHEETS.forEach(function (name, i) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    if (sh.isSheetHidden()) sh.showSheet();
+    ss.setActiveSheet(sh);
+    ss.moveActiveSheet(i + 1);
+  });
+  var n = 0;
+  Object.keys(SHEET).forEach(function (k) {
+    var name = SHEET[k];
+    if (EDITABLE_SHEETS.indexOf(name) >= 0) return;
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    if (hide && !sh.isSheetHidden()) { sh.hideSheet(); n++; }
+    if (!hide && sh.isSheetHidden()) sh.showSheet();
+  });
+  var first = ss.getSheetByName(EDITABLE_SHEETS[0]);
+  if (first) ss.setActiveSheet(first);
+  return n;
+}
+
 function printSetupReport_(r) {
   Logger.log('setup 完成。');
+  Logger.log('只顯示需要編輯的 ' + EDITABLE_SHEETS.length + ' 個分頁，其他系統分頁已隱藏（資料都在）。要查看時用試算表選單「🐺 幼童軍系統 → 顯示全部分頁」。');
   if (r.created.length) Logger.log('新建立分頁：' + r.created.join('、'));
   if (r.seeded.length) Logger.log('匯入資料：' + r.seeded.join('、'));
   if (r.headerFixed.length) Logger.log('補上新欄位：' + r.headerFixed.join('、'));

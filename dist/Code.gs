@@ -1011,6 +1011,12 @@ var SHEET = {
   LOG: '操作日誌'
 };
 
+/**
+ * 團長平常需要自己打開修改的分頁（SPEC 附錄第 30 點）；排在最前面且一律顯示。
+ * 其他分頁是系統自己寫入的紀錄，setup() 會把它們隱藏起來（只是隱藏，資料不動）。
+ */
+var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, SHEET.CONSENT];
+
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
 HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日'];
@@ -1958,8 +1964,15 @@ function onOpen() {
     .createMenu('🐺 幼童軍系統')
     .addItem('產生服務員邀請碼', 'menuInviteAssistant')
     .addItem('產生團長邀請碼', 'menuInviteLeader')
+    .addSeparator()
+    .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
+    .addItem('只顯示需要編輯的分頁', 'menuHideSystemSheets')
     .addToUi();
 }
+
+/** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
+function menuShowAllSheets() { organizeSheets_(false); SpreadsheetApp.getUi().alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
+function menuHideSystemSheets() { var n = organizeSheets_(true); SpreadsheetApp.getUi().alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
 
 function menuInviteAssistant() { menuInvite_(Logic.ROLE.ASSISTANT); }
 function menuInviteLeader() { menuInvite_(Logic.ROLE.LEADER); }
@@ -3124,6 +3137,7 @@ function setup() {
     var missing = Logic.defaultSettingsRows().slice(1).filter(function (r) { return !have[r[0]]; });
     if (missing.length) { appendRows_(SHEET.SETTINGS, missing); report.seeded.push(SHEET.SETTINGS + ' 補上 ' + missing.length + ' 項'); }
 
+    report.hidden = organizeSheets_(true);
     report.firstLeaderInvite = ensureFirstLeaderInvite_();
     printSetupReport_(report);
     return report;
@@ -3181,8 +3195,38 @@ function ensureFirstLeaderInvite_() {
   return { code: code, expiresAt: exp.getTime(), reused: false };
 }
 
+/**
+ * 整理分頁：要編輯的分頁排最前面並顯示；系統分頁依 hide 隱藏或全部顯示。
+ * 只改分頁的順序與顯示狀態，不動任何資料；不屬於本系統的分頁不處理。
+ * @return {number} 隱藏的分頁數
+ */
+function organizeSheets_(hide) {
+  var ss = ss_();
+  // 先顯示要編輯的分頁（試算表至少要有一個看得到的分頁，才能隱藏其他的）
+  EDITABLE_SHEETS.forEach(function (name, i) {
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    if (sh.isSheetHidden()) sh.showSheet();
+    ss.setActiveSheet(sh);
+    ss.moveActiveSheet(i + 1);
+  });
+  var n = 0;
+  Object.keys(SHEET).forEach(function (k) {
+    var name = SHEET[k];
+    if (EDITABLE_SHEETS.indexOf(name) >= 0) return;
+    var sh = ss.getSheetByName(name);
+    if (!sh) return;
+    if (hide && !sh.isSheetHidden()) { sh.hideSheet(); n++; }
+    if (!hide && sh.isSheetHidden()) sh.showSheet();
+  });
+  var first = ss.getSheetByName(EDITABLE_SHEETS[0]);
+  if (first) ss.setActiveSheet(first);
+  return n;
+}
+
 function printSetupReport_(r) {
   Logger.log('setup 完成。');
+  Logger.log('只顯示需要編輯的 ' + EDITABLE_SHEETS.length + ' 個分頁，其他系統分頁已隱藏（資料都在）。要查看時用試算表選單「🐺 幼童軍系統 → 顯示全部分頁」。');
   if (r.created.length) Logger.log('新建立分頁：' + r.created.join('、'));
   if (r.seeded.length) Logger.log('匯入資料：' + r.seeded.join('、'));
   if (r.headerFixed.length) Logger.log('補上新欄位：' + r.headerFixed.join('、'));

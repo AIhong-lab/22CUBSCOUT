@@ -12,8 +12,15 @@ function onOpen() {
     .createMenu('🐺 幼童軍系統')
     .addItem('產生服務員邀請碼', 'menuInviteAssistant')
     .addItem('產生團長邀請碼', 'menuInviteLeader')
+    .addSeparator()
+    .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
+    .addItem('只顯示需要編輯的分頁', 'menuHideSystemSheets')
     .addToUi();
 }
+
+/** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
+function menuShowAllSheets() { organizeSheets_(false); SpreadsheetApp.getUi().alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
+function menuHideSystemSheets() { var n = organizeSheets_(true); SpreadsheetApp.getUi().alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
 
 function menuInviteAssistant() { menuInvite_(Logic.ROLE.ASSISTANT); }
 function menuInviteLeader() { menuInvite_(Logic.ROLE.LEADER); }
