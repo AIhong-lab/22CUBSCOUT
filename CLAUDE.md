@@ -6,8 +6,10 @@
 ## 目前進度
 - 階段 0A 完成：規格、專案結構、種子資料。
 - 2026-11-14 改為帳號密碼登入（見 SPEC 附錄第 7 點），已改寫 SPEC 本文。
-- 下一步：階段 0B 技術驗證（GitHub Pages 呼叫 GAS、註冊登入與憑證過期、webhook 回覆）。
-- 尚未有任何程式碼部署到 Google 或 LINE。
+- 階段 0B 程式已寫好、本機模擬測試通過，**等團長依 docs/SETUP-0B.md 實測**：
+  - `gas/Verify0B.gs`、`web/0b/index.html` 是暫時性驗證程式，階段 2／3 由正式程式取代後刪除。
+  - 測試資料只存 Script Properties（`T0B_` 開頭），`cleanup0B()` 清除。
+- 0B 三項全通過才進階段 1。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
