@@ -113,6 +113,7 @@
 
 ## 前端（web/index.html）
 - 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
+- 版面（SPEC 附錄第 29 點）：`#tabs` 導覽列在 `header.top` 內；`setTabs()` 依 `state.mode` 加 `body.admin`，寬螢幕（`isWide()`，≥1000px）後台改左側選單並把 `adminMoreItems()` 直接列出；未登入預設 `renderCatalog('progress')`。e2e 另有一段 1280px 寬螢幕檢查。
 - 結構：工具函式 → 登入／註冊 → 家長畫面（`viewHome` 冒險、`viewMap` 闖關地圖、`viewBadges` 徽章收藏冊、`viewStamps` 集點卡、`renderMine`）→ `printSheets` → 後台（`ADMIN_PAGES` 物件，每個鍵是一頁；`goAdmin(頁名, 參數)` 切換）。
 - 後台需要確認的操作（頒章、修改頒章）用 `withConfirm()`：後端回 `needConfirm` 時跳確認視窗再帶 `confirm:true` 重送。
 - 登入憑證：勾「記住我」存 localStorage，否則存 sessionStorage（關閉瀏覽器即登出）。

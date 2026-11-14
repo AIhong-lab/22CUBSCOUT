@@ -18,30 +18,59 @@
     --green: #2e9d57; --green-dark: #1d7a3a; --green-soft: #e2f6e9;
     --gray: #6b7385; --gray-soft: #eef0f4; --gray-line: #dfe4ee;
     --red: #c62828; --red-soft: #fde7e7;
-    --bg: #fffaf0; --card: #ffffff; --text: #1d2433;
-    --radius: 22px; --shadow: 0 4px 0 rgba(31, 78, 156, .12), 0 8px 20px rgba(31, 78, 156, .08);
+    --bg: #f6f7fb; --card: #ffffff; --text: #1d2433;
+    --radius: 14px; --shadow: 0 1px 2px rgba(20, 40, 80, .06), 0 4px 14px rgba(20, 40, 80, .06);
+    --side: 220px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; color: var(--text); background: var(--bg);
-    background-image: radial-gradient(circle at 10% 0%, #fff1c2 0, transparent 40%), radial-gradient(circle at 100% 30%, #e3f4e8 0, transparent 35%);
-    background-attachment: fixed;
-    font: 18px/1.65 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    margin: 0; color: var(--text); background: #f6f7fb;
+    font: 17px/1.65 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   }
   button, input, select, textarea { font: inherit; color: inherit; }
   a { color: var(--blue); }
 
-  /* ───── 頂部 ───── */
-  header.top { position: sticky; top: 0; z-index: 20; color: #fff; background: linear-gradient(135deg, var(--blue) 0%, #2d6bc4 100%); box-shadow: 0 3px 0 var(--yellow); }
-  header.top .row { display: flex; align-items: center; gap: 10px; max-width: 760px; margin: 0 auto; padding: 12px 16px; }
-  header.top h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 900; letter-spacing: .5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  header.top select { max-width: 48%; font-size: 16px; padding: 8px 10px; border-radius: 999px; border: 0; background: #fff; color: var(--text); font-weight: 700; }
-  .chip-btn { background: var(--yellow); color: var(--text); border: 0; border-radius: 999px; padding: 7px 14px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 2px 0 var(--yellow-dark); white-space: nowrap; }
+  /* ───── 頂部：品牌＋導覽列（電腦一排；手機在標題下方第二排，可左右滑） ───── */
+  header.top { position: sticky; top: 0; z-index: 20; color: #fff; background: var(--blue); border-bottom: 3px solid var(--yellow); }
+  header.top .row { display: flex; align-items: center; gap: 14px; max-width: 1200px; margin: 0 auto; padding: 0 20px; min-height: 60px; flex-wrap: wrap; }
+  header.top h1 { font-size: 20px; margin: 0; font-weight: 900; letter-spacing: .5px; white-space: nowrap; cursor: pointer; }
+  #headerRight { margin-left: auto; }
+  header.top select { max-width: 220px; font-size: 15px; padding: 6px 10px; border-radius: 8px; border: 0; background: #fff; color: var(--text); font-weight: 700; }
+  .chip-btn { background: var(--yellow); color: var(--text); border: 0; border-radius: 8px; padding: 7px 14px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+  nav.tabs { display: flex; }
+  nav.tabs[hidden] { display: none; } /* 上面的 display:flex 會蓋過 hidden 屬性，需明確隱藏 */
+  nav.tabs .inner { display: flex; gap: 2px; }
+  nav.tabs button { border: 0; background: none; color: #dbe6fb; padding: 18px 14px 15px; font-size: 16px; font-weight: 800; cursor: pointer; white-space: nowrap; border-bottom: 4px solid transparent; margin-bottom: -3px; }
+  nav.tabs button .ic { margin-right: 6px; }
+  nav.tabs button:hover { color: #fff; background: rgba(255,255,255,.08); }
+  nav.tabs button.on { color: #fff; border-bottom-color: var(--yellow); }
+  @media (max-width: 759px) {
+    header.top .row { padding: 0 12px; gap: 8px; min-height: 52px; }
+    header.top h1 { font-size: 18px; padding: 12px 0 0; }
+    #headerRight { padding-top: 10px; }
+    nav.tabs { order: 3; width: calc(100% + 24px); margin: 0 -12px; overflow-x: auto; scrollbar-width: none; }
+    nav.tabs::-webkit-scrollbar { display: none; }
+    nav.tabs .inner { width: 100%; }
+    nav.tabs button { flex: 1; padding: 8px 10px 9px; font-size: 15px; }
+    nav.tabs button .ic { display: block; margin: 0; font-size: 20px; line-height: 1.2; }
+  }
+  /* 後台在寬螢幕改成左側選單 */
+  @media (min-width: 1000px) {
+    body.admin nav.tabs { position: fixed; top: 63px; left: 0; bottom: 0; width: var(--side); background: #fff; border-right: 1px solid var(--gray-line); padding: 14px 10px; display: block; overflow-y: auto; }
+    body.admin nav.tabs .inner { flex-direction: column; gap: 4px; }
+    body.admin nav.tabs button { color: var(--text); text-align: left; padding: 11px 14px; border-radius: 10px; border: 0; margin: 0; }
+    body.admin nav.tabs button:hover { background: var(--gray-soft); }
+    body.admin nav.tabs button.on { background: var(--blue-soft); color: var(--blue-dark); }
+    body.admin main { margin-left: var(--side); max-width: none; padding-left: 32px; padding-right: 32px; }
+    body.admin main > * { max-width: 1000px; }
+  }
 
-  main { max-width: 760px; margin: 0 auto; padding: 16px 16px 120px; }
-  .card { background: var(--card); border-radius: var(--radius); padding: 18px; margin-bottom: 18px; box-shadow: var(--shadow); border: 2px solid #f2ead8; }
-  .card h2 { margin: 0 0 12px; font-size: 21px; font-weight: 900; color: var(--blue-dark); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+  @media (max-width: 759px) { main { padding: 14px 12px 40px; } }
+  .card { background: var(--card); border-radius: var(--radius); padding: 20px 22px; margin-bottom: 18px; box-shadow: var(--shadow); border: 1px solid var(--gray-line); }
+  @media (max-width: 759px) { .card { padding: 16px; } }
+  .card h2 { margin: 0 0 12px; font-size: 20px; font-weight: 900; color: var(--blue-dark); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .card h3 { margin: 14px 0 6px; font-size: 18px; font-weight: 900; }
   .muted { color: var(--gray); font-size: 16px; }
   .small { font-size: 15px; }
@@ -53,19 +82,21 @@
   /* ───── 表單與按鈕 ───── */
   label { display: block; margin: 14px 0 6px; font-weight: 800; }
   input[type=text], input[type=password], input[type=date], input[type=number], input[type=search], select.full, textarea {
-    width: 100%; font-size: 18px; padding: 13px 15px; border: 3px solid var(--gray-line); border-radius: 16px; background: #fff;
+    width: 100%; font-size: 17px; padding: 11px 13px; border: 2px solid var(--gray-line); border-radius: 10px; background: #fff;
   }
   textarea { min-height: 120px; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px var(--yellow-soft); }
   .check { display: flex; gap: 12px; align-items: flex-start; font-weight: 800; margin: 12px 0; cursor: pointer; }
   .check input { width: 26px; height: 26px; margin-top: 2px; flex: none; accent-color: var(--blue); }
-  .btn { display: block; width: 100%; min-height: 54px; font-size: 19px; font-weight: 900; padding: 12px 18px; border: 0; border-radius: 18px; background: var(--blue); color: #fff; cursor: pointer; margin-top: 14px; box-shadow: 0 4px 0 var(--blue-dark); transition: transform .08s; }
+  .btn { display: block; width: 100%; min-height: 48px; font-size: 17px; font-weight: 800; padding: 10px 18px; border: 0; border-radius: 10px; background: var(--blue); color: #fff; cursor: pointer; margin-top: 14px; box-shadow: 0 2px 0 var(--blue-dark); transition: transform .08s; }
+  .btn:hover { filter: brightness(1.06); }
   .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--blue-dark); }
   .btn.alt { background: var(--yellow); color: var(--text); box-shadow: 0 4px 0 var(--yellow-dark); }
   .btn.green { background: var(--green); box-shadow: 0 4px 0 var(--green-dark); }
-  .btn.ghost { background: #fff; color: var(--blue); border: 3px solid var(--blue); box-shadow: none; }
+  .btn.ghost { background: #fff; color: var(--blue); border: 2px solid var(--blue); box-shadow: none; }
   .btn.danger { background: var(--red-soft); color: var(--red); box-shadow: 0 4px 0 #f3b8b8; }
-  .btn.small { display: inline-block; width: auto; min-height: 42px; font-size: 16px; padding: 8px 14px; margin-top: 8px; border-radius: 14px; }
+  .btn.small { display: inline-block; width: auto; min-height: 38px; font-size: 15px; padding: 6px 14px; margin-top: 8px; border-radius: 8px; }
+  @media (min-width: 760px) { form .btn, .card > .btn { max-width: 420px; } }
   .btn:disabled { opacity: .5; cursor: default; }
   .linkbtn { background: none; border: 0; color: var(--blue); text-decoration: underline; padding: 8px 0; font-size: 17px; cursor: pointer; font-weight: 700; }
   .msg { padding: 12px 15px; border-radius: 16px; margin-top: 12px; white-space: pre-wrap; font-weight: 700; }
@@ -74,7 +105,7 @@
   .msg.info { background: var(--blue-soft); color: var(--blue-dark); }
   .msg.warn { background: var(--yellow-soft); color: #7a5a00; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
-  .chip { border: 3px solid var(--gray-line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 16px; font-weight: 800; cursor: pointer; }
+  .chip { border: 2px solid var(--gray-line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 16px; font-weight: 800; cursor: pointer; }
   .chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
   .pill { display: inline-block; padding: 2px 12px; border-radius: 999px; font-size: 14px; font-weight: 900; white-space: nowrap; }
   .st-已頒發 { background: #fff1b8; color: #8a6100; }
@@ -121,7 +152,7 @@
   .banner { background: linear-gradient(90deg, var(--yellow-soft), #fff); border-radius: 16px; padding: 12px 14px; margin-bottom: 10px; border: 2px solid var(--yellow); }
 
   /* 可展開卡片 */
-  .unit { border: 3px solid var(--gray-line); border-radius: 18px; margin-top: 12px; overflow: hidden; background: #fff; }
+  .unit { border: 1px solid var(--gray-line); border-radius: 12px; margin-top: 12px; overflow: hidden; background: #fff; }
   .unit > summary { list-style: none; cursor: pointer; padding: 14px; display: block; }
   .unit > summary::-webkit-details-marker { display: none; }
   .unit .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -143,21 +174,21 @@
   .section-title { margin: 14px 0 0; font-weight: 900; color: var(--blue-dark); display: inline-block; background: var(--blue-soft); padding: 2px 12px; border-radius: 999px; font-size: 16px; }
 
   /* ───── 闖關地圖 ───── */
-  .map { padding: 6px 0 4px; }
-  .stage { position: relative; display: flex; align-items: center; gap: 14px; margin: 0 0 34px; cursor: pointer; }
-  .stage:nth-child(even) { flex-direction: row-reverse; text-align: right; }
-  .stage:not(:last-child)::after { content: ''; position: absolute; top: 96px; left: 52px; width: calc(100% - 104px); height: 36px; border-bottom: 5px dashed #c9d8c2; border-left: 5px dashed #c9d8c2; border-radius: 0 0 0 30px; }
-  .stage:nth-child(even):not(:last-child)::after { border-left: 0; border-right: 5px dashed #c9d8c2; border-radius: 0 0 30px 0; }
-  .node { position: relative; width: 104px; height: 104px; flex: none; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e6ebe3 0); padding: 8px; transition: transform .15s; }
-  .node .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 46px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.06); }
+  .map { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 4px 0; }
+  .stage { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 14px 8px 12px; border: 2px solid var(--gray-line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .15s, background .15s; }
+  .stage:hover { border-color: #9fbcec; }
+  .stage.sel { border-color: var(--blue); background: var(--blue-soft); }
+  @media (max-width: 759px) { .map { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
+  .node { position: relative; width: 88px; height: 88px; flex: none; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e6ebe3 0); padding: 8px; transition: transform .15s; }
+  .node .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 40px; box-shadow: inset 0 -4px 0 rgba(0,0,0,.06); }
   .stage.locked .node .in { filter: grayscale(1); opacity: .45; }
   .stage.locked .node::before { content: '🔒'; position: absolute; right: -2px; bottom: -2px; font-size: 26px; z-index: 1; }
-  .stage.active .node { animation: pulse 1.8s ease-in-out infinite; }
+  
   .stage.pending .node { background: conic-gradient(var(--blue) 100%, #fff 0); }
   .stage.done .node { background: conic-gradient(var(--yellow) 100%, #fff 0); }
   .stage.done .node::before { content: '🏅'; position: absolute; right: -4px; bottom: -4px; font-size: 32px; z-index: 1; }
-  .stage.sel .node { transform: scale(1.08); box-shadow: 0 0 0 5px var(--yellow-soft); }
-  .stage .lv { font-size: 22px; font-weight: 900; }
+  
+  .stage .lv { font-size: 19px; font-weight: 900; }
   .stage .st { font-size: 15px; font-weight: 800; }
   .stage .cnt { font-size: 15px; color: var(--gray); }
   .stage.open .node { background: conic-gradient(var(--yellow) 100%, #fff 0); }
@@ -167,7 +198,8 @@
   .finish { text-align: center; font-size: 15px; font-weight: 800; color: var(--green-dark); }
 
   /* ───── 徽章收藏冊 ───── */
-  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 8px; }
+  .badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 16px 8px; }
+  @media (max-width: 759px) { .badges { grid-template-columns: repeat(3, 1fr); } }
   .badge { border: 0; background: none; cursor: pointer; text-align: center; padding: 0; }
   .badge .disc { position: relative; width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; padding: 6px; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e8ecf3 0); }
   .badge .disc .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 36px; }
@@ -183,7 +215,7 @@
   .ring { width: 160px; height: 160px; margin: 6px auto 10px; border-radius: 50%; background: conic-gradient(var(--green) calc(var(--p) * 1%), #e8ecf3 0); display: grid; place-items: center; padding: 14px; }
   .ring .in { width: 100%; height: 100%; border-radius: 50%; background: #fff; display: grid; place-items: center; text-align: center; }
   .ring b { font-size: 36px; color: var(--green-dark); line-height: 1; }
-  .stamps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 8px; }
+  .stamps { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 12px 8px; }
   .stamp { text-align: center; font-size: 13px; color: var(--gray); }
   .stamp .sp { width: 62px; height: 62px; margin: 0 auto 4px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; border: 3px dashed #d5dbe6; background: #fff; }
   .stamp.出席 .sp { border: 3px solid var(--green); background: var(--green-soft); transform: rotate(-8deg); }
@@ -191,21 +223,13 @@
   .counts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .counts span { background: var(--gray-soft); border-radius: 999px; padding: 4px 12px; font-weight: 800; font-size: 15px; }
 
-  /* ───── 底部分頁 ───── */
-  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 3px solid var(--yellow); display: flex; justify-content: center; padding-bottom: env(safe-area-inset-bottom); z-index: 20; box-shadow: 0 -4px 16px rgba(0,0,0,.06); }
-  nav.tabs[hidden] { display: none; } /* 上面的 display:flex 會蓋過 hidden 屬性，需明確隱藏 */
-  nav.tabs .inner { display: flex; width: 100%; max-width: 760px; }
-  nav.tabs button { flex: 1; border: 0; background: none; padding: 7px 2px 9px; font-size: 13px; font-weight: 800; color: var(--gray); cursor: pointer; }
-  nav.tabs button .ic { display: block; font-size: 25px; line-height: 1.25; transition: transform .15s; }
-  nav.tabs button.on { color: var(--blue); }
-  nav.tabs button.on .ic { transform: translateY(-3px) scale(1.18); }
-
   /* ───── 彈出視窗、提示 ───── */
   .sheet-bg { position: fixed; inset: 0; background: rgba(20, 30, 50, .45); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
-  .sheet { background: #fff; width: 100%; max-width: 760px; max-height: 86vh; overflow: auto; border-radius: 26px 26px 0 0; padding: 18px 18px calc(24px + env(safe-area-inset-bottom)); animation: up .22s ease-out; }
+  .sheet { background: #fff; width: 100%; max-width: 720px; max-height: 86vh; overflow: auto; border-radius: 26px 26px 0 0; padding: 18px 18px calc(24px + env(safe-area-inset-bottom)); animation: up .22s ease-out; }
+  @media (min-width: 760px) { .sheet-bg { align-items: center; } .sheet { border-radius: 16px; max-height: 80vh; } .sheet .grab { display: none; } }
   .sheet .grab { width: 54px; height: 6px; background: var(--gray-line); border-radius: 3px; margin: 0 auto 12px; }
   .sheet h2 { margin: 0 0 10px; font-size: 21px; color: var(--blue-dark); }
-  .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 800; z-index: 50; max-width: 90vw; text-align: center; animation: pop .2s ease-out; }
+  .toast { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); background: var(--text); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 800; z-index: 50; max-width: 90vw; text-align: center; animation: pop .2s ease-out; }
   .loading { text-align: center; padding: 60px 0; color: var(--gray); font-weight: 700; }
   .loading .paw { font-size: 44px; display: inline-block; animation: bob 1s ease-in-out infinite; }
   .confetti { position: fixed; top: -20px; font-size: 22px; z-index: 60; pointer-events: none; animation: fall linear forwards; }
@@ -219,9 +243,9 @@
   .roll-btn.出席 { background: var(--green); border-color: var(--green); color: #fff; }
   .roll-btn.請假 { background: #ede7f6; border-color: #b39ddb; color: #4a2c8a; }
   .roll-btn.changed { box-shadow: 0 0 0 4px var(--yellow); }
-  .savebar { position: sticky; bottom: 84px; z-index: 5; background: #fff; border-radius: 18px; padding: 8px 12px 12px; box-shadow: 0 -2px 16px rgba(0,0,0,.12); margin-top: 12px; }
-  .menu-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .menu-grid button { border: 3px solid var(--gray-line); background: #fff; border-radius: 18px; padding: 14px 8px; font-weight: 900; font-size: 16px; cursor: pointer; }
+  .savebar { position: sticky; bottom: 8px; z-index: 5; background: #fff; border-radius: 18px; padding: 8px 12px 12px; box-shadow: 0 -2px 16px rgba(0,0,0,.12); margin-top: 12px; }
+  .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .menu-grid button { border: 1px solid var(--gray-line); background: #fff; border-radius: 12px; padding: 14px 8px; font-weight: 900; font-size: 16px; cursor: pointer; }
   .menu-grid button .ic { display: block; font-size: 30px; }
   .alert { display: flex; gap: 10px; padding: 10px 12px; border-radius: 14px; margin-top: 8px; font-weight: 700; }
   .alert.red { background: var(--red-soft); color: var(--red); }
@@ -241,7 +265,7 @@
   @keyframes pop { from { transform: translateX(-50%) scale(.8); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
   @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-  @media (max-width: 380px) { .badge .disc { width: 72px; height: 72px; } .node { width: 88px; height: 88px; } .stage:not(:last-child)::after { top: 82px; left: 44px; width: calc(100% - 88px); } }
+  @media (max-width: 380px) { .badge .disc { width: 72px; height: 72px; } .node { width: 76px; height: 76px; } }
 
   /* ───── 列印簽核單（A4） ───── */
   #print { display: none; }
@@ -263,9 +287,8 @@
 </style>
 </head>
 <body>
-<header class="top"><div class="row"><h1 id="title">🐾 22團幼童軍冒險</h1><span id="headerRight" class="row-flex"></span></div></header>
+<header class="top"><div class="row"><h1 id="title">🐾 22團幼童軍</h1><nav class="tabs" id="tabs" hidden><div class="inner"></div></nav><span id="headerRight" class="row-flex"></span></div></header>
 <main id="app"><div class="loading"><div class="paw">🐾</div><br>載入中……</div></main>
-<nav class="tabs" id="tabs" hidden><div class="inner"></div></nav>
 <div id="print"></div>
 
 <script>
@@ -336,6 +359,7 @@ window.addEventListener('beforeunload', (e) => { if (leaveGuard && leaveGuard.di
 
 function setTabs(list, cur, onPick) {
   const nav = document.getElementById('tabs');
+  document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me);
   if (!list) { nav.hidden = true; return; }
   nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
   $$('button', nav).forEach((b) => { b.onclick = () => { if (canLeave()) onPick(b.dataset.v); }; });
@@ -409,8 +433,9 @@ function openSheet(html, onMount) {
 // ═════════════ 登入、註冊、忘記密碼 ═════════════
 
 function renderLogin(opt = {}) {
-  setTabs(null); setHeader(''); scrollTop(); setHash('');
-  document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
+  state.mode = 'parent';
+  setTabs(PUBLIC_TABS(), 'login', onPublicTab); setHeader(''); scrollTop(); setHash('');
+  document.getElementById('title').textContent = '🐾 22團幼童軍';
   $app.innerHTML = `
     <section class="card welcome compact"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2></section>
     <section class="card">
@@ -590,7 +615,7 @@ async function start() {
   const h = location.hash;
   if (h === '#home' || h === '#catalog') return renderHome();
   if (h === '#progress' || h === '#badges') return renderCatalog(h.slice(1));
-  if (!store.get('token')) return renderHome(); // 沒登入：先看附說明的首頁
+  if (!store.get('token')) return renderCatalog('progress'); // 沒登入：直接看進程查詢（附簡短說明）
   loading();
   try { state.me = await api('me'); }
   catch (e) {
@@ -637,7 +662,7 @@ function renderParentHeader() {
 
 /** keep=true 時沿用已載入的資料（切換分頁不重新呼叫後端） */
 async function renderParent(keep) {
-  document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
+  document.getElementById('title').textContent = '🐾 22團幼童軍';
   renderParentHeader();
   setTabs(PARENT_TABS, state.view, (v) => { state.view = v; renderParent(true); });
   scrollTop();
@@ -922,8 +947,9 @@ async function renderMine() {
 // ═════════════ 公開頁面：首頁、進程查詢、技能章查詢（不用登入，不含任何孩子的資料） ═════════════
 
 let catalogData = null;
-const PUBLIC_TABS = () => [['home', '🏠', '首頁'], ['progress', '🗺️', '進程'], ['badges', '🎖️', '技能章'], ['login', '🔑', state.me ? '我的' : '登入']];
+const PUBLIC_TABS = () => [['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '技能章查詢'], ['home', 'ℹ️', '說明'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
 const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
+document.getElementById('title').onclick = () => { if (!canLeave()) return; if (state.me) { state.view = 'home'; state.admin = { tab: 'home', page: null }; route(); } else renderCatalog('progress'); };
 
 /** 更新網址（方便分享），不重新載入頁面 */
 function setHash(h) { try { history.replaceState(null, '', location.pathname + location.search + (h || '')); } catch (e) {} }
@@ -1000,7 +1026,7 @@ function renderHome() {
 
 /** 進程查詢（view='progress'）或技能章查詢（view='badges'），各自一頁、各自搜尋 */
 async function renderCatalog(view, opt = {}) {
-  document.getElementById('title').textContent = view === 'progress' ? '🗺️ 進程查詢' : '🎖️ 技能章查詢';
+  document.getElementById('title').textContent = '🐾 22團幼童軍';
   setHeader(''); setHash(PUBLIC_HASH[view]);
   setTabs(PUBLIC_TABS(), view, onPublicTab);
   scrollTop();
@@ -1035,17 +1061,16 @@ async function renderCatalog(view, opt = {}) {
     const sel = levels.find((u) => u.unit === opt.sel) || levels[0];
     $app.innerHTML = `
       <section class="card"><h2>🗺️ 幼童軍進程</h2>
-        <p class="muted small">從羚羊級開始，依序挑戰狼級、鹿級、豹級。點一個關卡看看要完成哪些任務！</p>
+        <p class="muted small">幼童軍以<b>羚羊 → 狼 → 鹿 → 豹</b>四級晉級，完成該級任務並經評核後頒授。點一級看任務；任務下方的「📋 本團細項」可以展開看細節。</p>
         ${searchBox('搜尋進程任務，例如：結繩、國旗')}
         <div class="map">${levels.map((u) => `<div class="stage open ${u === sel ? 'sel' : ''}" data-unit="${esc(u.unit)}" role="button" tabindex="0">
           <div class="node"><div class="in">${LEVEL_ICON[u.unit]}</div></div>
           <div><div class="lv">${esc(u.unit)}級</div><div class="cnt">${u.items.length} 項任務</div></div></div>`).join('')}</div>
-        <div class="finish">🏁 完成豹級，就是全能小狼！</div></section>
+</section>
       ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(sel.unit)}級任務（${sel.items.length} 項）</h2>
         ${sel.desc ? `<p>${esc(sel.desc)}</p>` : ''}${sel.rule ? `<div class="msg info small"><b>晉級條件：</b>${esc(sel.rule)}</div>` : ''}
         ${catalogItemsHtml(sel)}</section>` : ''}
-      <section class="card center"><button class="btn alt" id="other">🎖️ 去看技能章</button></section>
-      <p class="muted small center">內容依據中華民國童軍總會〈幼童軍活動進程〉。</p>`;
+      <p class="muted small center">內容依據中華民國童軍總會〈幼童軍活動進程〉；「本團細項」由本團自訂。　<button class="linkbtn" id="other">看技能章 →</button></p>`;
     $$('.stage').forEach((st) => { st.onclick = () => { renderCatalog('progress', { sel: st.dataset.unit }); const pn = $('#lvPanel'); if (pn && pn.scrollIntoView) pn.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
     $('#q').oninput = () => drawHits(levels);
     drawHits(levels);
@@ -1096,15 +1121,29 @@ function printSheets(unit, sheets, rule) {
 
 const isLeader = () => !!state.me && state.me.role === '團長';
 const ADMIN_TABS = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['sign', '✅', '簽核'], ['cubs', '🐺', '小狼'], ['more', '☰', '更多']];
+/** 「更多」裡的功能（依身分過濾）；寬螢幕直接列在左側選單 */
+function adminMoreItems() {
+  const L = isLeader();
+  return [
+    ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
+    ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['squads', '🏕️', '小隊設定', L], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
+    ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '公開查詢頁', true],
+  ].filter((x) => x[3]);
+}
+const isWide = () => !!(window.matchMedia && matchMedia('(min-width: 1000px)').matches);
 
 function renderAdmin() {
   document.getElementById('title').textContent = '🛠️ 22團後台';
-  setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>`);
+  setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>${isWide() ? ' <button class="chip-btn" id="hdrLogout" style="background:#fff">登出</button>' : ''}`);
+  if ($('#hdrLogout')) $('#hdrLogout').onclick = () => { if (canLeave()) logout(); };
   $('#toParent').onclick = () => { if (canLeave()) { leaveGuard = null; state.mode = 'parent'; route(); } };
   leaveGuard = null; // 換頁後由新頁面自行設定
-  setTabs(ADMIN_TABS, state.admin.tab, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
-  scrollTop();
   const page = state.admin.page;
+  // 寬螢幕：左側選單直接列出全部功能；手機：5 個分頁＋「更多」
+  const tabs = isWide() ? ADMIN_TABS.filter((t) => t[0] !== 'more').concat(adminMoreItems().map(([k, ic, t]) => [k, ic, t])) : ADMIN_TABS;
+  const cur = page && tabs.some((t) => t[0] === page.name) ? page.name : state.admin.tab;
+  setTabs(tabs, cur, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
+  scrollTop();
   const fn = page ? ADMIN_PAGES[page.name] : ADMIN_PAGES[state.admin.tab];
   loading();
   Promise.resolve().then(() => fn(page ? page.params : {})).catch((e) => {
@@ -1472,12 +1511,7 @@ const ADMIN_PAGES = {
   pub() { renderHome(); },
 
   async more() {
-    const L = isLeader();
-    const items = [
-      ['award', '🏅', '頒章', L], ['squads', '🏕️', '小隊設定', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
-      ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
-      ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '查詢首頁', true],
-    ].filter((x) => x[3]);
+    const items = adminMoreItems();
     $app.innerHTML = `<section class="card"><h2>☰ 更多功能</h2><div class="menu-grid">${items.map(([k, ic, t]) => `<button data-p="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div></section>
       <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
     $$('.menu-grid button').forEach((b) => { b.onclick = () => goAdmin(b.dataset.p); });

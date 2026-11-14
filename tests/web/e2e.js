@@ -66,6 +66,12 @@ function seed(env) {
 
   // ═════ 公開首頁與兩個查詢頁（不用登入） ═════
   await page.goto(PAGE);
+  await page.locator('.stage').first().waitFor();
+  assert.equal(new URL(page.url()).hash, '#progress', '沒登入時打開網站直接是進程查詢');
+  assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'progress', '導覽列第一個是進程查詢');
+  assert.ok(await page.locator('header nav.tabs').isVisible(), '導覽列在頁面上方');
+  assert.ok((await page.locator('nav.tabs').boundingBox()).y < 120, '手機版導覽列在標題下方，不是在畫面底部');
+  await tab('home');
   await page.getByText('什麼是「進程」？').waitFor();
   const hp = await text();
   assert.match(hp, /什麼是「技能章」？[\s\S]*3 類 26 個/);
@@ -73,7 +79,7 @@ function seed(env) {
   assert.equal(new URL(page.url()).hash, '#home');
   await shot('00-home'); await noHScroll('公開首頁');
 
-  await page.locator('[data-go=progress]').click();
+  await tab('progress');
   await page.locator('.stage').first().waitFor();
   assert.equal(new URL(page.url()).hash, '#progress', '進程查詢有自己的網址');
   assert.equal(await page.locator('.stage').count(), 4);
@@ -112,7 +118,7 @@ function seed(env) {
 
   // ═════ 家長 ═════
   await page.getByText('我有代碼，要註冊').waitFor();
-  assert.equal(await page.locator('nav.tabs').isVisible(), false, '登入頁不顯示底部分頁列');
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'login', '登入頁仍有導覽列，可以回到查詢頁');
   await shot('01-login'); await noHScroll('登入頁');
 
   // 註冊：錯誤代碼 → 正確代碼 → 不同意
@@ -366,6 +372,34 @@ function seed(env) {
   // 切換到家長畫面
   await page.getByText('家長畫面').click();
   await page.getByText('還沒有綁定孩子').waitFor();
+
+  // ═════ 電腦寬螢幕：上方導覽列、後台左側選單、四級橫排 ═════
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.locator('#toAdmin').click();
+  await page.getByText('今天').first().waitFor().catch(() => {});
+  const side = await page.locator('nav.tabs').boundingBox();
+  assert.ok(side.x < 5 && side.width < 260 && side.height > 500, '後台在寬螢幕是左側選單：' + JSON.stringify(side));
+  assert.equal(await page.locator('nav.tabs button[data-v=more]').count(), 0, '寬螢幕不需要「更多」');
+  await page.locator('nav.tabs button[data-v=overview]').click();
+  await page.locator('table.tbl').waitFor();
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'overview');
+  await shot('20-desktop-admin'); await noHScroll('寬螢幕後台');
+  await page.locator('#hdrLogout').click();
+  await page.getByText('已登出').waitFor();
+  await tab('progress');
+  await page.locator('.stage').first().waitFor();
+  const tops = await page.locator('.stage').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  assert.equal(new Set(tops).size, 1, '寬螢幕四級排成一列');
+  const hb = await page.locator('header.top').boundingBox();
+  assert.ok(hb.height < 80, '寬螢幕導覽列和標題同一排');
+  assert.ok((await page.locator('nav.tabs').boundingBox()).y < hb.height, '導覽列在頂部');
+  await shot('21-desktop-progress'); await noHScroll('寬螢幕進程查詢');
+  await page.locator('#lvPanel details.sub').first().locator('summary').click();
+  await tab('badges'); await page.locator('.badge').first().waitFor();
+  await page.locator('.badge').first().click();
+  const sh = await page.locator('.sheet').boundingBox();
+  assert.ok(sh.y > 20, '寬螢幕彈出視窗置中，不是貼底');
+  await shot('22-desktop-badges');
 
   assert.deepEqual(errors, [], '頁面不可有 JavaScript 錯誤');
   console.log(`前端端對端測試全部通過（共呼叫後端 ${calls} 次）`);
