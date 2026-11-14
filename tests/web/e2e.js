@@ -67,7 +67,7 @@ function seed(env) {
   await page.getByText('什麼是「進程」？').waitFor();
   const hp = await text();
   assert.match(hp, /什麼是「技能章」？[\s\S]*3 類 26 個/);
-  assert.match(hp, /家長／團長登入/);
+  assert.match(hp, /家長、團長、服務員都從這裡登入[\s\S]*直接進入管理員後台/);
   assert.equal(new URL(page.url()).hash, '#home');
   await shot('00-home'); await noHScroll('公開首頁');
 

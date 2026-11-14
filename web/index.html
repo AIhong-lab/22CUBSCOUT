@@ -958,9 +958,11 @@ function renderHome() {
       <button class="btn alt" data-go="badges">🎖️ 技能章查詢</button>
     </section>
     <section class="card">
-      <h2>👨‍👩‍👧 家長與團長</h2>
-      <p class="small">家長登入後，可以看到<b>自己孩子</b>的闖關進度、拿到的章與出席紀錄。第一次使用請準備團長給的「綁定碼」。<br>團長與服務員登入後可以點名、簽核與頒章。</p>
-      <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '🔑 家長／團長登入'}</button>
+      <h2>🔑 登入</h2>
+      <p class="small">家長、團長、服務員都從這裡登入，系統會依帳號自動帶你到對的地方：</p>
+      <ul class="small"><li><b>家長</b>：看到自己孩子的闖關進度、拿到的章與出席紀錄。第一次使用請準備團長給的「綁定碼」。</li>
+        <li><b>團長、服務員</b>：直接進入管理員後台，點名、簽核進程與技能章、頒章，不需要打開試算表。</li></ul>
+      <button class="btn green" data-go="login">${state.me ? '🏕️ 回到我的頁面' : '🔑 登入'}</button>
     </section>
     <p class="muted small center">進程與技能章內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉。<br>查詢頁不會顯示任何孩子的資料。</p>`;
   $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
