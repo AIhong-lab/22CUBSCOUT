@@ -105,7 +105,7 @@
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`（編輯器手動執行一次） |
-| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
+| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。

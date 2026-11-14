@@ -2081,9 +2081,50 @@ var DEFAULT_WEB_URL = 'https://aihong-lab.github.io/22CUBSCOUT/';
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🐺 幼童軍系統')
+    .addItem('把帳號設為團長', 'menuSetLeader')
+    .addSeparator()
     .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
     .addItem('只顯示需要編輯的分頁', 'menuHideSystemSheets')
     .addToUi();
+}
+
+/**
+ * 把已註冊的帳號設為團長（最高權限）。只有能編輯這份試算表的人看得到這個選單，
+ * 而能編輯試算表本來就能改所有資料，所以不另外驗證（SPEC 附錄第 36 點）。
+ */
+function menuSetLeader() {
+  var ui = SpreadsheetApp.getUi();
+  var ans = ui.prompt('把帳號設為團長', '請輸入要設為團長的「帳號」（先在網站註冊好，例如 leader_hong）：', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  var r = setLeaderByUsername_(ans.getResponseText());
+  ui.alert(r.message);
+}
+
+function setLeaderByUsername_(username) {
+  return withLock_(function () {
+    var acc = findAccountByName_(username);
+    if (!acc) return { ok: false, message: '找不到帳號「' + Logic.clean(username) + '」。請先在網站註冊（登入 → 註冊新帳號），再回來設定。' };
+    if (acc.status !== '啟用') return { ok: false, message: '這個帳號已停用，請先到後台「帳號管理」啟用。' };
+    var admins = loadAdmins_();
+    var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
+    if (cur && cur.role === Logic.ROLE.LEADER) return { ok: true, message: '「' + acc.username + '」已經是團長了。' };
+    if (cur) {
+      var row = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length);
+      row[2] = Logic.ROLE.LEADER;
+      updateRows_(SHEET.ADMINS, [{ row: cur._row, values: row }]);
+    } else {
+      appendRows_(SHEET.ADMINS, [[acc.accountId, acc.nickname || acc.username, Logic.ROLE.LEADER, new Date(), '試算表選單', '', '']]);
+    }
+    // 這個帳號還在等審核的服務員申請一併結案
+    var pend = loadRequests_().filter(function (q) { return q.accountId === acc.accountId && q.status === '待審核' && q.type === '服務員'; });
+    if (pend.length) updateRows_(SHEET.REQUESTS, pend.map(function (q) {
+      var v = q._raw.slice(0, HEADERS[SHEET.REQUESTS].length);
+      v[3] = ''; v[5] = '已核准'; v[6] = '試算表選單'; v[7] = new Date();
+      return { row: q._row, values: v };
+    }));
+    logOp_('試算表選單', '設為團長', acc.username, cur ? cur.role : '', Logic.ROLE.LEADER);
+    return { ok: true, message: '已把「' + acc.username + '」設為團長。請重新登入網站，就會進入後台並擁有全部權限。' };
+  });
 }
 
 /** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */

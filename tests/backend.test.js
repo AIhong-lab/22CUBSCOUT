@@ -302,7 +302,7 @@ test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄
   env.ctx.onOpen();
   assert.equal(env.ui.menus[0].title, '🐺 幼童軍系統');
   assert.ok(env.ui.menus[0].items.every(([, fn]) => typeof env.ctx[fn] === 'function' && !fn.endsWith('_')), '選單函式存在且非私有');
-  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
+  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['把帳號設為團長', '顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
   assert.equal(typeof env.ctx.menuInviteAssistant, 'undefined');
 });
 
@@ -412,4 +412,26 @@ test('分頁顯示切換：顯示全部再收起，只動顯示狀態不動資�
   addCub(env, 'C2', '測試小狼乙', 'XY3ZWV', 3);
   assert.equal(env.rows('小狼名單').length, 2);
   assert.equal(env.ctx.setup().hidden, 0, '重跑 setup 不重複處理');
+});
+
+test('試算表選單「把帳號設為團長」：自己註冊的帳號直接變團長（最高權限）', () => {
+  const { env } = fresh();
+  const reg = env.api({ action: 'register', identity: '服務員', username: 'boss_hong', password: 'bosspass12', nickname: '洪團長' });
+  assert.equal(env.api({ action: 'me', token: reg.token }).role, null);
+  env.ui.answers.push(null);
+  env.ctx.menuSetLeader();
+  assert.equal(env.ui.alerts.length, 0, '取消不做事');
+  env.ui.answers.push('nobody99');
+  env.ctx.menuSetLeader();
+  assert.match(env.ui.alerts.at(-1), /找不到帳號/);
+  env.ui.answers.push('BOSS_HONG');
+  env.ctx.menuSetLeader();
+  assert.match(env.ui.alerts.at(-1), /已把「boss_hong」設為團長/);
+  const me = env.api({ action: 'me', token: reg.token });
+  assert.deepEqual([me.role, me.adminName], ['團長', '洪團長']);
+  assert.equal(env.api({ action: 'requestList', token: reg.token }).items.length, 0, '自己的服務員申請已結案');
+  env.ui.answers.push('boss_hong');
+  env.ctx.menuSetLeader();
+  assert.match(env.ui.alerts.at(-1), /已經是團長/);
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '設為團長'));
 });
