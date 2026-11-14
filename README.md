@@ -16,3 +16,8 @@
 
 ## 目前進度
 階段 4A 完成（核心後台＋闖關風格網頁）。現在是里程碑一：上線給團裡試用。網址 https://aihong-lab.github.io/22CUBSCOUT/
+
+## 公開網址（不用登入）
+- 首頁：https://aihong-lab.github.io/22CUBSCOUT/web/#home
+- 進程查詢：https://aihong-lab.github.io/22CUBSCOUT/web/#progress
+- 技能章查詢：https://aihong-lab.github.io/22CUBSCOUT/web/#badges
