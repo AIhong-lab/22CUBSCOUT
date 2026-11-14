@@ -91,7 +91,20 @@ function loadGas(opts = {}) {
     alert(...a) { ui.alerts.push(a.filter((x) => typeof x === 'string').join('\n')); },
     createMenu(title) { const m = { title, items: [], addItem(t, f) { m.items.push([t, f]); return m; }, addSeparator() { return m; }, addToUi() { ui.menus.push(m); } }; return m; },
   };
-  const logs = [];
+  const logs = [], sent = [], cache = {}, triggers = [];
+  // 模擬雲端硬碟：一份試算表檔案與備份資料夾
+  const drive = { files: [], sharing: { file: 'PRIVATE', folder: 'PRIVATE' }, failCopy: false };
+  drive.api = {
+    Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
+    getFileById: () => ({
+      getSharingAccess: () => drive.sharing.file,
+      makeCopy: (name) => { if (drive.failCopy) throw new Error('模擬複製失敗'); const f = { name, created: clock, trashed: false, getName: () => f.name, getDateCreated: () => new RealDate(f.created), setTrashed: (v) => { f.trashed = v; } }; drive.files.push(f); clock += 1000; return f; },
+    }),
+    getFolderById: () => ({
+      getSharingAccess: () => drive.sharing.folder,
+      getFiles: () => { const list = drive.files.filter((f) => !f.trashed); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },
+    }),
+  };
   const ctx = {
     console: { log() {}, error(...a) { logs.push(['error', ...a]); } },
     JSON, Math, String, Number, Array, Object, RegExp, isNaN, parseInt, isFinite, Error,
@@ -118,7 +131,15 @@ function loadGas(opts = {}) {
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
     },
-    UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200 }) },
+    UrlFetchApp: { fetch: (url, o) => { sent.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => 200 }; } },
+    CacheService: { getScriptCache: () => ({
+      get: (k) => (cache[k] && cache[k].exp > clock ? cache[k].v : null),
+      put: (k, v, sec) => { cache[k] = { v: String(v), exp: clock + sec * 1000 }; },
+      remove: (k) => { delete cache[k]; } }) },
+    DriveApp: drive.api,
+    ScriptApp: { getProjectTriggers: () => [...triggers], deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
+      WeekDay: { SUNDAY: 'SUNDAY' },
+      newTrigger: (fn) => { const b = { timeBased: () => b, onWeekDay: () => b, atHour: () => b, everyDays: () => b, create: () => { const t = { getHandlerFunction: () => fn }; triggers.push(t); return t; } }; return b; } },
   };
   vm.createContext(ctx);
   const files = opts.bundle ? ['../dist/Code.gs'] : require('../tools/build.js').ORDER;
@@ -128,7 +149,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows, ui,
+    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

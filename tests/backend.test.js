@@ -333,3 +333,11 @@ test('邀請碼過期後不能使用', () => {
   env.advance(25 * 3600000);
   assert.equal(env.api({ action: 'checkCode', code, childName: '' }).code, 'CODE_INVALID');
 });
+
+test('randInt_ 支援大範圍且結果均在範圍內（修正：曾因只取 16 位元在 n > 65536 時無窮迴圈）', () => {
+  const env = loadGas();
+  for (const n of [1, 31, 65536, 900000, 2 ** 32]) {
+    for (let i = 0; i < 50; i++) { const x = env.ctx.randInt_(n); assert.ok(x >= 0 && x < n && Number.isInteger(x)); }
+  }
+  assert.throws(() => env.ctx.randInt_(0));
+});

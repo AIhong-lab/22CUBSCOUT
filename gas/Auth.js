@@ -31,11 +31,12 @@ function randomHex_(len) {
   return out.slice(0, len);
 }
 
-/** [0, n) 的均勻亂數整數（拒絕取樣，避免偏差） */
+/** [0, n) 的均勻亂數整數（拒絕取樣，避免偏差）；n 最大 2^32 */
 function randInt_(n) {
-  var limit = Math.floor(65536 / n) * n;
+  if (!(n >= 1 && n <= 4294967296)) throw new Error('randInt_ 範圍不正確');
+  var limit = Math.floor(4294967296 / n) * n;
   for (;;) {
-    var x = parseInt(randomHex_(4), 16);
+    var x = parseInt(randomHex_(8), 16);
     if (x < limit) return x % n;
   }
 }

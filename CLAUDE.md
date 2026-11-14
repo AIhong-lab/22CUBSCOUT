@@ -92,13 +92,16 @@
 | `Db.js` | 試算表批次讀寫、`withLock_`、型別轉換（日期一律轉 'YYYY-MM-DD'）、各分頁讀成物件 |
 | `Auth.js` | 亂數（取自 UUID）、HMAC 雜湊、失敗紀錄與鎖定、登入憑證 |
 | `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
-| `Webhook.js` | LINE webhook（密鑰與格式檢查） |
+| `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
+| `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員與邀請碼、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
+| `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`（編輯器手動執行一次） |
 | `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）、`createInvite_`（產生邀請碼，選單與後台共用）、`inviteMessage_`；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。
 - 測試：`tests/logic.test.js`（純邏輯）、`tests/backend.test.js`（用 `tests/gas-mock.js` 模擬試算表跑完整 API 流程，也測合併檔）。
 - 新增 API：家長端加在 `AUTHED_ACTIONS`／`PUBLIC_ACTIONS`；後台 API（4A）必須先用 `Logic.can(role, 動作)` 檢查。回傳欄位一律白名單組裝，不可直接回傳試算表列。
+- 會改動「完成紀錄」「頒章紀錄」「管理員」既有列的，只有規格明定的操作：撤銷簽核（7.4）、修改／撤銷頒章（7.5）、管理員異動（7.9）、個資處理（7.10），且都要寫操作日誌（含修改前的值）。
 - 簽核人、建立人等欄位存「帳號ID」，顯示時再換成管理員姓名；帳號ID 不可送到家長端。
 
 ## 前端（web/index.html）
