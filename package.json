@@ -4,7 +4,7 @@
   "private": true,
   "description": "幼童軍進程與技能章查詢系統：純邏輯測試",
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=18"

@@ -1,0 +1,495 @@
+// 純邏輯測試（不依賴 Google 服務）。測試資料一律為虛構。
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const L = require('../gas/Logic.js');
+
+const S = L.STATUS;
+const TODAY = '2026-11-14';
+
+// ───── 測試用項目總表（虛構、精簡） ─────
+const HEADER = ['項目ID', '類別', '級別或章名', '大項', '項目內容', '排序', '啟用'];
+function itemsTable(extraRows = []) {
+  return [HEADER,
+    ['P-羚羊-1', '進程', '羚羊', '－', '羚羊一', 10, '是'],
+    ['P-羚羊-2', '進程', '羚羊', '－', '羚羊二', 20, '是'],
+    ['P-狼-國旗-1', '進程', '狼', '國旗', '狼一', 30, '是'],
+    ['P-狼-國旗-2', '進程', '狼', '國旗', '狼二', 40, '是'],
+    ['P-鹿-國旗-1', '進程', '鹿', '國旗', '鹿一', 50, '是'],
+    ['P-豹-國旗-1', '進程', '豹', '國旗', '豹一', 60, '是'],
+    ['B-嚮導-1', '技能章', '嚮導', '－', '嚮導一', 70, '是'],
+    ['B-嚮導-2', '技能章', '嚮導', '－', '嚮導二', 80, '是'],
+    ['B-環保-1', '技能章', '環保', '－', '環保一', 90, '是'],
+    ...extraRows];
+}
+const items = () => L.parseItems(itemsTable()).items;
+const done = (cubId, itemId, date = '2026-01-10', extra = {}) => ({ cubId, itemId, date, signer: 'A1', note: '', reporter: '', reportStatus: '', ...extra });
+const award = (cubId, unit, date) => ({ cubId, unit, date, occasion: '', note: '', signer: 'A1' });
+function progress(completions, awards, opts = {}) {
+  return L.computeCubProgress({ cubId: 'C1', items: opts.items || items(), completions, awards, intervalMonths: opts.interval ?? 6, today: opts.today || TODAY });
+}
+const unit = (p, name) => p.units.find((u) => u.unit === name);
+
+// ───── 狀態判定 ─────
+
+test('四種狀態判定', () => {
+  const p = progress([done('C1', 'P-羚羊-1'), done('C1', 'P-羚羊-2'), done('C1', 'B-嚮導-1'), done('C1', 'B-環保-1')], [award('C1', '羚羊', '2026-02-01')]);
+  assert.equal(unit(p, '羚羊').status, S.AWARDED);
+  assert.equal(unit(p, '羚羊').awardDate, '2026-02-01');
+  assert.equal(unit(p, '環保').status, S.DONE_PENDING);
+  assert.equal(unit(p, '嚮導').status, S.IN_PROGRESS);
+  assert.equal(unit(p, '鹿').status, S.NOT_STARTED);
+});
+
+test('目前級別的下一級即使 0 項完成也視為進行中', () => {
+  const p0 = progress([], []);
+  assert.equal(p0.currentLevel, null);
+  assert.equal(unit(p0, '羚羊').status, S.IN_PROGRESS, '剛入團：羚羊為下一級');
+  assert.equal(unit(p0, '狼').status, S.NOT_STARTED);
+  const p1 = progress([], [award('C1', '羚羊', '2026-02-01')]);
+  assert.equal(p1.currentLevel, '羚羊');
+  assert.equal(unit(p1, '狼').status, S.IN_PROGRESS);
+  assert.equal(unit(p1, '鹿').status, S.NOT_STARTED);
+});
+
+test('豹級頒發後沒有下一級', () => {
+  const p = progress([], ['羚羊', '狼', '鹿', '豹'].map((l, i) => award('C1', l, `202${i}-01-01`)));
+  assert.equal(p.currentLevel, '豹');
+  assert.equal(p.nextLevel, null);
+  assert.equal(L.nextChallenge(p).type, 'allDone');
+});
+
+test('停用的項目不計入完成度與達標', () => {
+  const rows = itemsTable([['B-環保-2', '技能章', '環保', '－', '環保二（停用）', 95, '否']]);
+  const p = progress([done('C1', 'B-環保-1')], [], { items: L.parseItems(rows).items });
+  const u = unit(p, '環保');
+  assert.equal(u.total, 1);
+  assert.equal(u.status, S.DONE_PENDING);
+  assert.equal(u.eligible, true);
+});
+
+test('新增項目後狀態重算：已完成待頒發變回進行中', () => {
+  const comps = [done('C1', 'B-環保-1')];
+  assert.equal(unit(progress(comps, []), '環保').status, S.DONE_PENDING);
+  const rows = itemsTable([['B-環保-2', '技能章', '環保', '－', '新項目', 95, '是']]);
+  const after = unit(progress(comps, [], { items: L.parseItems(rows).items }), '環保');
+  assert.equal(after.status, S.IN_PROGRESS);
+  assert.equal(after.eligible, false);
+});
+
+test('已頒章不受項目修改影響', () => {
+  const rows = itemsTable([['B-環保-2', '技能章', '環保', '－', '新項目', 95, '是']]);
+  const p = progress([done('C1', 'B-環保-1')], [award('C1', '環保', '2026-03-01')], { items: L.parseItems(rows).items });
+  assert.equal(unit(p, '環保').status, S.AWARDED);
+});
+
+test('第二期預留：回報狀態為待確認的紀錄不算完成', () => {
+  const p = progress([done('C1', 'B-環保-1', '2026-01-10', { reportStatus: '待確認', reporter: 'U9' })], []);
+  assert.equal(unit(p, '環保').done, 0);
+  const p2 = progress([done('C1', 'B-環保-1', '2026-01-10', { reportStatus: '已確認' })], []);
+  assert.equal(unit(p2, '環保').done, 1);
+});
+
+// ───── 達標判定 ─────
+
+test('羚羊與技能章：項目全部完成即達標', () => {
+  const p = progress([done('C1', 'P-羚羊-1'), done('C1', 'P-羚羊-2', '2026-03-05')], []);
+  assert.equal(unit(p, '羚羊').eligible, true);
+  assert.equal(unit(p, '羚羊').eligibleDate, '2026-03-05');
+});
+
+test('晉級間隔以上一級「頒發日期」起算，不是登錄時間', () => {
+  const comps = [done('C1', 'P-狼-國旗-1', '2026-03-01'), done('C1', 'P-狼-國旗-2', '2026-04-01')];
+  const awards = [{ ...award('C1', '羚羊', '2026-05-20'), registeredAt: '2026-11-01' }];
+  assert.equal(unit(progress(comps, awards, { today: '2026-11-19' }), '狼').eligible, false, '未滿 6 個月');
+  const ok = unit(progress(comps, awards, { today: '2026-11-20' }), '狼');
+  assert.equal(ok.eligible, true, '頒發日 + 6 個月當天即達標');
+  assert.equal(ok.eligibleDate, '2026-11-20');
+});
+
+test('上一級未頒發時，下一級不達標', () => {
+  const comps = [done('C1', 'P-狼-國旗-1'), done('C1', 'P-狼-國旗-2')];
+  assert.equal(unit(progress(comps, []), '狼').eligible, false);
+});
+
+test('間隔月數遇月底：8/31 + 6 個月 = 2/28', () => {
+  assert.equal(L.addMonths('2025-08-31', 6), '2026-02-28');
+  assert.equal(L.addMonths('2023-08-31', 6), '2024-02-29');
+});
+
+test('修改頒發日期後重算達標', () => {
+  const comps = [done('C1', 'P-狼-國旗-1'), done('C1', 'P-狼-國旗-2')];
+  assert.equal(unit(progress(comps, [award('C1', '羚羊', '2026-03-01')]), '狼').eligible, true);
+  assert.equal(unit(progress(comps, [award('C1', '羚羊', '2026-08-01')]), '狼').eligible, false);
+});
+
+test('撤銷頒章後目前級別退回並重算', () => {
+  const awards = [award('C1', '羚羊', '2025-01-01'), award('C1', '狼', '2025-08-01')];
+  assert.equal(L.levelAfterRevoke(awards, '狼'), '羚羊');
+  assert.equal(L.levelAfterRevoke([awards[0]], '羚羊'), null);
+  const p = progress([], [awards[0]]);
+  assert.equal(p.currentLevel, '羚羊');
+  assert.equal(unit(p, '狼').status, S.IN_PROGRESS);
+});
+
+// ───── 頒章 ─────
+
+test('頒發日期不可早於最後完成日，未來日期需確認', () => {
+  assert.equal(L.validateAwardDate('2026-03-01', '2026-03-05', TODAY).ok, false);
+  assert.deepEqual(L.validateAwardDate('2026-03-05', '2026-03-05', TODAY), { ok: true, needConfirmFuture: false });
+  assert.equal(L.validateAwardDate('2026-12-01', '2026-03-05', TODAY).needConfirmFuture, true);
+  assert.equal(L.validateAwardDate('2026-02-30', null, TODAY).ok, false);
+  assert.equal(L.validateAwardDate('', null, TODAY).ok, false);
+});
+
+test('補登後狀態正確，且不發通知、提示較低級別', () => {
+  const plan = L.planBackfill({ cubId: 'C1', category: '進程', unit: '狼', date: '2025-06-01', signer: 'A1', items: items(), completions: [done('C1', 'P-狼-國旗-1', '2025-01-01')], awards: [] });
+  assert.equal(plan.notify, false);
+  assert.deepEqual(plan.missingLowerLevels, ['羚羊']);
+  assert.deepEqual(plan.newCompletions.map((c) => c.itemId), ['P-狼-國旗-2'], '已完成的不重複寫');
+  assert.equal(plan.newCompletions[0].note, '上線補登');
+  assert.equal(plan.newCompletions[0].date, '2025-06-01');
+  const lion = L.planBackfill({ cubId: 'C1', category: '進程', unit: '羚羊', date: '2025-01-01', signer: 'A1', items: items(), completions: [], awards: [] });
+  const p = progress([done('C1', 'P-狼-國旗-1', '2025-01-01'), ...lion.newCompletions, ...plan.newCompletions], [lion.award, plan.award]);
+  assert.equal(p.currentLevel, '狼');
+  assert.equal(unit(p, '羚羊').status, S.AWARDED);
+  assert.equal(unit(p, '狼').status, S.AWARDED);
+  assert.equal(unit(p, '鹿').status, S.IN_PROGRESS);
+});
+
+// ───── 簽核 ─────
+
+test('小隊批次簽核略過已完成的組合', () => {
+  const existing = [done('C1', 'B-環保-1'), done('C2', 'B-環保-1', '2026-01-01', { reportStatus: '待確認' })];
+  const r = L.planBatchSignoff(existing, ['C1', 'C2', 'C3'], ['B-環保-1', 'B-嚮導-1'], TODAY, 'A1');
+  assert.equal(r.skipped, 1);
+  assert.equal(r.toAdd.length, 5);
+  assert.ok(r.toAdd.every((c) => c.reporter === '' && c.reportStatus === ''));
+});
+
+test('完成紀錄讀寫正確帶過回報人、回報狀態兩欄', () => {
+  const row = ['C1', 'B-環保-1', '2026-01-01', 'A1', '備註', 'U9', '待確認'];
+  assert.deepEqual(L.completionToRow(L.rowToCompletion(row)), row);
+});
+
+// ───── 代碼 ─────
+
+const rand = (n) => crypto.randomInt(n);
+
+test('綁定碼字元集排除易混淆字元，長度依設定', () => {
+  for (const ch of '0O1IL') assert.ok(!L.CODE_CHARSET.includes(ch));
+  for (let i = 0; i < 200; i++) {
+    const c = L.generateCode(6, rand, []);
+    assert.match(c, /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+  }
+});
+
+test('綁定碼不重複（與既有綁定碼、邀請碼皆不衝突）', () => {
+  const set = new Set();
+  for (let i = 0; i < 500; i++) set.add(L.generateCode(6, rand, [...set]));
+  assert.equal(set.size, 500);
+});
+
+test('代碼產生遇到重複會重抽', () => {
+  // 前 6 次亂數都給 0（產生 AAAAAA，已被使用），之後給 1（產生 BBBBBB）
+  let calls = 0;
+  const r = (k) => (calls++ < 6 ? 0 : 1) % k;
+  assert.equal(L.generateCode(6, r, ['AAAAAA']), 'BBBBBB');
+});
+
+test('邀請碼過期、已使用、已作廢都被擋', () => {
+  const now = Date.parse('2026-11-14T10:00:00Z');
+  const inv = { status: '未使用', expiresAt: now + 1000 };
+  assert.equal(L.checkInvite(inv, now).ok, true);
+  assert.equal(L.checkInvite({ ...inv, expiresAt: now - 1 }, now).ok, false);
+  assert.equal(L.checkInvite({ ...inv, status: '已使用' }, now).ok, false);
+  assert.equal(L.checkInvite({ ...inv, status: '已作廢' }, now).ok, false);
+  assert.equal(L.checkInvite(null, now).ok, false);
+});
+
+test('邀請碼長度 = 綁定碼長度 + 2，與綁定碼不衝突', () => {
+  const bind = L.generateCode(6, rand, []);
+  const inv = L.generateCode(8, rand, [bind]);
+  assert.equal(inv.length, 8);
+  assert.notEqual(inv, bind);
+});
+
+test('綁定碼檢查：姓名需符合、需在團、次數未用完；錯誤訊息不透露原因', () => {
+  const cub = { name: '測試小狼甲', status: '在團', codeUsesLeft: 1 };
+  assert.equal(L.checkBindCode(cub, ' 測試小狼甲 ').ok, true);
+  assert.equal(L.checkBindCode(cub, '測試小狼乙').ok, false);
+  assert.equal(L.checkBindCode({ ...cub, codeUsesLeft: 0 }, '測試小狼甲').ok, false);
+  assert.equal(L.checkBindCode({ ...cub, status: '離團' }, '測試小狼甲').ok, false);
+  assert.ok(!/綁定碼|邀請碼|不存在|用完|離團/.test(L.CODE_ERROR_MESSAGE));
+  assert.equal(L.normalizeCode(' ab cd2 '), 'ABCD2');
+});
+
+// ───── 帳號與登入 ─────
+
+const hmacHex = (v, k) => crypto.createHmac('sha256', k).update(v).digest('hex');
+
+test('密碼雜湊與驗證', () => {
+  const stored = L.hashPassword('secret123', 'salt-x', 50, hmacHex);
+  assert.ok(stored.startsWith('50$'));
+  assert.ok(!stored.includes('secret123'));
+  assert.equal(L.verifyPassword('secret123', 'salt-x', stored, hmacHex), true);
+  assert.equal(L.verifyPassword('secret124', 'salt-x', stored, hmacHex), false);
+  assert.equal(L.verifyPassword('secret123', 'salt-y', stored, hmacHex), false);
+  assert.equal(L.verifyPassword('x', 's', '', hmacHex), false);
+});
+
+test('帳號、密碼、稱呼格式檢查', () => {
+  assert.equal(L.validateUsername('test_wolf01').ok, true);
+  assert.equal(L.validateUsername('ab').ok, false);
+  assert.equal(L.validateUsername('中文帳號').ok, false);
+  assert.equal(L.validatePassword('1234567', 8).ok, false);
+  assert.equal(L.validatePassword('12345678', 8).ok, true);
+  assert.equal(L.validateNickname('').ok, false);
+  assert.equal(L.validateNickname('測試小狼媽媽').ok, true);
+});
+
+test('登入憑證與臨時碼過期', () => {
+  const now = 1_000_000;
+  assert.equal(L.isSessionValid({ expiresAt: now + 1 }, now), true);
+  assert.equal(L.isSessionValid({ expiresAt: now - 1 }, now), false);
+  assert.equal(L.isSessionValid(null, now), false);
+  assert.equal(L.isTempCodeValid({ tempCodeHash: 'h', tempCodeExpiresAt: now + 1 }, now), true);
+  assert.equal(L.isTempCodeValid({ tempCodeHash: 'h', tempCodeExpiresAt: now - 1 }, now), false);
+  assert.equal(L.isTempCodeValid({ tempCodeHash: '', tempCodeExpiresAt: now + 1 }, now), false, '用過即清除，不可再用');
+});
+
+test('登入與綁定失敗鎖定（含未登入全站上限）', () => {
+  const settings = L.parseSettings([]).values;
+  const now = Date.parse('2026-11-14T10:00:00Z');
+  const f = (type, target, minAgo) => ({ type, target, at: now - minAgo * 60000 });
+  const four = [1, 2, 3, 4].map((m) => f('登入', 'test_wolf01', m));
+  assert.equal(L.isLocked(four, '登入', 'test_wolf01', now, settings), false);
+  assert.equal(L.isLocked([...four, f('登入', 'test_wolf01', 5)], '登入', 'test_wolf01', now, settings), true);
+  assert.equal(L.isLocked([...four, f('登入', 'test_wolf01', 61)], '登入', 'test_wolf01', now, settings), false, '超過鎖定分鐘數的不算');
+  assert.equal(L.isLocked([...four, f('登入', 'other', 1)], '登入', 'test_wolf01', now, settings), false);
+  const global = Array.from({ length: 20 }, (_, i) => f('綁定', '未登入', i));
+  assert.equal(L.isGlobalBindLocked(global, now, settings), true);
+  assert.equal(L.isGlobalBindLocked(global.slice(1), now, settings), false);
+});
+
+// ───── 告知同意 ─────
+
+test('同意版本過期判定', () => {
+  const latest = L.latestConsentVersion([{ version: 1 }, { version: '3' }, { version: 2 }]);
+  assert.equal(latest, 3);
+  assert.equal(L.needsReconsent({ consentVersion: 3 }, latest), false);
+  assert.equal(L.needsReconsent({ consentVersion: '2' }, latest), true);
+  assert.equal(L.needsReconsent({ consentVersion: '' }, latest), true, '沒有同意紀錄就沒有綁定');
+});
+
+// ───── 權限 ─────
+
+test('角色權限矩陣', () => {
+  const leaderOnly = ['manageCubs', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff'];
+  const both = ['signoff', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine'];
+  for (const a of leaderOnly) {
+    assert.equal(L.can('團長', a), true, a);
+    assert.equal(L.can('服務員', a), false, a);
+    assert.equal(L.can(null, a), false, a);
+  }
+  for (const a of both) {
+    assert.equal(L.can('團長', a), true, a);
+    assert.equal(L.can('服務員', a), true, a);
+    assert.equal(L.can(null, a), false, '家長不可進後台：' + a);
+  }
+  assert.deepEqual(Object.keys(L.PERMISSIONS).sort(), [...leaderOnly, ...both].sort(), '矩陣沒有遺漏或多出的操作');
+  assert.equal(L.can('團長', '不存在的操作'), false);
+});
+
+test('服務員只能撤銷自己的簽核', () => {
+  assert.equal(L.canRevokeSignoff('服務員', 'A2', 'A2'), true);
+  assert.equal(L.canRevokeSignoff('服務員', 'A2', 'A1'), false);
+  assert.equal(L.canRevokeSignoff('團長', 'A1', 'A2'), true);
+  assert.equal(L.canRevokeSignoff(null, 'U1', 'U1'), false);
+});
+
+// ───── 管理員異動 ─────
+
+const admins = [{ accountId: 'A1', role: '團長' }, { accountId: 'A2', role: '服務員' }];
+
+test('最後一位團長不可移除或降級', () => {
+  const two = [...admins, { accountId: 'A3', role: '團長' }];
+  assert.equal(L.validateAdminChange(two, 'A3', { type: 'remove', targetId: 'A1' }).ok, true);
+  assert.equal(L.validateAdminChange(two, 'A3', { type: 'setRole', targetId: 'A1', role: '服務員' }).ok, true);
+  // 只剩一位團長時，能操作的團長只有他本人，會先被「不可移除／降級自己」擋下；
+  // validateAdminChange 內的「最後一位團長」檢查是額外保險，正常流程走不到。
+  assert.equal(L.validateAdminChange(admins, 'A1', { type: 'setRole', targetId: 'A1', role: '服務員' }).ok, false);
+  assert.equal(L.canDeleteAccount(admins, 'A1').ok, false);
+  assert.equal(L.canDeleteAccount(two, 'A1').ok, true);
+});
+
+test('團長不可移除自己，也不可自行降級', () => {
+  const two = [...admins, { accountId: 'A3', role: '團長' }];
+  assert.equal(L.validateAdminChange(two, 'A1', { type: 'remove', targetId: 'A1' }).ok, false);
+  assert.equal(L.validateAdminChange(two, 'A1', { type: 'setRole', targetId: 'A1', role: '服務員' }).ok, false);
+});
+
+test('只有團長能管理管理員', () => {
+  assert.equal(L.validateAdminChange(admins, 'A2', { type: 'add', targetId: 'U5', role: '服務員' }).ok, false);
+  assert.equal(L.validateAdminChange(admins, 'U9', { type: 'add', targetId: 'U5', role: '服務員' }).ok, false);
+  assert.equal(L.validateAdminChange(admins, 'A1', { type: 'add', targetId: 'U5', role: '服務員' }).ok, true);
+  assert.equal(L.validateAdminChange(admins, 'A1', { type: 'add', targetId: 'A2', role: '服務員' }).ok, false, '已是管理員');
+  assert.equal(L.validateAdminChange(admins, 'A1', { type: 'remove', targetId: 'A2' }).ok, true);
+  assert.equal(L.validateAdminChange(admins, 'A1', { type: 'setRole', targetId: 'A2', role: '團長' }).ok, true);
+});
+
+// ───── 個資處理 ─────
+
+function privacyData() {
+  return {
+    '小狼名單': [['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日'],
+      ['C1', '測試小狼甲', '一小隊', '2025-01-01', '狼', 'ABCDEF', 2, '離團', '2026-01-01'],
+      ['C2', '測試小狼乙', '二小隊', '2025-01-01', '羚羊', 'GHJKMN', 3, '在團', ''],
+      ['C9', '已離團小狼2', '', '2024-01-01', '鹿', '', 0, '已匿名', '2025-01-01']],
+    '綁定紀錄': [['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本'], ['U1', 'C1', 't', 't', 1], ['U2', 'C2', 't', 't', 1], ['U3', 'C1', 't', 't', 1]],
+    '完成紀錄': [['小狼ID', '項目ID'], ['C1', 'P-羚羊-1'], ['C2', 'P-羚羊-1'], ['C1', 'P-羚羊-2']],
+    '頒章紀錄': [['小狼ID', '級別或章名'], ['C1', '羚羊'], ['C2', '羚羊']],
+    '通知紀錄': [['小狼ID', '級別或章名'], ['C1', '狼']],
+    '操作日誌': [['時間', '操作人', '動作', '對象', '修改前', '修改後'],
+      ['t', 'A1', '新增小狼', '測試小狼甲', '', '測試小狼甲／一小隊'],
+      ['t', 'A1', '新增小狼', '測試小狼乙', '', '']]
+  };
+}
+
+test('完全刪除涵蓋所有相關分頁', () => {
+  const plan = L.planPrivacy(privacyData(), 'C1', 'delete');
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2] });
+  assert.deepEqual(Object.keys(plan.deleteRows).sort(), Object.keys(L.CUB_ID_COLUMNS).sort());
+  assert.equal(plan.updateRows['操作日誌'].length, 1);
+  const v = plan.updateRows['操作日誌'][0].values;
+  assert.ok(!v.join('').includes('測試小狼甲'));
+  assert.equal(v[3], '已刪除');
+  assert.equal(plan.counts['綁定紀錄'], 2);
+});
+
+test('匿名化：改名加流水號、清空小隊與綁定碼、刪除綁定、保留完成與頒章紀錄', () => {
+  const plan = L.planPrivacy(privacyData(), 'C1', 'anonymize');
+  const row = plan.updateRows['小狼名單'][0];
+  assert.equal(row.row, 2);
+  assert.equal(row.values[1], '已離團小狼3');
+  assert.equal(row.values[2], '');
+  assert.equal(row.values[5], '');
+  assert.equal(row.values[7], '已匿名');
+  assert.deepEqual(plan.deleteRows, { '綁定紀錄': [2, 4] });
+  assert.ok(!plan.deleteRows['完成紀錄'] && !plan.deleteRows['頒章紀錄']);
+  assert.ok(!plan.updateRows['操作日誌'].some((u) => u.values.join('').includes('測試小狼甲')));
+});
+
+test('個資處理找不到小狼時不動任何資料', () => {
+  assert.equal(L.planPrivacy(privacyData(), 'C404', 'delete').ok, false);
+});
+
+test('離團超過設定天數未處理個資的提醒', () => {
+  const cubs = [{ status: '離團', leftDate: '2026-01-01' }, { status: '離團', leftDate: '2026-10-01' }, { status: '已匿名', leftDate: '2020-01-01' }];
+  assert.equal(L.overdueForPrivacy(cubs, 180, TODAY).length, 1);
+  assert.equal(L.overdueForPrivacy(cubs, 0, TODAY).length, 0, '0 表示不提醒');
+});
+
+// ───── 項目總表與設定容錯 ─────
+
+test('項目總表格式錯誤的容錯：略過壞列並回報列號', () => {
+  const rows = itemsTable([
+    ['', '', '', '', '', '', ''],                                   // 空白列：略過、不算錯
+    ['P-羚羊-1', '進程', '羚羊', '－', '重複ID', 1, '是'],          // 重複
+    ['P-X-1', '進程', '', '－', '缺級別', 1, '是'],                 // 缺級別
+    ['B-新-1', '技能章', '新章', '－', '啟用欄錯', 1, 'Y'],          // 啟用欄錯
+    ['  B-繪畫-1 ', ' 技能章 ', ' 繪畫 ', '', ' 會素描 ', '', ' 是 '], // 前後空白：要能讀
+  ]);
+  const r = L.parseItems(rows);
+  assert.deepEqual(r.errors.map((e) => e.row), [12, 13, 14]);
+  const paint = r.items.find((i) => i.id === 'B-繪畫-1');
+  assert.ok(paint);
+  assert.equal(paint.text, '會素描');
+  assert.equal(paint.section, '－');
+  assert.equal(r.items.length, 10);
+});
+
+test('設定值超出範圍或格式錯誤退回預設', () => {
+  const rows = [['鍵', '值', '說明'], ['綁定碼長度', 99], ['晉級間隔月數', '3'], ['每週備份', '也許'], ['備份保留份數', '2.5'], ['快達標門檻（剩幾項以內）', ' 3 ']];
+  const r = L.parseSettings(rows);
+  assert.equal(r.values['綁定碼長度'], 6);
+  assert.equal(r.values['晉級間隔月數'], 3);
+  assert.equal(r.values['每週備份'], true);
+  assert.equal(r.values['備份保留份數'], 8);
+  assert.equal(r.values['快達標門檻（剩幾項以內）'], 3);
+  const bad = r.errors.map((e) => e.key);
+  assert.ok(bad.includes('綁定碼長度') && bad.includes('每週備份') && bad.includes('備份保留份數'));
+  assert.ok(!bad.includes('晉級間隔月數'));
+  const def = L.parseSettings(L.defaultSettingsRows());
+  assert.equal(def.errors.length, 0, '預設設定本身要合法');
+});
+
+// ───── 項目ID 與種子資料 ─────
+
+test('項目ID 穩定可讀、取最大序號 + 1、永不重用', () => {
+  assert.equal(L.nextItemId([], '進程', '狼', '國旗'), 'P-狼-國旗-1');
+  assert.equal(L.nextItemId([], '進程', '羚羊', '－'), 'P-羚羊-1');
+  assert.equal(L.nextItemId([], '技能章', '嚮導', '－'), 'B-嚮導-1');
+  assert.equal(L.nextItemId(['B-嚮導-1', 'B-嚮導-3'], '技能章', '嚮導', '－'), 'B-嚮導-4', '中間刪掉的序號也不重用');
+  assert.equal(L.nextItemId(['P-狼-勞作-2'], '技能章', '勞作', '－'), 'B-勞作-1', '進程勞作與技能章勞作分開');
+});
+
+test('種子資料：data/items.csv 匯入後數量與ID正確', () => {
+  const csv = fs.readFileSync(path.join(__dirname, '..', 'data', 'items.csv'), 'utf8');
+  const seed = L.buildSeed(csv, { 羚羊: '羚羊條件' });
+  assert.equal(seed.itemRows.length, 163);
+  const ids = seed.itemRows.map((r) => r[0]);
+  assert.equal(new Set(ids).size, 163, 'ID 不重複');
+  assert.ok(ids.includes('P-羚羊-10') && ids.includes('P-狼-國旗-1') && ids.includes('B-嚮導-1') && ids.includes('B-勞作-2') && ids.includes('P-豹-勞作-3'));
+  const units = seed.unitRows;
+  assert.equal(units.filter((u) => u[1] === '進程').length, 4);
+  assert.equal(units.filter((u) => u[1] === '技能章').length, 26);
+  assert.equal(units.find((u) => u[0] === '羚羊')[4], '羚羊條件');
+  assert.equal(units.find((u) => u[0] === '體操')[2], '健身類');
+  const table = [HEADER, ...seed.itemRows];
+  assert.equal(L.parseItems(table).errors.length, 0, '匯入結果本身要通過檢查');
+});
+
+// ───── 其他 ─────
+
+test('入團至今多久', () => {
+  assert.equal(L.tenure('2024-05-14', TODAY).text, '2 年 6 個月');
+  assert.equal(L.tenure('2024-05-15', TODAY).text, '2 年 5 個月');
+  assert.equal(L.tenure('2026-01-31', '2026-02-28').text, '0 年 1 個月');
+  assert.equal(L.tenure('2027-01-01', TODAY).text, '0 年 0 個月');
+});
+
+test('下一步挑戰：剛入團、晉級後、等待頒發', () => {
+  const start = L.nextChallenge(progress([], []));
+  assert.equal(start.type, 'start');
+  assert.equal(start.items.length, 2);
+  const next = L.nextChallenge(progress([done('C1', 'P-狼-國旗-1')], [award('C1', '羚羊', '2026-01-01')]));
+  assert.equal(next.type, 'next');
+  assert.match(next.message, /恭喜你完成羚羊進程/);
+  assert.deepEqual(next.items.map((i) => i.id), ['P-狼-國旗-2']);
+  const pending = L.nextChallenge(progress([done('C1', 'P-狼-國旗-1'), done('C1', 'P-狼-國旗-2')], [award('C1', '羚羊', '2026-01-01')]));
+  assert.equal(pending.type, 'pending');
+  assert.match(pending.message, /等待團長評核頒發/);
+  assert.ok(!/可晉級/.test(pending.message));
+});
+
+test('快達標與查詢端狀態文字', () => {
+  const p = progress([done('C1', 'B-嚮導-1')], []);
+  assert.equal(L.isNearlyDone(unit(p, '嚮導'), 2), true);
+  assert.equal(L.isNearlyDone(unit(p, '環保'), 2), false, '0 項完成不算快達標');
+  assert.equal(L.statusTextForParents(S.DONE_PENDING), L.PENDING_TEXT_FOR_PARENTS);
+});
+
+test('通知去重：只通知新達標，不再達標者清除紀錄', () => {
+  const r = L.diffNotifications(['C1|狼', 'C2|嚮導'], ['C1|狼', 'C3|環保']);
+  assert.deepEqual(r.toNotify, ['C2|嚮導']);
+  assert.deepEqual(r.toClear, ['C3|環保']);
+});
+
+test('CSV 解析與輸出互通', () => {
+  const rows = [['a', 'b,c', '有"引號"'], ['換\n行', '', 'x']];
+  assert.deepEqual(L.parseCsv(L.toCsv(rows)), rows);
+});

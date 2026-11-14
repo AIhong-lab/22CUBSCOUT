@@ -11,7 +11,9 @@
   - ② 註冊、登入、記住我、憑證過期回登入畫面、錯誤訊息一致：皆通過。HMAC-SHA256 雜湊 1000 次約 380 毫秒 → 正式版預定 2000 次。
   - ③ LINE webhook 打到 GAS（302 轉址不影響）並以 reply API 回覆：通過。Verify 按鈕結果不作為判斷依據。
   - `gas/Verify0B.gs`、`web/0b/` 為暫時性驗證程式，階段 2／3 由正式程式取代後刪除；Script Properties 的 `WEBHOOK_KEY`、`LINE_MESSAGING_TOKEN` 沿用。
-- 下一步：階段 1（純邏輯函式與 Node 測試）。
+- 階段 1 完成：`gas/Logic.js`（純邏輯，GAS 以全域 `Logic` 使用、Node 以 require 使用）＋ `tests/logic.test.js`（46 項，`npm test` 全過；另以故意改壞程式確認測試抓得到錯）。
+- 待團長回覆：點名系統的需求細節（尚未寫入 SPEC，未實作）。
+- 下一步：階段 2（GAS 後端基礎）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -36,7 +38,11 @@
 | `data/items.csv` | 種子資料，只供 `setup()` 第一次匯入 |
 | `tests/` | 純邏輯 Node 測試，`npm test` |
 
-純邏輯（狀態與達標判定、綁定碼／邀請碼產生、權限判斷、管理員異動規則、匿名化與刪除範圍、項目總表與設定值驗證）寫成不依賴 `SpreadsheetApp` 的純函式，GAS 與 Node 測試共用同一份檔案（預定 `gas/Logic.js`，以 `module.exports` 存在與否判斷執行環境）。
+純邏輯寫在 `gas/Logic.js`，不依賴 `SpreadsheetApp`，GAS 與 Node 測試共用：
+- 日期一律 `'YYYY-MM-DD'` 字串；亂數（`randInt`）與雜湊（`hmacHex`）由呼叫端注入（GAS 用 `Utilities`，Node 用 `crypto`）。
+- 只計算、不寫入；例如 `planPrivacy`、`planBackfill`、`planBatchSignoff` 回傳「要寫哪些列」，由 GAS 層批次執行。
+- 主要函式：`parseSettings`／`parseItems`（容錯並回報列號）、`nextItemId`、`buildSeed`、`computeCubProgress`（四種狀態＋達標）、`nextChallenge`、`validateAwardDate`、`generateCode`、`checkBindCode`／`checkInvite`、`hashPassword`／`verifyPassword`（雜湊字串前綴記錄次數，格式 `次數$雜湊`）、`isLocked`、`needsReconsent`、`can`（權限矩陣 `PERMISSIONS`）、`validateAdminChange`、`planPrivacy`、`diffNotifications`。
+- 對使用者的代碼錯誤訊息一律用 `Logic.CODE_ERROR_MESSAGE`，不透露原因或代碼種類。
 
 ## 試算表結構（欄位順序固定，只能往右加欄）
 | 分頁 | 欄位 |
@@ -77,7 +83,7 @@ cd gas
 clasp login            # 第一次
 clasp push             # 上傳程式碼
 clasp deploy -i <deploymentId> -d "說明"   # 更新既有部署，網址不變
-npm test               # 在 repo 根目錄跑純邏輯測試
+npm test               # 在 repo 根目錄跑純邏輯測試（node --test tests/*.test.js）
 ```
 
 ## Script Properties（只存在 GAS，不進 repo）
