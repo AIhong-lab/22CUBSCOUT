@@ -749,7 +749,7 @@ async function start() {
   const h = location.hash;
   if (h === '#home' || h === '#catalog') return renderHome();
   if (h === '#progress' || h === '#badges') return renderCatalog(h.slice(1));
-  if (!store.get('token')) return renderCatalog('progress'); // 沒登入：直接看進程查詢（附簡短說明）
+  if (!store.get('token')) return renderHome(); // 沒登入：先看首頁（SPEC 附錄第 34 點）
   loading();
   try { state.me = await api('me'); }
   catch (e) {
@@ -1108,9 +1108,9 @@ async function renderMine() {
 // ═════════════ 公開頁面：首頁、進程查詢、技能章查詢（不用登入，不含任何孩子的資料） ═════════════
 
 let catalogData = null;
-const PUBLIC_TABS = () => [['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '技能章查詢'], ['home', 'ℹ️', '說明'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
+const PUBLIC_TABS = () => [['home', '🏠', '首頁'], ['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '技能章查詢'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
 const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
-document.getElementById('title').onclick = () => { if (!canLeave()) return; if (state.me) { state.view = 'home'; state.admin = { tab: 'home', page: null }; route(); } else renderCatalog('progress'); };
+document.getElementById('title').onclick = () => { if (!canLeave()) return; if (state.me) { state.view = 'home'; state.admin = { tab: 'home', page: null }; route(); } else renderHome(); };
 
 /** 更新網址（方便分享），不重新載入頁面 */
 function setHash(h) { try { history.replaceState(null, '', location.pathname + location.search + (h || '')); } catch (e) {} }

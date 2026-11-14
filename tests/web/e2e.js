@@ -66,9 +66,15 @@ function seed(env) {
 
   // ═════ 公開首頁與兩個查詢頁（不用登入） ═════
   await page.goto(PAGE);
-  await page.locator('.stage').first().waitFor();
-  assert.equal(new URL(page.url()).hash, '#progress', '沒登入時打開網站直接是進程查詢');
-  assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'progress', '導覽列第一個是進程查詢');
+  await page.getByText('什麼是「進程」？').waitFor();
+  assert.equal(new URL(page.url()).hash, '#home', '沒登入時打開網站是首頁');
+  assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'home', '導覽列第一個是首頁');
+  assert.match(await page.locator('nav.tabs button').first().innerText(), /首頁/);
+  // 按標題「22團幼童軍」回首頁
+  await tab('badges'); await page.locator('.badge').first().waitFor();
+  await page.click('#title');
+  await page.getByText('什麼是「進程」？').waitFor();
+  assert.equal(new URL(page.url()).hash, '#home', '按標題回首頁');
   assert.ok(await page.locator('header nav.tabs').isVisible(), '導覽列在頁面上方');
   assert.ok((await page.locator('nav.tabs').boundingBox()).y < 120, '手機版導覽列在標題下方，不是在畫面底部');
   await tab('home');
