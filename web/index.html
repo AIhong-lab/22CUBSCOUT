@@ -33,31 +33,34 @@
 
   /* ───── 頂部：品牌＋導覽列（電腦一排；手機在標題下方第二排，可左右滑） ───── */
   header.top { position: sticky; top: 0; z-index: 20; color: #fff; background: var(--blue); border-bottom: 3px solid var(--yellow); }
-  header.top .row { display: flex; align-items: center; gap: 14px; max-width: 1200px; margin: 0 auto; padding: 0 20px; min-height: 60px; flex-wrap: wrap; }
-  header.top h1 { font-size: 20px; margin: 0; font-weight: 900; letter-spacing: .5px; white-space: nowrap; cursor: pointer; }
+  header.top .row { display: flex; align-items: center; gap: 18px; max-width: 1200px; margin: 0 auto; padding: 0 24px; min-height: 76px; flex-wrap: wrap; }
+  header.top h1 { font-size: 26px; margin: 0; font-weight: 900; letter-spacing: .5px; white-space: nowrap; cursor: pointer; }
   #headerRight { margin-left: auto; }
   header.top select { max-width: 220px; font-size: 15px; padding: 6px 10px; border-radius: 8px; border: 0; background: #fff; color: var(--text); font-weight: 700; }
   .chip-btn { background: var(--yellow); color: var(--text); border: 0; border-radius: 8px; padding: 7px 14px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
-  nav.tabs { display: flex; }
+  nav.tabs { display: flex; flex: 1; }
+  nav.tabs .inner { width: 100%; }
+  nav.tabs button[data-v=login] { margin-left: auto; } /* 登入固定在最右邊 */
   nav.tabs[hidden] { display: none; } /* 上面的 display:flex 會蓋過 hidden 屬性，需明確隱藏 */
   nav.tabs .inner { display: flex; gap: 2px; }
-  nav.tabs button { border: 0; background: none; color: #dbe6fb; padding: 18px 14px 15px; font-size: 16px; font-weight: 800; cursor: pointer; white-space: nowrap; border-bottom: 4px solid transparent; margin-bottom: -3px; }
+  nav.tabs button { border: 0; background: none; color: #dbe6fb; padding: 24px 18px 21px; font-size: 18px; font-weight: 800; cursor: pointer; white-space: nowrap; border-bottom: 4px solid transparent; margin-bottom: -3px; }
   nav.tabs button .ic { margin-right: 6px; }
   nav.tabs button:hover { color: #fff; background: rgba(255,255,255,.08); }
   nav.tabs button.on { color: #fff; border-bottom-color: var(--yellow); }
   @media (max-width: 759px) {
     header.top .row { padding: 0 12px; gap: 8px; min-height: 52px; }
-    header.top h1 { font-size: 18px; padding: 12px 0 0; }
+    header.top h1 { font-size: 20px; padding: 12px 0 0; }
     #headerRight { padding-top: 10px; }
     nav.tabs { order: 3; width: calc(100% + 24px); margin: 0 -12px; overflow-x: auto; scrollbar-width: none; }
     nav.tabs::-webkit-scrollbar { display: none; }
     nav.tabs .inner { width: 100%; }
     nav.tabs button { flex: 1; padding: 8px 10px 9px; font-size: 15px; }
+    nav.tabs button[data-v=login] { margin-left: 0; }
     nav.tabs button .ic { display: block; margin: 0; font-size: 20px; line-height: 1.2; }
   }
   /* 後台在寬螢幕改成左側選單 */
   @media (min-width: 1000px) {
-    body.admin nav.tabs { position: fixed; top: 63px; left: 0; bottom: 0; width: var(--side); background: #fff; border-right: 1px solid var(--gray-line); padding: 14px 10px; display: block; overflow-y: auto; }
+    body.admin nav.tabs { position: fixed; top: 79px; left: 0; bottom: 0; width: var(--side); background: #fff; border-right: 1px solid var(--gray-line); padding: 14px 10px; display: block; overflow-y: auto; }
     body.admin nav.tabs .inner { flex-direction: column; gap: 4px; }
     body.admin nav.tabs button { color: var(--text); text-align: left; padding: 11px 14px; border-radius: 10px; border: 0; margin: 0; }
     body.admin nav.tabs button:hover { background: var(--gray-soft); }

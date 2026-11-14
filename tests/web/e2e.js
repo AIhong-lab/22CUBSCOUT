@@ -391,7 +391,9 @@ function seed(env) {
   const tops = await page.locator('.stage').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
   assert.equal(new Set(tops).size, 1, '寬螢幕四級排成一列');
   const hb = await page.locator('header.top').boundingBox();
-  assert.ok(hb.height < 80, '寬螢幕導覽列和標題同一排');
+  assert.ok(hb.height < 90, '寬螢幕導覽列和標題同一排');
+  const lb = await page.locator('nav.tabs button[data-v=login]').boundingBox();
+  assert.ok(lb.x + lb.width > 1280 - 140, '登入在最右邊：' + JSON.stringify(lb));
   assert.ok((await page.locator('nav.tabs').boundingBox()).y < hb.height, '導覽列在頂部');
   await shot('21-desktop-progress'); await noHScroll('寬螢幕進程查詢');
   await page.locator('#lvPanel details.sub').first().locator('summary').click();
