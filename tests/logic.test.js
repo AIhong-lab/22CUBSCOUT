@@ -287,8 +287,8 @@ test('同意版本過期判定', () => {
 // ───── 權限 ─────
 
 test('角色權限矩陣', () => {
-  const leaderOnly = ['manageCubs', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff'];
-  const both = ['signoff', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine'];
+  const leaderOnly = ['manageCubs', 'manageCalendar', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff'];
+  const both = ['signoff', 'attendance', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine'];
   for (const a of leaderOnly) {
     assert.equal(L.can('團長', a), true, a);
     assert.equal(L.can('服務員', a), false, a);
@@ -352,6 +352,7 @@ function privacyData() {
     '完成紀錄': [['小狼ID', '項目ID'], ['C1', 'P-羚羊-1'], ['C2', 'P-羚羊-1'], ['C1', 'P-羚羊-2']],
     '頒章紀錄': [['小狼ID', '級別或章名'], ['C1', '羚羊'], ['C2', '羚羊']],
     '通知紀錄': [['小狼ID', '級別或章名'], ['C1', '狼']],
+    '出席紀錄': [['集會ID', '小狼ID', '狀態'], ['M1', 'C1', '出席'], ['M1', 'C2', '請假'], ['M2', 'C1', '請假']],
     '操作日誌': [['時間', '操作人', '動作', '對象', '修改前', '修改後'],
       ['t', 'A1', '新增小狼', '測試小狼甲', '', '測試小狼甲／一小隊'],
       ['t', 'A1', '新增小狼', '測試小狼乙', '', '']]
@@ -361,7 +362,7 @@ function privacyData() {
 test('完全刪除涵蓋所有相關分頁', () => {
   const plan = L.planPrivacy(privacyData(), 'C1', 'delete');
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2] });
+  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2], '出席紀錄': [2, 4] });
   assert.deepEqual(Object.keys(plan.deleteRows).sort(), Object.keys(L.CUB_ID_COLUMNS).sort());
   assert.equal(plan.updateRows['操作日誌'].length, 1);
   const v = plan.updateRows['操作日誌'][0].values;
@@ -379,7 +380,7 @@ test('匿名化：改名加流水號、清空小隊與綁定碼、刪除綁定�
   assert.equal(row.values[5], '');
   assert.equal(row.values[7], '已匿名');
   assert.deepEqual(plan.deleteRows, { '綁定紀錄': [2, 4] });
-  assert.ok(!plan.deleteRows['完成紀錄'] && !plan.deleteRows['頒章紀錄']);
+  assert.ok(!plan.deleteRows['完成紀錄'] && !plan.deleteRows['頒章紀錄'] && !plan.deleteRows['出席紀錄'], '統計用紀錄保留');
   assert.ok(!plan.updateRows['操作日誌'].some((u) => u.values.join('').includes('測試小狼甲')));
 });
 

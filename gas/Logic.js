@@ -592,6 +592,7 @@ var Logic = (function () {
   /** 角色權限矩陣（SPEC 第七節）。null 代表只有家長身分 */
   var PERMISSIONS = {
     signoff: [ROLE.LEADER, ROLE.ASSISTANT],
+    attendance: [ROLE.LEADER, ROLE.ASSISTANT],
     revokeOwnSignoff: [ROLE.LEADER, ROLE.ASSISTANT],
     revokeAnySignoff: [ROLE.LEADER],
     viewRoster: [ROLE.LEADER, ROLE.ASSISTANT],
@@ -599,6 +600,7 @@ var Logic = (function () {
     printSheet: [ROLE.LEADER, ROLE.ASSISTANT],
     linkLine: [ROLE.LEADER, ROLE.ASSISTANT],
     manageCubs: [ROLE.LEADER],
+    manageCalendar: [ROLE.LEADER],
     manageBindCodes: [ROLE.LEADER],
     award: [ROLE.LEADER],
     backfill: [ROLE.LEADER],
@@ -677,7 +679,8 @@ var Logic = (function () {
     '綁定紀錄': 1,
     '完成紀錄': 0,
     '頒章紀錄': 0,
-    '通知紀錄': 0
+    '通知紀錄': 0,
+    '出席紀錄': 1
   };
 
   /**
