@@ -91,6 +91,10 @@
   .welcome { text-align: center; padding: 26px 18px 18px; background: linear-gradient(180deg, var(--sky), #fff); }
   .welcome .mascot { font-size: 74px; line-height: 1; display: inline-block; animation: bob 2.4s ease-in-out infinite; }
   .welcome h2 { justify-content: center; font-size: 25px; margin: 10px 0 4px; }
+  .welcome.compact { padding: 14px 16px; }
+  .welcome.compact .mascot { font-size: 44px; }
+  .welcome.compact h2 { font-size: 21px; margin: 4px 0 0; }
+  .tip { margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: var(--green-soft); color: var(--green-dark); font-weight: 700; font-size: 15px; }
 
   /* ───── 冒險家卡片 ───── */
   .hero { position: relative; overflow: hidden; background: linear-gradient(135deg, #2d6bc4, var(--blue)); color: #fff; border: 0; }
@@ -319,11 +323,16 @@ function onExpired() {
 
 function loading(text) { $app.innerHTML = `<div class="loading"><div class="paw">🐾</div><br>${esc(text || '載入中……')}</div>`; }
 function msg(el, text, kind) { if (el) el.innerHTML = text ? `<div class="msg ${kind || 'err'}">${esc(text)}</div>` : ''; }
+/** 有未儲存資料的頁面設定這個函式；回傳 false 表示使用者選擇留下 */
+let leaveGuard = null;
+const canLeave = () => !leaveGuard || leaveGuard();
+window.addEventListener('beforeunload', (e) => { if (leaveGuard && leaveGuard.dirty && leaveGuard.dirty()) { e.preventDefault(); e.returnValue = ''; } });
+
 function setTabs(list, cur, onPick) {
   const nav = document.getElementById('tabs');
   if (!list) { nav.hidden = true; return; }
   nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
-  $$('button', nav).forEach((b) => { b.onclick = () => onPick(b.dataset.v); });
+  $$('button', nav).forEach((b) => { b.onclick = () => { if (canLeave()) onPick(b.dataset.v); }; });
   nav.hidden = false;
 }
 function setHeader(html) { document.getElementById('headerRight').innerHTML = html || ''; }
@@ -338,13 +347,13 @@ function toast(text) {
 function confetti() {
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const set = ['⭐', '🎉', '✨', '🏅', '🐾', '🌟'];
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 14; i++) {
     const c = document.createElement('div');
     c.className = 'confetti'; c.textContent = set[i % set.length];
     c.style.left = Math.random() * 100 + 'vw';
-    c.style.animationDuration = 1.8 + Math.random() * 1.6 + 's';
+    c.style.animationDuration = 1.1 + Math.random() * 0.8 + 's';
     document.body.appendChild(c);
-    setTimeout(() => c.remove(), 3600);
+    setTimeout(() => c.remove(), 2000);
   }
 }
 async function copyText(text) {
@@ -397,8 +406,7 @@ function renderLogin(opt = {}) {
   setTabs(null); setHeader(''); scrollTop(); setHash('');
   document.getElementById('title').textContent = '🐾 22團幼童軍冒險';
   $app.innerHTML = `
-    <section class="card welcome"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2>
-      <p class="muted">一起看看小狼闖過了哪些關卡吧</p></section>
+    <section class="card welcome compact"><div class="mascot">🐺</div><h2>歡迎來到 22 團幼童軍冒險！</h2></section>
     <section class="card">
       <h2>🔑 登入</h2>
       ${opt.notice ? `<div class="msg info">${esc(opt.notice)}</div>` : ''}
@@ -437,7 +445,7 @@ function renderForgot() {
   $app.innerHTML = `
     <section class="card">
       <h2>🔁 忘記密碼</h2>
-      <div class="msg info">請先聯絡團長，團長會用 LINE 傳一組「臨時碼」給你。臨時碼有使用期限，而且只能用一次。</div>
+      <div class="msg info">請先聯絡團長，團長會用 LINE 傳一組「臨時碼」給你。臨時碼有使用期限，而且只能用一次。<br>忘記帳號名稱的話，也請聯絡團長查詢。</div>
       <form id="f">
         <label for="u">帳號</label><input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" required>
         <label for="t">臨時碼</label><input id="t" name="tempCode" type="text" autocapitalize="characters" autocomplete="off" required>
@@ -490,7 +498,8 @@ function renderRegister2(ctx) {
       <h2>🎒 註冊 2／${isAdmin ? 2 : 3}：設定帳號</h2>
       ${isAdmin ? '<div class="msg ok">這是管理員邀請碼，註冊後就能進入後台。</div>' : `<div class="msg ok">代碼正確！孩子：${esc(ctx.childName)}</div>`}
       <form id="f">
-        <label for="u">帳號（4～20 個英文字母、數字或底線，例如 wang_mom）</label>
+        <label for="u">帳號（4～20 個英文字母、數字或底線）</label>
+        <p class="muted small" style="margin-top:-2px">建議用好記的英文，例如孩子英文名＋稱呼：<b>xiaoming_mom</b>、<b>amy_dad</b>。英文大小寫都可以。</p>
         <input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(ctx.username || '')}" required>
         <label for="p">密碼（至少 8 個字）</label><input id="p" name="password" type="password" autocomplete="new-password" required>
         <label for="p2">再輸入一次密碼</label><input id="p2" name="password2" type="password" autocomplete="new-password" required>
@@ -703,7 +712,8 @@ function viewHome(d) {
   else if (n.type === 'pending') next = `<div class="banner"><p class="congrats">${esc(n.message)}</p></div>`;
   else next = `${n.message ? `<div class="banner"><p class="congrats">🎉 ${esc(n.message)}</p></div>` : ''}
     <p class="muted">${esc(LEVEL_ICON[n.level] || '')} ${esc(n.level)}級的下一關任務：</p>
-    ${n.items.map((i, k) => `<div class="mission"><span class="no">${k + 1}</span><span class="txt">${esc(i.text)}</span></div>`).join('')}`;
+    ${n.items.map((i, k) => `<div class="mission"><span class="no">${k + 1}</span><span class="txt">${esc(i.text)}</span></div>`).join('')}
+    <button class="btn ghost small" id="toMap" data-lv="${esc(n.level)}">🗺️ 看${esc(n.level)}級全部任務 →</button>`;
   $app.innerHTML = `
     <section class="card hero">
       <div class="top"><div class="avatar">${av}</div>
@@ -720,6 +730,8 @@ function viewHome(d) {
       ${got.length ? got.map(unitCard).join('') : '<p class="muted">還沒有拿到章，一起加油！💪</p>'}</section>
     ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的技能章（${notStarted.length} 個）▾</summary>
       ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
+  const tm = $('#toMap');
+  if (tm) tm.onclick = () => { state.mapSel = tm.dataset.lv; state.view = 'progress'; renderParent(true); };
 }
 
 /** 闖關地圖：羚羊 → 狼 → 鹿 → 豹 */
@@ -747,6 +759,7 @@ function viewMap(d) {
       ${sel.attendRequired ? `<p class="small">🐾 晉級出席要求：上一級頒發後已出席 ${sel.attendSinceLast}／${sel.attendRequired} 次</p>` : ''}
       <div class="bar ${sel.done === sel.total ? 'full' : ''}"><span style="width:${sel.total ? Math.round(sel.done / sel.total * 100) : 0}%"></span></div>
       ${itemsHtml(sel)}
+      ${sel.status === '進行中' ? '<div class="tip">💡 完成任務後，記得在團集會時請團長或服務員幫你簽核，星星就會亮起來喔！</div>' : ''}
       <button class="btn ghost" id="printBtn">🖨️ 列印這一級的簽核單</button></section>` : ''}`;
   $$('.stage').forEach((s) => { s.onclick = () => { state.mapSel = s.dataset.unit; viewMap(d); const p = $('#lvPanel'); if (p && p.scrollIntoView) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
   const pb = $('#printBtn');
@@ -1070,7 +1083,8 @@ const ADMIN_TABS = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['si
 function renderAdmin() {
   document.getElementById('title').textContent = '🛠️ 22團後台';
   setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>`);
-  $('#toParent').onclick = () => { state.mode = 'parent'; route(); };
+  $('#toParent').onclick = () => { if (canLeave()) { leaveGuard = null; state.mode = 'parent'; route(); } };
+  leaveGuard = null; // 換頁後由新頁面自行設定
   setTabs(ADMIN_TABS, state.admin.tab, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
   scrollTop();
   const page = state.admin.page;
@@ -1082,7 +1096,7 @@ function renderAdmin() {
     $('#re').onclick = renderAdmin;
   });
 }
-function goAdmin(name, params) { state.admin.page = { name, params: params || {} }; renderAdmin(); }
+function goAdmin(name, params) { if (!canLeave()) return; state.admin.page = { name, params: params || {} }; renderAdmin(); }
 function backBtn(label) { return `<button class="back" data-back>← ${esc(label || '返回')}</button>`; }
 function wireBack(target) { $$('[data-back]').forEach((b) => { b.onclick = () => { state.admin.page = target || null; renderAdmin(); }; }); }
 function squadChips(squads, cur) { return `<div class="chips" id="squads">${['全團'].concat(squads).map((s) => `<button class="chip ${s === cur ? 'on' : ''}" data-s="${esc(s)}">${esc(s)}</button>`).join('')}</div>`; }
@@ -1091,7 +1105,10 @@ function onSquad(cb) { $$('#squads .chip').forEach((b) => { b.onclick = () => { 
 const ADMIN_PAGES = {
   // ───── 首頁 ─────
   async home() {
-    const h = await api('adminHome');
+    const [h, ml] = await Promise.all([api('adminHome'), api('meetingList')]);
+    const today = ml.today, open = ml.meetings.filter((m) => m.enabled);
+    const todayM = open.find((m) => m.date === today);
+    const nextM = open.find((m) => m.date > today);
     const al = h.alerts;
     const alerts = [];
     if (al.permission && !al.permission.ok) alerts.push(['red', '🚨', '試算表權限過寬：' + al.permission.issues.join('；')]);
@@ -1105,7 +1122,11 @@ const ADMIN_PAGES = {
     if (al.noLineAdmin) alerts.push(['yellow', '💬', '還沒有管理員連結 LINE 通知（更多 → 連結 LINE 通知）']);
     const row = (p, extra) => `<div class="list-row tap" data-cub="${esc(p.cubId)}"><span class="grow"><span class="t">${esc(p.name)}</span> <span class="s">${esc(p.squad || '')}</span><br>${iconOf(p)} ${esc(unitLabel(p))} ${extra}</span><span>›</span></div>`;
     $app.innerHTML = `
-      <section class="card"><h2>👋 ${esc(h.me.name)}，你好！</h2><p class="muted">身分：${esc(h.me.role)}</p></section>
+      <section class="card"><h2>👋 ${esc(h.me.name)}${h.me.name === h.me.role ? '' : '（' + esc(h.me.role) + '）'}</h2>
+        ${todayM ? `<div class="banner"><b>📋 今天 ${shortDate(todayM.date)}　${esc(todayM.name)}</b><br><span class="s">已點名出席 ${todayM.attended} 人</span></div>
+          <div class="row-flex"><button class="btn green small" id="goRoll">📋 去點名</button><button class="btn small" id="goSign">✅ 去簽核</button></div>`
+        : `<p class="muted">今天沒有集會。${nextM ? `下次集會：<b>${fmtDate(nextM.date)} ${esc(nextM.name)}</b>` : (isLeader() ? '行事曆還沒有之後的集會。' : '')}</p>
+          ${!nextM && isLeader() ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
       <section class="card"><h2>🏅 待頒章 <span class="pill st-已完成待頒發">${h.pending.length}</span></h2>
         ${h.pending.length ? h.pending.map((p) => row(p, `<span class="s">達標 ${fmtDate(p.eligibleDate)}</span>`)).join('') : '<p class="muted">目前沒有待頒章的小狼。</p>'}
         ${h.pending.length && isLeader() ? '<button class="btn alt" id="toAward">🏅 前往頒章</button>' : ''}</section>
@@ -1116,6 +1137,10 @@ const ADMIN_PAGES = {
     const ta = $('#toAward');
     if (ta) ta.onclick = () => goAdmin('award');
     $$('[data-cub]').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.cub }); });
+    const tabTo = (t) => { state.admin = { tab: t, page: null }; renderAdmin(); };
+    const gr = $('#goRoll'); if (gr) gr.onclick = () => tabTo('roll');
+    const gs = $('#goSign'); if (gs) gs.onclick = () => tabTo('sign');
+    const gc = $('#goCal'); if (gc) gc.onclick = () => goAdmin('calendar');
   },
 
   // ───── 點名 ─────
@@ -1140,6 +1165,7 @@ const ADMIN_PAGES = {
         <select class="full" id="mSel">${meetings.map((m) => `<option value="${esc(m.meetingId)}" ${m.meetingId === mid ? 'selected' : ''}>${fmtDate(m.date)}　${esc(m.name)}</option>`).join('')}</select>
         ${squadChips(sheet.squads, squad)}
         <p class="muted small">點一下切換：空白 → 🐾 出席 → 🌙 請假 → 空白</p>
+        <button class="btn alt small" id="allIn">✅ 全部出席（請假的不變）</button>
         <div id="rows"></div>
         <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="save">儲存點名</button></div>
         ${isLeader() ? '<button class="linkbtn" id="cal">📅 管理行事曆</button>' : ''}</section>`;
@@ -1153,8 +1179,19 @@ const ADMIN_PAGES = {
       $$('.roll-btn').forEach((b) => { b.onclick = () => { marks[b.dataset.id] = NEXT[marks[b.dataset.id]]; draw(); }; });
     };
     draw();
-    onSquad((s) => { squad = s; draw(); });
-    $('#mSel').onchange = () => { state.admin.page = { name: 'roll', params: { meetingId: $('#mSel').value, squad } }; renderAdmin(); };
+    const dirty = () => Object.keys(marks).some((k) => marks[k] !== orig[k]);
+    leaveGuard = () => !dirty() || confirm('點名還沒儲存，確定要離開嗎？（剛才的變更會不見）');
+    leaveGuard.dirty = dirty;
+    onSquad((s) => { squad = s; $('#allIn').textContent = s === '全團' ? '✅ 全部出席（請假的不變）' : `✅ ${s}全部出席（請假的不變）`; draw(); });
+    $('#allIn').onclick = () => {
+      sheet.cubs.filter((c) => (squad === '全團' || c.squad === squad) && marks[c.cubId] === '').forEach((c) => { marks[c.cubId] = '出席'; });
+      draw();
+    };
+    $('#mSel').onchange = () => {
+      if (!canLeave()) { $('#mSel').value = mid; return; }
+      leaveGuard = null;
+      state.admin.page = { name: 'roll', params: { meetingId: $('#mSel').value, squad } }; renderAdmin();
+    };
     $('#save').onclick = (ev) => act(ev.target, async () => {
       const changed = {};
       Object.keys(marks).forEach((k) => { if (marks[k] !== orig[k]) changed[k] = marks[k]; });
@@ -1190,7 +1227,9 @@ const ADMIN_PAGES = {
       const secs = [...new Set(list.map((i) => i.section))].filter((s) => s !== '－');
       $('#secs').innerHTML = secs.length > 1 ? ['全部'].concat(secs).map((s) => `<button class="chip ${(st.section || '全部') === s ? 'on' : ''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('') : '';
       if (st.section && st.section !== '全部') list = list.filter((i) => i.section === st.section);
-      $('#items').innerHTML = list.length ? list.map((i) => `<label class="check"><input type="checkbox" data-item="${esc(i.id)}" ${st.items.has(i.id) ? 'checked' : ''}><span>${st.filter === 'recent' ? `<span class="s">${esc(i.unit)}${i.section !== '－' ? '・' + esc(i.section) : ''}</span><br>` : ''}${esc(i.text)}</span></label>`).join('')
+      const cubsNow = st.cubs ? [...st.cubs] : [];
+      const doneCount = (id) => cubsNow.filter((c) => doneSet.has(c + '|' + id)).length;
+      $('#items').innerHTML = list.length ? list.map((i) => { const dc = doneCount(i.id); return `<label class="check"><input type="checkbox" data-item="${esc(i.id)}" ${st.items.has(i.id) ? 'checked' : ''}><span>${st.filter === 'recent' ? `<span class="s">${esc(i.unit)}${i.section !== '－' ? '・' + esc(i.section) : ''}</span><br>` : ''}${esc(i.text)}<br><span class="s" style="color:${cubsNow.length && dc === cubsNow.length ? 'var(--green-dark)' : 'var(--gray)'}">已完成 ${dc}／${cubsNow.length} 位${cubsNow.length && dc === cubsNow.length ? ' ✅' : ''}</span></span></label>`; }).join('')
         : `<p class="muted">${st.filter === 'recent' ? '還沒有最近簽過的項目，請從上方選級別或技能章。' : '沒有項目。'}</p>`;
       $$('#secs .chip').forEach((b) => { b.onclick = () => { st.section = b.dataset.sec; drawItems(); }; });
       $$('#items input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.items.add(cb.dataset.item) : st.items.delete(cb.dataset.item); drawSum(); }; });
@@ -1199,7 +1238,7 @@ const ADMIN_PAGES = {
       const list = d.cubs.filter((c) => st.squad === '全團' || c.squad === st.squad);
       if (!st.cubs) st.cubs = new Set(list.map((c) => c.cubId)); // 預設全選該小隊
       $('#cubs').innerHTML = list.map((c) => `<label class="check"><input type="checkbox" data-cub="${esc(c.cubId)}" ${st.cubs.has(c.cubId) ? 'checked' : ''}>${esc(c.name)} <span class="s">${esc(c.squad || '')}</span></label>`).join('') || '<p class="muted">沒有小狼。</p>';
-      $$('#cubs input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.cubs.add(cb.dataset.cub) : st.cubs.delete(cb.dataset.cub); drawSum(); }; });
+      $$('#cubs input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.cubs.add(cb.dataset.cub) : st.cubs.delete(cb.dataset.cub); drawItems(); drawSum(); }; });
     };
     const drawSum = () => {
       let n = 0, skip = 0;
@@ -1208,8 +1247,8 @@ const ADMIN_PAGES = {
     };
     $('#flt').value = st.filter;
     $('#flt').onchange = () => { st.filter = $('#flt').value; st.section = ''; drawItems(); };
-    onSquad((s) => { st.squad = s; st.cubs = null; drawCubs(); drawSum(); });
-    drawItems(); drawCubs(); drawSum();
+    onSquad((s) => { st.squad = s; st.cubs = null; drawCubs(); drawItems(); drawSum(); });
+    drawCubs(); drawItems(); drawSum();
     $('#go').onclick = (ev) => act(ev.target, async () => {
       if (!st.items.size || !st.cubs.size) return alert('請至少選一個項目和一位小狼。');
       const r = await api('signoff', { cubIds: [...st.cubs], itemIds: [...st.items], date: $('#date').value });

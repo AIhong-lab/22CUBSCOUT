@@ -45,7 +45,9 @@ function seed(env) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('dialog', (d) => d.accept()); // confirm／prompt 一律按確定（prompt 用預設值）
+  const dialogs = [];
+  let dialogAnswer = true; // confirm／prompt 預設按確定（prompt 用預設值）
+  page.on('dialog', (d) => { dialogs.push(d.message()); dialogAnswer ? d.accept() : d.dismiss(); });
   await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
   let calls = 0;
   await page.route(GAS, (r) => {
@@ -147,6 +149,11 @@ function seed(env) {
   assert.ok(home.indexOf('嚮導') > home.indexOf('已經拿到的'), '已頒發的嚮導章在已經拿到的');
   assert.match(home, /⭐ 36/, '星星數＝完成項目數（羚羊 10＋狼 20＋環保 5＋嚮導 1）');
   await shot('03-home'); await noHScroll('首頁');
+  await page.locator('#toMap').click();
+  await page.locator('#lvPanel').waitFor();
+  assert.match(await page.locator('#lvPanel').innerText(), /狼級任務[\s\S]*請團長或服務員幫你簽核/, '首頁「看全部任務」跳到闖關地圖的那一關');
+  await tab('home');
+  await page.getByText('下一步挑戰').waitFor();
 
   // 闖關地圖
   await tab('progress');
@@ -255,6 +262,7 @@ function seed(env) {
   await page.click('button[type=submit]');
   await page.getByText('待頒章').waitFor();
   const ah = await text();
+  assert.match(ah, /今天沒有集會/);
   assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
   assert.match(ah, /尚未設定備份資料夾/);
   await shot('10-admin-home'); await noHScroll('後台首頁');
@@ -276,9 +284,24 @@ function seed(env) {
   await page.locator('.roll-btn[data-id=C2]').click();
   assert.match(await page.locator('#sum').innerText(), /出席 1 人・請假 1 人・尚未儲存 2 筆/);
   await shot('11-roll'); await noHScroll('點名');
+  // 未儲存就要離開：選「留下」會停在點名頁
+  dialogAnswer = false;
+  await tab('sign');
+  assert.match(dialogs[dialogs.length - 1], /點名還沒儲存/);
+  assert.ok(await page.locator('#save').isVisible(), '選擇留下仍在點名頁');
+  dialogAnswer = true;
   await page.locator('#save').click();
   await page.waitForFunction(() => !/尚未儲存/.test(document.querySelector('#sum').textContent));
   assert.equal(env.rows('出席紀錄').length, 6);
+  // 全部出席：空白的變出席、請假的不變
+  await page.locator('.roll-btn[data-id=C1]').click(); // 出席 → 請假
+  await page.locator('.roll-btn[data-id=C1]').click(); // 請假 → 空白
+  await page.locator('#allIn').click();
+  assert.equal(await page.locator('.roll-btn[data-id=C1]').innerText(), '🐾 出席');
+  assert.equal(await page.locator('.roll-btn[data-id=C2]').innerText(), '🌙 請假');
+  await tab('home');
+  await page.getByText('已點名出席 1 人').waitFor();
+  assert.match(await text(), /今天 11\/14　團集會/, '後台首頁顯示今天的集會');
 
   // 小狼：新增
   await tab('cubs');
@@ -308,9 +331,12 @@ function seed(env) {
   await page.locator('#items input').nth(0).check();
   await page.locator('#items input').nth(1).check();
   assert.match(await page.locator('#sum').innerText(), /2 個項目 × 2 位小狼：將新增 4 筆/);
+  assert.match(await page.locator('#items').innerText(), /已完成 0／2 位/, '每個項目顯示已完成幾位');
   await shot('13-sign');
   await page.locator('#go').click();
   await page.getByText('新增 4 筆、略過 0 筆').waitFor();
+  await page.selectOption('#flt', '進程|羚羊');
+  assert.match(await page.locator('#items').innerText(), /已完成 2／2 位 ✅/, '送出後項目顯示全部完成');
   await page.locator('#undo').click();
   await page.getByText('已復原 4 筆').waitFor();
 
