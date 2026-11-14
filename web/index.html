@@ -1860,8 +1860,8 @@ const ADMIN_PAGES = {
         <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
       <section class="card"><h2>✉️ 邀請新的管理員</h2><p class="muted small">對方沒有孩子在團裡時用。</p>
         <form id="fi"><label>角色</label><select class="full" name="role"><option>服務員</option><option>團長</option></select>
-          <label>對方姓名</label><input name="name" type="text" required><button class="btn alt" type="submit">產生邀請碼</button><div class="out"></div></form>
-        <h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name)}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('') || '<p class="muted">沒有。</p>'}</section>`;
+          <label>對方姓名（可留空，留空時用對方註冊時填的稱呼）</label><input name="name" type="text" maxlength="30"><button class="btn alt" type="submit">產生邀請碼</button><div class="out"></div></form>
+        <h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('') || '<p class="muted">沒有。</p>'}</section>`;
     wireBack();
     const drawCands = () => {
       const q = $('#q').value.trim();

@@ -453,3 +453,19 @@ test('註冊申請：舊的代碼註冊仍可用（第一位團長邀請碼、�
   const r = env.api({ action: 'register', code, childName: '測試小狼甲', username: 'parent09', password: 'parentpass1', nickname: '測試小狼甲爸爸', consentVersion: v });
   assert.equal(r.ok, true);
 });
+
+test('邀請碼不用填姓名：自動產生亂碼，對方註冊時填的稱呼當作管理員姓名', () => {
+  const { env, call, L } = world();
+  const inv = call(L, 'inviteCreate', { role: '服務員', name: '' });
+  assert.equal(inv.ok, true, JSON.stringify(inv));
+  assert.match(inv.code, /^[A-Z2-9]{8}$/);
+  assert.match(inv.message, /^您好，邀請您加入/);
+  const r = env.api({ action: 'register', code: inv.code, childName: '', username: 'helper09', password: 'helperpass1', nickname: '林小華' });
+  assert.equal(r.ok, true);
+  assert.equal(call(r.token, 'me').adminName, '林小華');
+  // 試算表選單：直接產生，不跳出輸入姓名的視窗
+  const before = env.rows('管理員邀請').length;
+  env.ctx.menuInviteAssistant();
+  assert.equal(env.rows('管理員邀請').length, before + 1);
+  assert.equal(env.rows('管理員邀請').at(-1)[2], '');
+});

@@ -165,11 +165,12 @@ function bindCub_(accountId, cub, consentVersion) {
 }
 
 /** 使用邀請碼成為管理員 */
-function redeemInvite_(accountId, invite) {
+/** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
+function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
   var admins = loadAdmins_();
   if (!admins.some(function (a) { return a.accountId === accountId; })) {
-    appendRows_(SHEET.ADMINS, [[accountId, invite.name, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
+    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
   }
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
@@ -207,7 +208,7 @@ function apiRegister_(req) {
       bindCub_(accountId, r.cub, version);
       logOp_(accountId, '註冊並綁定', r.cub.cubId, '', '帳號 ' + Logic.clean(req.username));
     } else {
-      redeemInvite_(accountId, r.invite);
+      redeemInvite_(accountId, r.invite, req.nickname);
       logOp_(accountId, '以邀請碼註冊管理員', Logic.clean(req.username), '', r.invite.role);
     }
     var s = createSession_(accountId, !!req.remember, settings);
@@ -308,7 +309,7 @@ function apiBind_(req, who) {
       logOp_(who.account.accountId, '新增綁定', r.cub.cubId, '', '');
       return { kind: 'parent', cubId: r.cub.cubId };
     }
-    redeemInvite_(who.account.accountId, r.invite);
+    redeemInvite_(who.account.accountId, r.invite, who.account.nickname);
     logOp_(who.account.accountId, '以邀請碼成為管理員', who.account.username, '', r.invite.role);
     return { kind: 'admin' };
   });

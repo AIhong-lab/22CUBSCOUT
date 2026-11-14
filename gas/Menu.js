@@ -26,13 +26,10 @@ function menuInviteAssistant() { menuInvite_(Logic.ROLE.ASSISTANT); }
 function menuInviteLeader() { menuInvite_(Logic.ROLE.LEADER); }
 
 /** 詢問姓名 → 產生邀請碼並寫入「管理員邀請」→ 顯示說明文字 */
+/** 直接產生一組亂碼邀請碼（不用輸入姓名；對方註冊時填的稱呼會當作管理員姓名） */
 function menuInvite_(role) {
   var ui = SpreadsheetApp.getUi();
-  var ans = ui.prompt('產生' + role + '邀請碼', '請輸入對方的姓名（會顯示在後台的管理員名單）：', ui.ButtonSet.OK_CANCEL);
-  if (ans.getSelectedButton() !== ui.Button.OK) return;
-  var name = Logic.clean(ans.getResponseText()).slice(0, 30);
-  if (!name) { ui.alert('沒有輸入姓名，已取消。'); return; }
-  var inv = createInvite_(role, name, '試算表選單');
+  var inv = createInvite_(role, '', '試算表選單');
   ui.alert('已產生' + role + '邀請碼', inviteMessage_(inv) + '\n\n（請複製上面的文字，用 LINE 傳給對方。這組碼只能用一次。）', ui.ButtonSet.OK);
 }
 
@@ -47,7 +44,7 @@ function createInvite_(role, name, createdBy) {
     var now = new Date();
     var exp = new Date(now.getTime() + settings['管理員邀請碼有效小時數'] * 3600000);
     appendRows_(SHEET.INVITES, [[code, role, name, createdBy, now, exp, '未使用', '', '']]);
-    logOp_(createdBy, '產生管理員邀請碼', name, '', role);
+    logOp_(createdBy, '產生管理員邀請碼', name || '（未填姓名）', '', role);
     return { code: code, role: role, name: name, expiresAt: exp.getTime() };
   });
 }
@@ -55,10 +52,10 @@ function createInvite_(role, name, createdBy) {
 /** 給對方的邀請說明文字 */
 function inviteMessage_(inv) {
   var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
-  return inv.name + ' 您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
+  return (inv.name ? inv.name + ' ' : '') + '您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
     '1. 打開 ' + url + '\n' +
     '2. 按右上角「登入」→「我有團長給的代碼」\n' +
     '3. 綁定碼欄位輸入：' + inv.code + '（孩子姓名留空）\n' +
-    '4. 設定您的帳號、密碼、稱呼\n' +
+    '4. 設定您的帳號、密碼、稱呼（稱呼請填您的姓名，會顯示在管理員名單）\n' +
     '邀請碼只能用一次，' + Utilities.formatDate(new Date(inv.expiresAt), TZ, 'MM/dd HH:mm') + ' 前有效。';
 }

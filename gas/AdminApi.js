@@ -522,7 +522,6 @@ registerAdmin_('adminRemove', 'manageAdmins', function (req, who) {
 registerAdmin_('inviteCreate', 'manageInvites', function (req, who) {
   var role = Logic.clean(req.role), name = Logic.clean(req.name).slice(0, 30);
   if (role !== Logic.ROLE.LEADER && role !== Logic.ROLE.ASSISTANT) throw new ApiError(ERR.BAD_INPUT, '角色只能是團長或服務員。');
-  if (!name) throw new ApiError(ERR.BAD_INPUT, '請填寫對方的姓名。');
   var inv = createInvite_(role, name, who.account.accountId);
   return { code: inv.code, expiresAt: inv.expiresAt, message: inviteMessage_(inv) };
 });

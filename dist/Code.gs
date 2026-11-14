@@ -1710,11 +1710,12 @@ function bindCub_(accountId, cub, consentVersion) {
 }
 
 /** 使用邀請碼成為管理員 */
-function redeemInvite_(accountId, invite) {
+/** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
+function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
   var admins = loadAdmins_();
   if (!admins.some(function (a) { return a.accountId === accountId; })) {
-    appendRows_(SHEET.ADMINS, [[accountId, invite.name, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
+    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
   }
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
@@ -1752,7 +1753,7 @@ function apiRegister_(req) {
       bindCub_(accountId, r.cub, version);
       logOp_(accountId, '註冊並綁定', r.cub.cubId, '', '帳號 ' + Logic.clean(req.username));
     } else {
-      redeemInvite_(accountId, r.invite);
+      redeemInvite_(accountId, r.invite, req.nickname);
       logOp_(accountId, '以邀請碼註冊管理員', Logic.clean(req.username), '', r.invite.role);
     }
     var s = createSession_(accountId, !!req.remember, settings);
@@ -1853,7 +1854,7 @@ function apiBind_(req, who) {
       logOp_(who.account.accountId, '新增綁定', r.cub.cubId, '', '');
       return { kind: 'parent', cubId: r.cub.cubId };
     }
-    redeemInvite_(who.account.accountId, r.invite);
+    redeemInvite_(who.account.accountId, r.invite, who.account.nickname);
     logOp_(who.account.accountId, '以邀請碼成為管理員', who.account.username, '', r.invite.role);
     return { kind: 'admin' };
   });
@@ -2095,13 +2096,10 @@ function menuInviteAssistant() { menuInvite_(Logic.ROLE.ASSISTANT); }
 function menuInviteLeader() { menuInvite_(Logic.ROLE.LEADER); }
 
 /** 詢問姓名 → 產生邀請碼並寫入「管理員邀請」→ 顯示說明文字 */
+/** 直接產生一組亂碼邀請碼（不用輸入姓名；對方註冊時填的稱呼會當作管理員姓名） */
 function menuInvite_(role) {
   var ui = SpreadsheetApp.getUi();
-  var ans = ui.prompt('產生' + role + '邀請碼', '請輸入對方的姓名（會顯示在後台的管理員名單）：', ui.ButtonSet.OK_CANCEL);
-  if (ans.getSelectedButton() !== ui.Button.OK) return;
-  var name = Logic.clean(ans.getResponseText()).slice(0, 30);
-  if (!name) { ui.alert('沒有輸入姓名，已取消。'); return; }
-  var inv = createInvite_(role, name, '試算表選單');
+  var inv = createInvite_(role, '', '試算表選單');
   ui.alert('已產生' + role + '邀請碼', inviteMessage_(inv) + '\n\n（請複製上面的文字，用 LINE 傳給對方。這組碼只能用一次。）', ui.ButtonSet.OK);
 }
 
@@ -2116,7 +2114,7 @@ function createInvite_(role, name, createdBy) {
     var now = new Date();
     var exp = new Date(now.getTime() + settings['管理員邀請碼有效小時數'] * 3600000);
     appendRows_(SHEET.INVITES, [[code, role, name, createdBy, now, exp, '未使用', '', '']]);
-    logOp_(createdBy, '產生管理員邀請碼', name, '', role);
+    logOp_(createdBy, '產生管理員邀請碼', name || '（未填姓名）', '', role);
     return { code: code, role: role, name: name, expiresAt: exp.getTime() };
   });
 }
@@ -2124,11 +2122,11 @@ function createInvite_(role, name, createdBy) {
 /** 給對方的邀請說明文字 */
 function inviteMessage_(inv) {
   var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
-  return inv.name + ' 您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
+  return (inv.name ? inv.name + ' ' : '') + '您好，邀請您加入 22 團幼童軍進程系統（' + inv.role + '）：\n' +
     '1. 打開 ' + url + '\n' +
     '2. 按右上角「登入」→「我有團長給的代碼」\n' +
     '3. 綁定碼欄位輸入：' + inv.code + '（孩子姓名留空）\n' +
-    '4. 設定您的帳號、密碼、稱呼\n' +
+    '4. 設定您的帳號、密碼、稱呼（稱呼請填您的姓名，會顯示在管理員名單）\n' +
     '邀請碼只能用一次，' + Utilities.formatDate(new Date(inv.expiresAt), TZ, 'MM/dd HH:mm') + ' 前有效。';
 }
 
@@ -2657,7 +2655,6 @@ registerAdmin_('adminRemove', 'manageAdmins', function (req, who) {
 registerAdmin_('inviteCreate', 'manageInvites', function (req, who) {
   var role = Logic.clean(req.role), name = Logic.clean(req.name).slice(0, 30);
   if (role !== Logic.ROLE.LEADER && role !== Logic.ROLE.ASSISTANT) throw new ApiError(ERR.BAD_INPUT, '角色只能是團長或服務員。');
-  if (!name) throw new ApiError(ERR.BAD_INPUT, '請填寫對方的姓名。');
   var inv = createInvite_(role, name, who.account.accountId);
   return { code: inv.code, expiresAt: inv.expiresAt, message: inviteMessage_(inv) };
 });
