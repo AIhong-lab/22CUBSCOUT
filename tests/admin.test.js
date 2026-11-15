@@ -1067,3 +1067,47 @@ test('章的圖片（附錄第 50 點）：團長上傳、公開讀取、格式�
   call(L, 'unitImageSave', { category: '進程', unit: '狼', image: '' });
   assert.deepEqual(Object.keys(env.api({ action: 'unitImages' }).images), ['技能章|嚮導']);
 });
+
+test('每個活動一份獨立的存檔試算表（附錄第 51 點）：建立活動時產生，報名、取消、繳費後自動更新', () => {
+  const { env, call, L, A, P } = world();
+  const base = { title: '春季健行', date: '2026-12-20', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59', fee: 300, questions: [{ label: '飲食', type: 'choice', options: ['葷', '素'] }] };
+  const id = call(L, 'eventSave', base).id;
+  const book = Object.values(env.ext.books)[0];
+  assert.ok(book, '建立活動時就產生試算表');
+  assert.match(book.getName(), /春季健行/);
+  assert.equal(env.drive.moved.length, 1, '放進存檔資料夾');
+  assert.ok(env.props.EVENT_FOLDER_ID);
+  const list = () => { const sh = book.getSheetByName('報名名單'); return sh.getRange(1, 1, sh.getLastRow(), 9).getValues(); };
+  assert.deepEqual(list()[0], ['姓名', '身分別', '飲食', '報名人', '應繳金額', '已繳', '報名時間', '狀態', '最後更新']);
+  assert.equal(list().length, 1);
+  const q = call(P, 'eventList').events[0].questions[0].id;
+  call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: { [q]: '葷' } }, { name: '=HYPERLINK("x")', identity: '家長', answers: {} }] });
+  let rows = list();
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[1].slice(0, 6), ['測試小狼甲', '小狼', '葷', '測試小狼甲媽媽', 300, '否']);
+  assert.equal(rows[2][0], "'=HYPERLINK(\"x\")", '等號開頭的內容不會被當成公式');
+  const regs = call(L, 'eventRegs', { eventId: id });
+  assert.equal(regs.sheetUrl, book.getUrl(), '團長拿得到存檔試算表的連結');
+  assert.equal(call(P, 'eventList').events[0].sheetUrl, undefined, '家長拿不到');
+  call(L, 'eventPay', { updates: [{ regId: regs.regs[0].regId, amount: 250, paid: true }] });
+  call(P, 'eventCancel', { regId: regs.regs[1].regId });
+  rows = list();
+  assert.deepEqual(rows[1].slice(4, 6), [250, '是']);
+  assert.equal(rows[2][7], '取消', '取消的也留在存檔裡');
+  const info = book.getSheetByName('活動資訊');
+  assert.match(JSON.stringify(info.getRange(1, 1, info.getLastRow(), 2).getValues()), /春季健行.*已收金額.*250/);
+  // 只有一份，不會每次同步都新增檔案；手動同步只有團長可以
+  assert.equal(list().length, 3);
+  assert.equal(Object.keys(env.ext.books).length, 1);
+  assert.equal(call(A, 'eventSheetSync', { eventId: id }).code, 'FORBIDDEN');
+  assert.equal(call(L, 'eventSheetSync', { eventId: id }).sheetUrl, book.getUrl());
+  // 建立試算表失敗不影響建立活動與報名，之後可以手動補
+  env.ext.fail = true;
+  const id2 = call(L, 'eventSave', { ...base, title: '第二個活動' }).id;
+  assert.ok(id2);
+  assert.equal(call(P, 'eventRegister', { eventId: id2, people: [{ name: '測試小狼甲', identity: '小狼', answers: {} }] }).added, 1);
+  assert.equal(call(L, 'eventRegs', { eventId: id2 }).sheetUrl, '');
+  assert.equal(call(L, 'eventSheetSync', { eventId: id2 }).ok, false);
+  env.ext.fail = false;
+  assert.match(call(L, 'eventSheetSync', { eventId: id2 }).sheetUrl, /EXT-2/);
+});

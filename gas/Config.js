@@ -71,7 +71,7 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
-HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間'];
+HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID'];
 HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
@@ -104,7 +104,7 @@ TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
-TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9];
+TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
 TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 

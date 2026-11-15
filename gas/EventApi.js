@@ -11,7 +11,7 @@ function loadEvents_() {
     return {
       id: Logic.clean(r[0]), title: Logic.clean(r[1]), desc: String(r[2] === undefined || r[2] === null ? '' : r[2]),
       date: dateStr_(r[3]), endDate: dateStr_(r[4]), regStart: Logic.clean(r[5]), regEnd: Logic.clean(r[6]),
-      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', _row: r._row, _raw: r
+      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', sheetId: Logic.clean(r[12]), _row: r._row, _raw: r
     };
   });
 }
@@ -60,7 +60,7 @@ function apiEventList_(req, who) {
 AUTHED_ACTIONS.eventList = apiEventList_;
 
 function apiEventRegister_(req, who) {
-  return withLock_(function () {
+  return afterSync_(withLock_(function () {
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
     if (!ev || !ev.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
     var st = regState_(ev, nowStamp_());
@@ -78,14 +78,14 @@ function apiEventRegister_(req, who) {
       return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), ev.fee, '否', now, '有效', '', ''];
     }));
     logOp_(who.account.accountId, '活動報名', ev.id, '', v.people.length + ' 位');
-    return { added: v.people.length };
-  });
+    return { added: v.people.length, _ev: ev.id };
+  }));
 }
 AUTHED_ACTIONS.eventRegister = apiEventRegister_;
 
 /** 自己取消報名：只能在報名期間內、且還沒登記繳費 */
 function apiEventCancel_(req, who) {
-  return withLock_(function () {
+  return afterSync_(withLock_(function () {
     var r = loadRegs_().filter(function (x) { return x.id === Logic.clean(req.regId) && x.accountId === who.account.accountId && x.active; })[0];
     if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
     var ev = loadEvents_().filter(function (e) { return e.id === r.eventId; })[0];
@@ -95,8 +95,8 @@ function apiEventCancel_(req, who) {
     row[9] = '取消'; row[10] = who.account.accountId; row[11] = new Date();
     updateRows_(SHEET.EVENT_REGS, [{ row: r._row, values: row }]);
     logOp_(who.account.accountId, '取消活動報名', r.eventId, '', '');
-    return {};
-  });
+    return { _ev: r.eventId };
+  }));
 }
 AUTHED_ACTIONS.eventCancel = apiEventCancel_;
 
@@ -120,7 +120,7 @@ registerAdmin_('eventSave', 'manageEvents', function (req, who) {
   var v = Logic.validateEvent(req);
   if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
   var e = v.event;
-  return withLock_(function () {
+  return afterSync_(withLock_(function () {
     var list = loadEvents_();
     var cells = [e.title, e.desc, e.date, e.endDate, e.regStart, e.regEnd, e.fee, JSON.stringify(e.questions), req.enabled === false ? '關閉' : '開放'];
     if (req.id) {
@@ -130,13 +130,13 @@ registerAdmin_('eventSave', 'manageEvents', function (req, who) {
       cells.forEach(function (c, i) { row[i + 1] = c; });
       updateRows_(SHEET.EVENTS, [{ row: cur._row, values: row }]);
       logOp_(who.account.accountId, '修改活動', cur.id, cur.title, e.title + (req.enabled === false ? '（關閉）' : ''));
-      return { id: cur.id };
+      return { id: cur.id, _ev: cur.id };
     }
     var id = newId_('E', list.map(function (x) { return x.id; }));
     appendRows_(SHEET.EVENTS, [[id].concat(cells, [who.account.accountId, new Date()])]);
     logOp_(who.account.accountId, '新增活動', id, '', e.title);
-    return { id: id };
-  });
+    return { id: id, _ev: id };
+  }));
 });
 
 registerAdmin_('eventRegs', 'manageEvents', function (req) {
@@ -146,7 +146,7 @@ registerAdmin_('eventRegs', 'manageEvents', function (req) {
   var v = eventView_(ev, nowStamp_());
   v.questions = ev.questions; v.enabled = ev.enabled;
   return {
-    event: v,
+    event: v, sheetUrl: ev.sheetId ? EVENT_SHEET_URL + ev.sheetId : '',
     regs: loadRegs_().filter(function (r) { return r.eventId === ev.id && r.active; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
       return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
     })
@@ -157,7 +157,7 @@ registerAdmin_('eventRegs', 'manageEvents', function (req) {
 registerAdmin_('eventPay', 'manageEvents', function (req, who) {
   var updates = Array.isArray(req.updates) ? req.updates : [];
   if (!updates.length || updates.length > 300) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的變更。');
-  return withLock_(function () {
+  return afterSync_(withLock_(function () {
     var regs = loadRegs_(), ups = [], now = new Date();
     updates.forEach(function (u) {
       var r = regs.filter(function (x) { return x.id === Logic.clean(u.regId) && x.active; })[0];
@@ -169,28 +169,107 @@ registerAdmin_('eventPay', 'manageEvents', function (req, who) {
       ups.push({ row: r._row, values: row });
     });
     updateRows_(SHEET.EVENT_REGS, ups);
-    logOp_(who.account.accountId, '登記活動繳費', regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId); })[0].eventId, '', ups.length + ' 筆');
-    return { changed: ups.length };
-  });
+    var evId = regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId); })[0].eventId;
+    logOp_(who.account.accountId, '登記活動繳費', evId, '', ups.length + ' 筆');
+    return { changed: ups.length, _ev: evId };
+  }));
 });
 
 /** 團長取消一筆報名（保留紀錄，狀態改為取消） */
 registerAdmin_('eventRegRemove', 'manageEvents', function (req, who) {
-  return withLock_(function () {
+  return afterSync_(withLock_(function () {
     var r = loadRegs_().filter(function (x) { return x.id === Logic.clean(req.regId) && x.active; })[0];
     if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
     var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
     row[9] = '取消'; row[10] = who.account.accountId; row[11] = new Date();
     updateRows_(SHEET.EVENT_REGS, [{ row: r._row, values: row }]);
     logOp_(who.account.accountId, '取消活動報名', r.eventId, '', '');
-    return {};
-  });
+    return { _ev: r.eventId };
+  }));
+});
+
+// ───────────── 每個活動一份獨立的存檔試算表（SPEC 附錄第 51 點） ─────────────
+// 另開一個 Google 試算表檔案（只有擁有者＝團長看得到），每次報名、取消、登記繳費後整份重寫。
+// 主系統的「活動」「活動報名」分頁才是資料來源；存檔失敗不影響報名。
+
+var EVENT_FOLDER_NAME = '幼童軍活動報名存檔';
+var EVENT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/';
+
+function eventFolder_() {
+  var props = PropertiesService.getScriptProperties(), id = props.getProperty('EVENT_FOLDER_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* 資料夾被刪掉了，重建 */ } }
+  var folder = DriveApp.createFolder(EVENT_FOLDER_NAME);
+  props.setProperty('EVENT_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+/** 寫進另一份試算表的文字：等號等開頭的內容前面加單引號，避免被當成公式 */
+function safeCell_(v) { return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v; }
+
+function writeSheet_(book, name, rows) {
+  var sh = book.getSheetByName(name) || book.insertSheet(name);
+  sh.clearContents();
+  sh.getRange(1, 1, rows.length, rows[0].length).setValues(rows.map(function (r) { return r.map(safeCell_); }));
+  sh.setFrozenRows(1);
+}
+
+/** 建立（第一次）或更新這個活動的存檔試算表，回傳網址 */
+function syncEventSheet_(eventId) {
+  DB_CACHE_ = {};
+  var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
+  if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+  var book = null;
+  if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
+  if (!book) {
+    book = SpreadsheetApp.create('活動報名｜' + ev.title + '｜' + ev.date);
+    try { DriveApp.getFileById(book.getId()).moveTo(eventFolder_()); } catch (e) { /* 搬不進資料夾就留在雲端硬碟根目錄 */ }
+    var first = book.getSheets()[0];
+    if (first && first.getName() !== '報名名單') first.setName('報名名單');
+    var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
+    row[12] = book.getId();
+    updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
+  }
+  var acc = accountsById_(), now = new Date();
+  var fmt = function (t) { return t ? Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd HH:mm') : ''; };
+  var regs = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).sort(function (a, b) { return a.at - b.at; });
+  var head = ['姓名', '身分別'].concat(ev.questions.map(function (q) { return q.label; }), ['報名人', '應繳金額', '已繳', '報名時間', '狀態', '最後更新']);
+  var rows = [head].concat(regs.map(function (r) {
+    return [r.name, r.identity].concat(ev.questions.map(function (q) { return r.answers[q.id] || ''; }),
+      [(acc[r.accountId] || {}).nickname || '（帳號已刪除）', r.amount, r.paid ? '是' : '否', fmt(r.at), r.active ? '有效' : '取消', fmt(ms_(r._raw[11]) || r.at)]);
+  }));
+  writeSheet_(book, '報名名單', rows);
+  var act = regs.filter(function (r) { return r.active; });
+  writeSheet_(book, '活動資訊', [['項目', '內容'], ['活動名稱', ev.title], ['活動日期', ev.date + (ev.endDate && ev.endDate !== ev.date ? '～' + ev.endDate : '')],
+    ['開始報名', ev.regStart.replace('T', ' ')], ['結束報名', ev.regEnd.replace('T', ' ')], ['每人費用', ev.fee], ['狀態', ev.enabled ? '開放' : '關閉'],
+    ['報名人數', act.length], ['已繳人數', act.filter(function (r) { return r.paid; }).length],
+    ['應收金額', act.reduce(function (a, r) { return a + r.amount; }, 0)], ['已收金額', act.filter(function (r) { return r.paid; }).reduce(function (a, r) { return a + r.amount; }, 0)],
+    ['說明', ev.desc], ['最後同步', fmt(now.getTime())], ['注意', '這份是自動產生的存檔，請不要直接在這裡修改；要改請到網站後台，這裡會自動更新。']]);
+  return EVENT_SHEET_URL + book.getId();
+}
+
+/** 動作成功後更新存檔試算表；失敗只記錄，不影響主要操作。res._ev 是活動ID，不回傳給前端 */
+function afterSync_(res) {
+  var id = res && res._ev;
+  if (res) delete res._ev;
+  if (id) { try { syncEventSheet_(id); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
+  return res;
+}
+
+/** 團長手動同步（或補建）存檔試算表 */
+registerAdmin_('eventSheetSync', 'manageEvents', function (req) {
+  var id = Logic.clean(req.eventId);
+  try { return { sheetUrl: syncEventSheet_(id) }; }
+  catch (e) { if (e instanceof ApiError) throw e; throw new ApiError(ERR.BAD_INPUT, '存檔試算表建立或更新失敗，請稍後再試一次。'); }
 });
 
 /** 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資） */
 function deleteRegsOfAccount_(accountId) {
-  var rows = loadRegs_().filter(function (r) { return r.accountId === accountId; }).map(function (r) { return r._row; });
-  if (rows.length) deleteRows_(SHEET.EVENT_REGS, rows);
+  var mine = loadRegs_().filter(function (r) { return r.accountId === accountId; });
+  if (!mine.length) return;
+  deleteRows_(SHEET.EVENT_REGS, mine.map(function (r) { return r._row; }));
+  // 存檔試算表也要跟著拿掉這些人的資料
+  var seen = {};
+  mine.forEach(function (r) { if (!seen[r.eventId]) { seen[r.eventId] = true; afterSync_({ _ev: r.eventId }); } });
 }
 
 // ───────────── 進程章與技能章的圖片（團長上傳，公開顯示） ─────────────

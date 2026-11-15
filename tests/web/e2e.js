@@ -681,6 +681,7 @@ function seed(env) {
   await page.click('form#fe button[type=submit]');
   await page.getByText('還沒有人報名。').waitFor();
   assert.equal(env.rows('活動').length, 1);
+  assert.match(await page.locator('#evSheet').getAttribute('href'), /^https:\/\/docs\.google\.com\/spreadsheets\/d\/EXT-1$/, '活動建立後就有存檔試算表的連結');
   // 上傳章的圖片：項目管理 → 進程 → 第一個級別
   await sideTab('items');
   await page.locator('#uimg').setInputFiles({ name: 'badge.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHxcCAr7kO9IAAAAASUVORK5CYII=', 'base64') });

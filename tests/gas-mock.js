@@ -64,13 +64,17 @@ class Sheet {
     return new Range(this, r, c, nr, nc);
   }
   deleteRows(start, n) { this.data.splice(start - 1, n); }
+  clearContents() { this.data = []; return this; }
+  setName(n) { this.name = n; return this; }
   setFrozenRows(n) { this.frozen = n; }
   getProtections() { return this.protections; }
 }
 
 class Spreadsheet {
-  constructor() { this.sheets = new Map(); }
-  getId() { return 'TEST-SPREADSHEET'; }
+  constructor(id, name) { this.sheets = new Map(); this.id = id || 'TEST-SPREADSHEET'; this.title = name || ''; }
+  getId() { return this.id; }
+  getName() { return this.title; }
+  getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this.id; }
   getSheetByName(n) { return this.sheets.get(n) || null; }
   insertSheet(n) { const s = new Sheet(n); this.sheets.set(n, s); return s; }
   getSheets() { return [...this.sheets.values()]; }
@@ -103,15 +107,19 @@ function loadGas(opts = {}) {
   };
   const logs = [], sent = [], cache = {}, triggers = [], net = { code: 200 };
   // 模擬雲端硬碟：一份試算表檔案與備份資料夾
-  const drive = { files: [], sharing: { file: 'PRIVATE', folder: 'PRIVATE' }, failCopy: false };
+  const drive = { files: [], sharing: { file: 'PRIVATE', folder: 'PRIVATE' }, failCopy: false, moved: [] };
+  // 另外建立的試算表（每個活動一份存檔）：ext.books[id]；ext.fail = true 模擬建立失敗
+  const ext = { books: {}, fail: false };
   drive.api = {
     Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
-    getFileById: () => ({
+    getFileById: (id) => ({
+      moveTo: (folder) => { drive.moved.push([id, folder.getId()]); },
       getSharingAccess: () => drive.sharing.file,
       makeCopy: (name) => { if (drive.failCopy) throw new Error('模擬複製失敗'); const f = { name, created: clock, trashed: false, getName: () => f.name, getDateCreated: () => new RealDate(f.created), setTrashed: (v) => { f.trashed = v; } }; drive.files.push(f); clock += 1000; return f; },
     }),
     createFolder: (name) => { drive.folders = (drive.folders || []).concat([name]); return { getId: () => 'FOLDER-' + drive.folders.length, getName: () => name }; },
-    getFolderById: () => ({
+    getFolderById: (fid) => ({
+      getId: () => fid,
       getSharingAccess: () => drive.sharing.folder,
       getFiles: () => { const list = drive.files.filter((f) => !f.trashed); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },
     }),
@@ -121,7 +129,9 @@ function loadGas(opts = {}) {
     JSON, Math, String, Number, Array, Object, RegExp, isNaN, parseInt, isFinite, Error,
     Date: FakeDate,
     SpreadsheetApp: {
-      getActiveSpreadsheet: () => ss, openById: () => ss, ProtectionType: { RANGE: 'RANGE' },
+      getActiveSpreadsheet: () => ss, ProtectionType: { RANGE: 'RANGE' },
+      openById: (id) => { if (ext.books[id]) return ext.books[id]; if (String(id).startsWith('EXT-')) throw new Error('找不到檔案'); return ss; },
+      create: (name) => { if (ext.fail) throw new Error('模擬建立試算表失敗'); const b = new Spreadsheet('EXT-' + (Object.keys(ext.books).length + 1), name); b.insertSheet('工作表1'); ext.books[b.getId()] = b; return b; },
       // 試算表選單的對話框：ui.answers 依序提供 prompt 的回答，ui.alerts 收集跳出的訊息
       getUi: () => ui,
     },
@@ -160,7 +170,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net,
+    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net, ext,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

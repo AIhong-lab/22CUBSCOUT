@@ -31,6 +31,7 @@
 - 後台首頁與刪除權限（SPEC 附錄第 48 點）：`ADMIN_PAGES.home` 上半部用 `homeIntroHtml`（和 `renderHome` 共用），後台區塊從 `#adminZone` 開始、快捷按鈕 `#adminQuick`；`privacyExecute` 的 `delete` 只有 admin（`me.ownerExists`／`me.isOwner`）。
 - LINE 圖文選單與公開頁面（SPEC 附錄第 49 點）：分頁「網站內容」（`SHEET.SITE`，鍵 about／activity／fb）、公開 API `siteInfo`（含本月起的啟用集會，白名單 date/name/type/note）、`siteContentGet`／`siteContentSave`（在 TeamApi.js）；前端 `loadSite`、`drawCalendar`（首頁 `#calCard`）、`renderInfo('notices'|'calendar'|'about')`（`INFO_PAGES`，網址 `#notices`、`#calendar`、`#about`）、首頁 `#homeLinks`、設定頁表單 `#fw`。畫面上稱「公佈欄」。圖文選單圖片 `docs/line-richmenu.jpg`（由 scratch 腳本產生，六格都是「連結」動作）。
 - 活動報名、繳費紀錄與章的圖片（SPEC 附錄第 50 點）：`gas/EventApi.js`——`eventAdminList`／`eventSave`／`eventRegs`／`eventPay`／`eventRegRemove`（權限 `manageEvents`，團長）、登入後 `eventList`／`eventRegister`／`eventCancel`、`publicEvents_`（併入 `siteInfo.events`）、`deleteRegsOfAccount_`；`Logic.validateEvent`（擋機敏題目）／`validateEventPeople`／`EVENT_IDENTITIES`；時間用 `'YYYY-MM-DDTHH:mm'` 字串（`nowStamp_`）。章圖：`unitImages`（公開）／`unitImageSave`、`Logic.isUnitImage`。前端 `ADMIN_PAGES.events`、`renderInfo('events')`、`renderEventForm`、`pendingEvent`、`iconOf` 回傳 `.uic` 容器＋`applyUnitImages`（MutationObserver）、`shrinkImage`。
+- 活動存檔試算表（SPEC 附錄第 51 點）：`syncEventSheet_`（另開試算表檔案，分頁「報名名單」「活動資訊」，整份重寫）、`afterSync_`（各動作回傳的 `_ev` 觸發，失敗不影響主要操作）、`eventSheetSync`、`eventFolder_`（`EVENT_FOLDER_ID`）、`safeCell_`（防公式）；`eventRegs.sheetUrl` 只給團長。這是系統唯一會寫到主試算表以外檔案的地方。
 - **目前狀態**：階段 0A～5 的程式都已完成並通過模擬測試；**LINE 推播（Flex 訊息格式、multicast）尚未在真實 LINE 環境驗證**，要團長實測。第二期（ROADMAP）未做。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構
@@ -91,7 +92,7 @@
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
 | 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架） |
 | 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
-| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間 |
+| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID |
 | 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間 |
 | 設定 | 鍵、值、說明 |
@@ -162,7 +163,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 ```
 
 ## Script Properties（只存在 GAS，不進 repo）
-`SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）、`BACKUP_FOLDER_ID`（setup 自動建立）；選用：`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
+`SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）、`BACKUP_FOLDER_ID`（setup 自動建立）、`EVENT_FOLDER_ID`（第一次建立活動時自動建立）；選用：`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
 
 ## 維護守則（SPEC 第十四節，必須遵守）
 - **開發紀錄白板**（2026-11-15 團長要求）：每次完成新的修改或決議後，除了更新 SPEC／CHANGELOG，也要把重點加到團長的白板 https://claude.ai/artifact/L3KxAvGf868X5VzEnUfcVm （Whiteboard 類型，用 ArtifactData 寫入 `elements/<id>`，先讀 `board/meta` 與現有元素再新增，不重建）：在「這次對話做了什麼」接著加一個方塊（編號續編），並同步更新「接下來要你做」「還沒在真實環境驗證」兩區。不放任何真實姓名。

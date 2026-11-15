@@ -1957,7 +1957,9 @@ const ADMIN_PAGES = {
       d.regs.forEach((r) => { byId[r.identity] = (byId[r.identity] || 0) + 1; });
       $app.innerHTML = `${backBtn('活動報名')}<section class="card"><h2>🎪 ${esc(ev.title)} <span class="pill ${EV_PILL[ev.state]}">${ev.state}</span></h2>
         <p class="muted small">報名 ${d.regs.length} 位（${Object.keys(byId).map((k) => `${esc(k)} ${byId[k]}`).join('、') || '還沒有人報名'}）・已繳 ${d.regs.filter((r) => r.paid).length} 位・已收 ${got}／應收 ${sum} 元</p>
-        <div class="row-flex"><button class="btn ghost small" id="evEdit">✏️ 修改活動</button><button class="btn ghost small" id="evCsv">⬇️ 下載名單 CSV</button></div></section>
+        <div class="row-flex"><button class="btn ghost small" id="evEdit">✏️ 修改活動</button><button class="btn ghost small" id="evCsv">⬇️ 下載名單 CSV</button>
+          ${d.sheetUrl ? `<a class="btn ghost small" id="evSheet" href="${esc(d.sheetUrl)}" target="_blank" rel="noopener" style="text-decoration:none">📄 開啟存檔試算表</a>` : ''}<button class="btn ghost small" id="evSync">🔄 ${d.sheetUrl ? '重新同步試算表' : '建立存檔試算表'}</button></div>
+        <p class="muted small" style="margin-bottom:0">每個活動有一份獨立的 Google 試算表存檔（在你的雲端硬碟「幼童軍活動報名存檔」資料夾，只有你看得到），報名、取消、登記繳費後會自動更新。請不要直接改那份試算表。</p></section>
         <section class="card"><h2>報名名單與繳費</h2>
           <p class="muted small">金額可以逐筆修改（例如家長半價）；收到錢就勾「已繳」，改完按下方「儲存」。這裡只是記錄，不會真的扣款。</p>
           ${d.regs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>姓名</th><th>身分別</th>${ev.questions.map((q) => `<th>${esc(q.label)}</th>`).join('')}<th>報名人</th><th>應繳金額</th><th>已繳</th><th></th></tr></thead><tbody>
@@ -1968,6 +1970,7 @@ const ADMIN_PAGES = {
             <div class="savebar"><button class="btn green" id="paySave">💾 儲存繳費紀錄</button><div class="out" id="payOut"></div></div>` : '<p class="muted">還沒有人報名。</p>'}</section>`;
       wireBack({ name: 'events', params: {} });
       $('#evEdit').onclick = () => goAdmin('events', { edit: ev.id });
+      $('#evSync').onclick = (e2) => act(e2.currentTarget, async () => { await api('eventSheetSync', { eventId: ev.id }); toast('存檔試算表已更新'); goAdmin('events', { regs: ev.id }); });
       $('#evCsv').onclick = () => downloadCsv(`${ev.title}_報名名單_${todayStr()}.csv`, [['姓名', '身分別'].concat(ev.questions.map((q) => q.label), ['報名人', '應繳金額', '已繳'])].concat(d.regs.map((r) => [r.name, r.identity].concat(ev.questions.map((q) => r.answers[q.id] || ''), [r.by, r.amount, r.paid ? '是' : '否']))));
       const changed = () => $$('tr[data-reg]').map((tr) => { const r = d.regs.find((x) => x.regId === tr.dataset.reg), amount = Number($('[data-amt]', tr).value), paid = $('[data-paid]', tr).checked; return amount !== r.amount || paid !== r.paid ? { regId: r.regId, amount, paid } : null; }).filter(Boolean);
       leaveGuard = Object.assign(() => !changed().length || confirm('繳費紀錄還沒儲存，確定要離開嗎？'), { dirty: () => changed().length > 0 });
