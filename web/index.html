@@ -47,21 +47,9 @@
   nav.tabs button .ic { margin-right: 6px; }
   nav.tabs button:hover { color: #fff; background: rgba(255,255,255,.08); }
   nav.tabs button.on { color: #fff; border-bottom-color: var(--yellow); }
-  @media (max-width: 759px) {
-    header.top .row { padding: 0 12px; gap: 8px; min-height: 52px; }
-    header.top h1 { font-size: 20px; padding: 12px 0 0; }
-    #headerRight { padding-top: 10px; }
-    nav.tabs { order: 3; flex: 0 0 calc(100% + 24px); width: calc(100% + 24px); margin: 0 -12px; overflow-x: auto; scrollbar-width: none; }
-    #headerRight { margin-left: auto; }
-    nav.tabs::-webkit-scrollbar { display: none; }
-    nav.tabs .inner { width: 100%; }
-    nav.tabs button { flex: 1; padding: 8px 10px 9px; font-size: 15px; }
-    nav.tabs button[data-v=login] { margin-left: 0; }
-    nav.tabs button .ic { display: block; margin: 0; font-size: 20px; line-height: 1.2; }
-  }
   /* 後台在寬螢幕改成左側選單 */
   @media (min-width: 1000px) {
-    body.admin nav.tabs { position: fixed; top: 79px; left: 0; bottom: 0; width: var(--side); background: #fff; border-right: 1px solid var(--gray-line); padding: 14px 10px; display: block; overflow-y: auto; }
+    body.admin nav.tabs { position: fixed; top: 61px; left: 0; bottom: 0; width: var(--side); background: #fff; border-right: 1px solid var(--gray-line); padding: 14px 10px; display: block; overflow-y: auto; }
     body.admin nav.tabs .inner { flex-direction: column; gap: 4px; }
     body.admin nav.tabs button { color: var(--text); text-align: left; padding: 11px 14px; border-radius: 10px; border: 0; margin: 0; }
     body.admin nav.tabs button:hover { background: var(--gray-soft); }
@@ -290,6 +278,86 @@
     table.tbl { font-size: 17px; }
   }
 
+  /* ═════ 2026-11 改版（SPEC 附錄第 44 點）：白底細框、單一主色、手機分頁在下方 ═════ */
+  :root { --radius: 14px; --shadow: none; --bg: #f4f6fa; }
+  body { background: var(--bg); }
+  header.top { background: #fff; color: var(--text); border-bottom: 1px solid var(--gray-line); }
+  header.top .row { min-height: 60px; gap: 14px; }
+  header.top h1 { font-size: 19px; color: var(--text); letter-spacing: 0; }
+  header.top select { border: 1px solid var(--gray-line); }
+  .chip-btn { background: #fff; color: var(--blue); border: 1px solid var(--gray-line); font-weight: 700; }
+  nav.tabs button { color: var(--gray); font-size: 15px; font-weight: 700; padding: 19px 14px 17px; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  nav.tabs button:hover { background: var(--gray-soft); color: var(--text); }
+  nav.tabs button.on { color: var(--blue); border-bottom-color: var(--blue); }
+  nav.tabs .grp { display: none; }
+  .card { border: 1px solid var(--gray-line); box-shadow: none; }
+  .card h2 { font-size: 18px; }
+  .btn { box-shadow: none; border-radius: 10px; font-weight: 700; min-height: 46px; }
+  .btn:active { transform: none; box-shadow: none; filter: brightness(.95); }
+  .btn.green { background: var(--blue); box-shadow: none; }
+  .btn.alt, .btn.ghost { background: #fff; color: var(--blue); border: 1px solid var(--blue); box-shadow: none; }
+  .btn.danger { background: #fff; color: var(--red); border: 1px solid #f0b4b4; box-shadow: none; }
+  .btn.cta { background: var(--blue); color: #fff; border: 0; }
+  .chip { border-width: 1px; font-weight: 700; font-size: 15px; }
+  .unit { border-width: 1px; }
+  .mission { background: none; border: 0; border-top: 1px solid var(--gray-line); border-radius: 0; padding: 10px 0; margin: 0; }
+  .mission:first-of-type { border-top: 0; }
+  .mission .no { width: 24px; height: 24px; font-size: 13px; }
+  .banner { border-width: 1px; }
+  ul.items li { border-bottom-width: 1px; }
+  .list-row { border-bottom-width: 1px; }
+  .roll-btn { border-width: 1px; border-radius: 10px; }
+  .menu-grid button { font-weight: 700; }
+  .savebar { box-shadow: none; border: 1px solid var(--gray-line); border-radius: 12px; }
+  .codebox { border-width: 1px; }
+  main > .narrow { max-width: 460px; margin-left: auto; margin-right: auto; }
+  /* 首頁快捷、數字卡片、分段切換 */
+  .quick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  .quick button { text-align: left; background: #fff; border: 1px solid var(--gray-line); border-radius: 14px; padding: 14px 12px; font-weight: 800; cursor: pointer; font-size: 16px; }
+  .quick button .ic { display: block; font-size: 24px; margin-bottom: 4px; }
+  .quick button.pri { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .quick button:hover { border-color: var(--blue); }
+  .cnt-badge { display: inline-block; background: #e5484d; color: #fff; border-radius: 99px; font-size: 13px; padding: 0 8px; margin-left: 6px; font-weight: 800; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stats div { background: #fff; border: 1px solid var(--gray-line); border-radius: 12px; padding: 12px; cursor: pointer; }
+  .stats b { display: block; font-size: 24px; line-height: 1.2; }
+  .stats span { font-size: 13px; color: var(--gray); }
+  .seg { display: flex; background: var(--gray-soft); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
+  .seg button { flex: 1; border: 0; background: none; padding: 8px 6px; border-radius: 8px; font-weight: 700; color: var(--gray); cursor: pointer; font-size: 15px; }
+  .seg button.on { background: #fff; color: var(--blue); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .steps { display: flex; gap: 6px; margin: 4px 0 14px; }
+  .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--gray-line); }
+  .steps i.on { background: var(--blue); }
+  .more-menu { position: relative; display: inline-block; }
+  .more-menu .pop { position: absolute; right: 0; top: 44px; background: #fff; border: 1px solid var(--gray-line); border-radius: 12px; padding: 6px; min-width: 190px; z-index: 6; box-shadow: 0 8px 24px rgba(20,40,80,.14); }
+  .more-menu .pop button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  .more-menu .pop button:hover { background: var(--gray-soft); }
+  .more-menu .pop button.dg { color: var(--red); }
+  .grp-title { font-size: 13px; color: var(--gray); font-weight: 700; margin: 16px 0 8px; }
+  .grp-title:first-child { margin-top: 0; }
+  @media (max-width: 759px) {
+    header.top .row { padding: 0 14px; min-height: 52px; flex-wrap: nowrap; gap: 8px; }
+    header.top h1 { font-size: 18px; overflow: hidden; text-overflow: ellipsis; }
+    /* 手機：分頁固定在螢幕下方，單手好按 */
+    nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; flex: none; background: #fff; border-top: 1px solid var(--gray-line); padding-bottom: env(safe-area-inset-bottom); z-index: 30; }
+    nav.tabs .inner { width: 100%; gap: 0; }
+    nav.tabs button { flex: 1; padding: 7px 2px 8px; font-size: 11px; border: 0; margin: 0; }
+    nav.tabs button[data-v=login] { margin-left: 0; }
+    nav.tabs button .ic { display: block; margin: 0; font-size: 20px; line-height: 1.25; }
+    nav.tabs button.on { font-weight: 800; }
+    main { padding-bottom: 92px; }
+    .savebar { bottom: 66px; }
+    .toast { bottom: 78px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 760px) {
+    .quick { grid-template-columns: repeat(4, 1fr); }
+  }
+  @media (min-width: 1000px) {
+    body.admin nav.tabs button { font-size: 15px; padding: 9px 12px; }
+    body.admin nav.tabs .grp { display: block; font-size: 12px; color: var(--gray); font-weight: 700; padding: 12px 12px 4px; }
+  }
+
   /* ───── 列印簽核單（A4） ───── */
   #print { display: none; }
   @media print {
@@ -386,7 +454,7 @@ function setTabs(list, cur, onPick) {
   const nav = document.getElementById('tabs');
   document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me);
   if (!list) { nav.hidden = true; return; }
-  nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`).join('');
+  nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => (k === '#' ? `<div class="grp">${t}</div>` : `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`)).join('');
   $$('button', nav).forEach((b) => { b.onclick = () => { if (canLeave()) onPick(b.dataset.v); }; });
   nav.hidden = false;
 }
@@ -735,7 +803,6 @@ async function doRegister(ctx) {
     const r = await api('register', { code: ctx.code, childName: ctx.childName, username: ctx.username, password: ctx.password,
       nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined });
     store.set('token', r.token, ctx.remember);
-    confetti();
     await start();
   } catch (e) {
     if (e.code === 'NAME_TAKEN' || e.code === 'BAD_INPUT') { renderRegister2(ctx); msg($('.out'), e.message); return; }
@@ -1031,7 +1098,7 @@ function viewBadges(d) {
   $$('.badge').forEach((b) => {
     b.onclick = () => {
       const u = badges.find((x) => x.unit === b.dataset.unit);
-      if (u.status === '已頒發') confetti();
+
       openSheet(`<div class="center"><div style="font-size:64px">${iconOf(u)}</div><h2 style="text-align:center">${esc(u.unit)}技能章</h2>
         <span class="pill st-${esc(u.status)}">${statusLabel(u)}</span></div>
         ${u.status === '已頒發' ? `<div class="msg ok">🏅 ${fmtDate(u.awardDate)} 頒發${u.awardOccasion ? '・' + esc(u.awardOccasion) : ''}</div>` : ''}
@@ -1143,7 +1210,6 @@ async function renderMine() {
     if (childName && consent && !fd.get('agree')) return msg(out, '請先勾選同意個資說明。');
     const r = await api('bind', { code: fd.get('code'), childName, consentVersion: consent ? consent.version : undefined });
     state.me = await api('me');
-    confetti();
     if (r.kind === 'parent') { state.cubId = r.cubId; state.detail = null; state.view = 'home'; return renderParent(); }
     state.mode = 'admin'; route();
   });
@@ -1346,25 +1412,35 @@ function printSheets(unit, sheets, rule) {
 const isLeader = () => !!state.me && state.me.role === '團長';
 const ADMIN_TABS = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['sign', '✅', '簽核'], ['cubs', '🐺', '小狼'], ['more', '☰', '更多']];
 /** 「更多」裡的功能（依身分過濾）；寬螢幕直接列在左側選單 */
+/** 「更多」裡的功能（依身分過濾），第 5 欄是分組；寬螢幕直接列在左側選單 */
+const ADMIN_GROUPS = ['每次集會', '名單', '設定', '系統'];
 function adminMoreItems() {
   const L = isLeader();
   return [
-    ['requests', '📝', '註冊審核', L], ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
-    ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['squads', '🏕️', '小隊設定', L], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
-    ['items', '📝', '項目管理', L], ['settings', '⚙️', '設定', L], ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['mine', '👤', '我的帳號（改密碼）', true], ['pub', '📖', '公開查詢頁', true],
+    ['award', '🏅', '頒章', L, '每次集會'],
+    ['requests', '📝', '註冊審核', L, '名單'], ['overview', '📊', '進程總覽', true, '名單'], ['attOverview', '🐾', '出席總覽', true, '名單'], ['print', '🖨️', '列印簽核單', true, '名單'],
+    ['calendar', '📅', '行事曆', L, '設定'], ['periods', '🎯', '年度出席', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
+    ['admins', '👥', '管理員', L, '設定'], ['accounts', '🔑', '帳號管理', L, '設定'],
+    ['privacy', '🔐', '個資處理', L, '系統'], ['backup', '💾', '備份與權限', L, '系統'], ['line', '💬', '連結 LINE 通知', true, '系統'], ['mine', '👤', '我的帳號（改密碼）', true, '系統'], ['pub', '📖', '公開查詢頁', true, '系統'],
   ].filter((x) => x[3]);
+}
+/** 電腦版左側選單：依分組排列 */
+function adminSideTabs() {
+  const more = adminMoreItems(), base = (k) => ADMIN_TABS.find((t) => t[0] === k);
+  const of = (g) => more.filter((x) => x[4] === g).map(([k, ic, t]) => [k, ic, t]);
+  return [['#', '', '每次集會'], base('home'), base('roll'), base('sign')].concat(of('每次集會'), [['#', '', '名單'], base('cubs')], of('名單'), [['#', '', '設定']], of('設定'), [['#', '', '系統']], of('系統'));
 }
 const isWide = () => !!(window.matchMedia && matchMedia('(min-width: 1000px)').matches);
 
 function renderAdmin() {
-  document.getElementById('title').textContent = '🛠️ 22團後台';
-  setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>${isWide() ? ' <button class="chip-btn" id="hdrLogout" style="background:#fff">登出</button>' : ''}`);
+  document.getElementById('title').textContent = '🐾 22團後台';
+  setHeader(`<button class="chip-btn" id="toParent">家長畫面</button>${isWide() ? ' <button class="chip-btn" id="hdrLogout">登出</button>' : ''}`);
   if ($('#hdrLogout')) $('#hdrLogout').onclick = () => { if (canLeave()) logout(); };
   $('#toParent').onclick = () => { if (canLeave()) { leaveGuard = null; state.mode = 'parent'; route(); } };
   leaveGuard = null; // 換頁後由新頁面自行設定
   const page = state.admin.page;
   // 寬螢幕：左側選單直接列出全部功能；手機：5 個分頁＋「更多」
-  const tabs = isWide() ? ADMIN_TABS.filter((t) => t[0] !== 'more').concat(adminMoreItems().map(([k, ic, t]) => [k, ic, t])) : ADMIN_TABS;
+  const tabs = isWide() ? adminSideTabs() : ADMIN_TABS;
   const cur = page && tabs.some((t) => t[0] === page.name) ? page.name : state.admin.tab;
   setTabs(tabs, cur, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
   scrollTop();
@@ -1401,31 +1477,41 @@ const ADMIN_PAGES = {
     else if (al.backup) alerts.push([al.backup.ok ? 'green' : 'red', '💾', `上次備份：${fmtTime(al.backup.at)}　${al.backup.message}`]);
     else alerts.push(['yellow', '💾', '還沒有備份紀錄']);
     if (al.noLineAdmin) alerts.push(['yellow', '💬', '還沒有管理員連結 LINE 通知（更多 → 連結 LINE 通知）']);
-    const row = (p, extra) => `<div class="list-row tap" data-cub="${esc(p.cubId)}"><span class="grow"><span class="t">${esc(p.name)}</span> <span class="s">${esc(p.squad || '')}</span><br>${iconOf(p)} ${esc(unitLabel(p))} ${extra}</span><span>›</span></div>`;
+    const L = isLeader();
+    const hot = alerts.filter((x) => x[0] === 'red').length;
+    const todo = [];
+    h.pending.forEach((p) => todo.push([p, `${unitLabel(p)} 達標（${fmtDate(p.eligibleDate)}）`, '待頒章', 'st-已頒發']));
+    (h.trials || []).filter((t) => t.ready).forEach((t) => todo.push([t, `體驗 ${t.count}／${t.need} 次`, '可入團', 'st-進行中']));
+    h.waiting.forEach((p) => todo.push([p, `${unitLabel(p)} 項目完成，${p.waitingUntil ? '間隔到 ' + fmtDate(p.waitingUntil) + ' 才滿' : '出席 ' + p.attendSinceLast + '／' + p.attendRequired + ' 次'}`, '等條件', 'st-未開始']));
+    h.near.forEach((p) => todo.push([p, `${unitLabel(p)} 還差 ${p.remaining} 項`, '快達標', 'st-已完成待頒發']));
+    (h.trials || []).filter((t) => !t.ready).forEach((t) => todo.push([t, `體驗 ${t.count}／${t.need} 次`, '體驗中', 'st-未開始']));
+    const cnt = (n) => (n ? `<span class="cnt-badge">${n}</span>` : '');
     $app.innerHTML = `
-      <section class="card"><h2>👋 ${esc(h.me.name)}${h.me.name === h.me.role ? '' : '（' + esc(h.me.role) + '）'}</h2>
-        ${todayM ? `<div class="banner"><b>📋 今天 ${shortDate(todayM.date)}　${esc(todayM.name)}</b><br><span class="s">已點名出席 ${todayM.attended} 人</span></div>
-          <div class="row-flex"><button class="btn green small" id="goRoll">📋 去點名</button><button class="btn small" id="goSign">✅ 去簽核</button></div>`
-        : `<p class="muted">今天沒有集會。${nextM ? `下次集會：<b>${fmtDate(nextM.date)} ${esc(nextM.name)}</b>` : (isLeader() ? '行事曆還沒有之後的集會。' : '')}</p>
-          ${!nextM && isLeader() ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
-      ${al.pendingRequests ? `<section class="card"><div class="banner"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></div><button class="btn alt small" id="toReq">前往審核</button></section>` : ''}
-      ${(h.trials || []).length ? `<section class="card"><h2>🧪 體驗者 <span class="pill st-已完成待頒發">${h.trials.length}</span></h2>
-        ${h.trials.map((t) => `<div class="list-row tap" data-cub="${esc(t.cubId)}"><span class="grow"><span class="t">${esc(t.name)}</span> <span class="s">${esc(t.squad || '')}</span><br><span class="s">一般團集會 ${t.count}／${t.need} 次</span></span>${t.ready ? '<span class="pill st-已頒發">✅ 可以入團</span>' : ''}<span>›</span></div>`).join('')}</section>` : ''}
-      <section class="card"><h2>🏅 待頒章 <span class="pill st-已完成待頒發">${h.pending.length}</span></h2>
-        ${h.pending.length ? h.pending.map((p) => row(p, `<span class="s">達標 ${fmtDate(p.eligibleDate)}</span>`)).join('') : '<p class="muted">目前沒有待頒章的小狼。</p>'}
-        ${h.pending.length && isLeader() ? '<button class="btn alt" id="toAward">🏅 前往頒章</button>' : ''}</section>
-      ${h.waiting.length ? `<section class="card"><h2>⏳ 項目完成、等待條件</h2>${h.waiting.map((p) => row(p, `<span class="s">${p.waitingUntil ? '間隔到 ' + fmtDate(p.waitingUntil) + ' 才滿' : '出席 ' + p.attendSinceLast + '／' + p.attendRequired + ' 次'}</span>`)).join('')}</section>` : ''}
-      <section class="card"><h2>🔥 快達標 <span class="pill st-進行中">${h.near.length}</span></h2>
-        ${h.near.length ? h.near.map((p) => row(p, `<span class="s">還差 ${p.remaining} 項</span>`)).join('') : '<p class="muted">目前沒有快達標的小狼。</p>'}</section>
-      <section class="card"><h2>📣 系統提示</h2>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</section>`;
-    const ta = $('#toAward');
-    if (ta) ta.onclick = () => goAdmin('award');
-    const tq = $('#toReq'); if (tq) tq.onclick = () => goAdmin('requests');
-    $$('[data-cub]').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.cub }); });
+      <section class="card">
+        <div class="muted small">${esc(h.me.name)}${h.me.name === h.me.role ? '' : '（' + esc(h.me.role) + '）'}・${fmtDate(today)}</div>
+        ${todayM ? `<h2 style="margin:4px 0">今天：${esc(todayM.name)}</h2><div class="muted small">已點名出席 ${todayM.attended} 人</div>`
+        : `<h2 style="margin:4px 0">今天沒有集會</h2><div class="muted small">${nextM ? `下次集會：${fmtDate(nextM.date)} ${esc(nextM.name)}` : (L ? '行事曆還沒有之後的集會。' : '')}</div>
+          ${!nextM && L ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
+      <div class="quick">
+        <button class="${todayM ? 'pri' : ''}" id="goRoll"><span class="ic">📋</span>${todayM ? '開始點名' : '點名'}</button>
+        <button id="goSign"><span class="ic">✅</span>簽核進程</button>
+        ${L ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button><button id="qReq"><span class="ic">📝</span>註冊審核${cnt(al.pendingRequests)}</button>`
+          : '<button id="qCubs"><span class="ic">🐺</span>小狼名單</button><button id="qOver"><span class="ic">📊</span>進程總覽</button>'}
+      </div>
+      ${al.pendingRequests ? `<section class="card"><div class="row-flex"><span class="grow"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></span><button class="btn cta small" id="toReq" style="margin-top:0">前往審核</button></div></section>` : ''}
+      <section class="card"><h2>待辦 <span class="s">待頒章 ${h.pending.length}・快達標 ${h.near.length}</span></h2>
+        ${todo.length ? todo.map(([p, sub, tag, cls]) => `<div class="list-row tap" data-cub="${esc(p.cubId)}"><span class="grow"><span class="t">${esc(p.name)}</span> <span class="s">${esc(p.squad || '')}</span><br><span class="s">${esc(sub)}</span></span><span class="pill ${cls}">${tag}</span></div>`).join('')
+          : '<p class="muted">目前沒有待頒章的小狼，也沒有快達標的。</p>'}
+        ${h.pending.length && L ? '<button class="btn cta" id="toAward">🏅 前往頒章</button>' : ''}</section>
+      <section class="card"><details ${hot ? 'open' : ''}><summary class="fold" id="sysTips">系統提示（${alerts.length}）${hot ? ' ⚠️' : ''}</summary>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</details></section>`;
+    const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
     const tabTo = (t) => { state.admin = { tab: t, page: null }; renderAdmin(); };
-    const gr = $('#goRoll'); if (gr) gr.onclick = () => tabTo('roll');
-    const gs = $('#goSign'); if (gs) gs.onclick = () => tabTo('sign');
-    const gc = $('#goCal'); if (gc) gc.onclick = () => goAdmin('calendar');
+    on('#toAward', () => goAdmin('award')); on('#qAward', () => goAdmin('award'));
+    on('#toReq', () => goAdmin('requests')); on('#qReq', () => goAdmin('requests'));
+    on('#goRoll', () => tabTo('roll')); on('#goSign', () => tabTo('sign'));
+    on('#qCubs', () => tabTo('cubs')); on('#qOver', () => goAdmin('overview'));
+    on('#goCal', () => goAdmin('calendar'));
+    $$('[data-cub]').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.cub }); });
   },
 
   // ───── 項目管理（團長，SPEC 7.7） ─────
@@ -1919,7 +2005,7 @@ const ADMIN_PAGES = {
     on('#edit', () => goAdmin('cubEdit', { cubId: c.cubId }));
     on('#join', (b) => {
       const dte = prompt(`「${c.name}」轉為入團，之後開始挑戰剛入團。\n入團日（例如 ${todayStr()}）：`, todayStr());
-      if (dte) act(b, async () => { const r = await withConfirm('cubJoin', { cubId: c.cubId, joinDate: dte.trim() }); if (r) { confetti(); toast('已轉為入團 🎉'); reload(); } });
+      if (dte) act(b, async () => { const r = await withConfirm('cubJoin', { cubId: c.cubId, joinDate: dte.trim() }); if (r) { toast('已轉為入團 🎉'); reload(); } });
     });
     on('#bf', () => goAdmin('backfill', { cubId: c.cubId }));
     on('#pr', () => goAdmin('print', { cubIds: [c.cubId] }));
@@ -2018,7 +2104,7 @@ const ADMIN_PAGES = {
 
   async more() {
     const items = adminMoreItems();
-    $app.innerHTML = `<section class="card"><h2>☰ 更多功能</h2><div class="menu-grid">${items.map(([k, ic, t]) => `<button data-p="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div></section>
+    $app.innerHTML = `<section class="card"><h2>更多功能</h2>${ADMIN_GROUPS.map((g) => { const arr = items.filter((x) => x[4] === g); return arr.length ? `<div class="grp-title">${g}</div><div class="menu-grid">${arr.map(([k, ic, t]) => `<button data-p="${k}"><span class="ic">${ic}</span>${t}</button>`).join('')}</div>` : ''; }).join('')}</section>
       <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
     $$('.menu-grid button').forEach((b) => { b.onclick = () => goAdmin(b.dataset.p); });
     $('#lo').onclick = logout;

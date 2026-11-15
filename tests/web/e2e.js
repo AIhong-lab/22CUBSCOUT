@@ -75,8 +75,10 @@ function seed(env) {
   await page.click('#title');
   await page.getByText('什麼是「進程」？').waitFor();
   assert.equal(new URL(page.url()).hash, '#home', '按標題回首頁');
-  assert.ok(await page.locator('header nav.tabs').isVisible(), '導覽列在頁面上方');
-  assert.ok((await page.locator('nav.tabs').boundingBox()).y < 120, '手機版導覽列在標題下方，不是在畫面底部');
+  // 手機：分頁固定在螢幕下方（SPEC 附錄第 44 點），不會跟著內容捲走
+  const vh = page.viewportSize().height;
+  const nbb = await page.locator('nav.tabs').boundingBox();
+  assert.ok(nbb.y > vh - 110 && nbb.y + nbb.height <= vh + 1, '手機分頁在螢幕下方：' + JSON.stringify(nbb));
   await tab('home');
   await page.getByText('什麼是「進程」？').waitFor();
   const hp = await text();
@@ -181,10 +183,7 @@ function seed(env) {
   assert.equal(await page.locator('.stage').count(), 5);
   assert.match(await page.locator('.stage[data-unit=剛入團]').getAttribute('class'), /done/, '已拿到羚羊，視為通過剛入團');
   assert.match(await page.locator('.stage[data-unit=剛入團]').innerText(), /已晉級/, '沒有頒發日期時不顯示空白日期');
-  // 手機版：導覽列在標題下方另一排，五個分頁都看得到（修正：放大 header 後擠到同一排、最後一個被切掉）
-  const tb = await page.locator('#title').boundingBox();
-  const nb = await page.locator('nav.tabs').boundingBox();
-  assert.ok(nb.y >= tb.y + tb.height - 2, '導覽列在標題下方：' + JSON.stringify([tb, nb]));
+  // 手機版：所有分頁都看得到，最後一個不會被切掉
   const last = await page.locator('nav.tabs button').last().boundingBox();
   assert.ok(last.x + last.width <= 391, '最後一個分頁沒有被切掉：' + JSON.stringify(last));
   assert.match(await page.locator('.stage[data-unit=羚羊]').getAttribute('class'), /done/);
@@ -301,7 +300,8 @@ function seed(env) {
   // ═════ 團長後台 ═════
   await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
   await page.click('button[type=submit]');
-  await page.getByText('待頒章').waitFor();
+  await page.locator('.quick').waitFor();
+  await page.locator('#sysTips').evaluate((el) => { el.parentNode.open = true; });
   const ah = await text();
   assert.match(ah, /今天沒有集會/);
   assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
@@ -342,7 +342,7 @@ function seed(env) {
   assert.equal(await page.locator('.roll-btn[data-id=C2]').innerText(), '🌙 請假');
   await tab('home');
   await page.getByText('已點名出席 1 人').waitFor();
-  assert.match(await text(), /今天 11\/14　團集會/, '後台首頁顯示今天的集會');
+  assert.match(await text(), /今天：團集會/, '後台首頁顯示今天的集會');
 
   // 小狼：新增
   await tab('cubs');
@@ -386,7 +386,7 @@ function seed(env) {
   await page.getByText('前往頒章').click();
   await page.fill('input[name=occasion]', '11 月團集會');
   await page.click('form#f button[type=submit]');
-  await page.getByText('目前沒有待頒章的小狼').waitFor();
+  await page.getByText('目前沒有待頒章的小狼', { exact: false }).waitFor();
   assert.ok(env.rows('頒章紀錄').some((r) => r[1] === '環保' && r[3] === '11 月團集會'));
 
   // 進程總覽
@@ -406,7 +406,7 @@ function seed(env) {
   await page.getByText('密碼已修改').waitFor();
   assert.equal(env.api({ action: 'login', username: 'leader01', password: 'leaderpass2' }).ok, true);
   await page.locator('[data-back]').click();
-  await page.locator('.menu-grid').waitFor();
+  await page.locator('.menu-grid').first().waitFor();
 
   // ═════ 名單直接編輯：表格裡改小隊，一次儲存 ═════
   await tab('cubs');
@@ -475,7 +475,7 @@ function seed(env) {
   assert.equal(env.ctx.loadSettings_().values['晉級所需出席次數'], 6);
   await shot('41-settings'); await noHScroll('設定');
   await page.locator('[data-back]').click();
-  await page.locator('.menu-grid').waitFor();
+  await page.locator('.menu-grid').first().waitFor();
 
   // 切換到家長畫面
   await page.getByText('家長畫面').click();
@@ -486,7 +486,7 @@ function seed(env) {
   await page.getByText('同一場儀式可勾選多位小狼').waitFor();
   assert.equal(new URL(page.url()).hash, '', '用過就清掉');
   await page.locator('[data-back]').click();
-  await page.getByText('待頒章').first().waitFor();
+  await page.locator('.quick').waitFor();
   await page.getByText('家長畫面').click();
   await page.getByText('還沒有綁定孩子').waitFor();
 
