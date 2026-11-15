@@ -619,3 +619,18 @@ test('體驗者：團長新增 → 只算一般團集會 → 滿 4 次提醒 →
   assert.deepEqual([nb.status, nb.eligible, nb.attendSinceLast, nb.attendRequired], ['已完成待頒發', false, 1, 4], '只算入團後的 1 次');
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '體驗者轉為入團'));
 });
+
+test('名單直接編輯：一次改多位的姓名、小隊、入團日；全部檢查通過才寫入；服務員不能改', () => {
+  const { env, call, L, A, cubId } = world();
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '', joinDate: '2025-09-01' }).cubId;
+  assert.equal(call(A, 'cubBatchSave', { changes: [{ cubId, squad: '二小隊' }] }).code, 'FORBIDDEN');
+  assert.match(call(L, 'cubBatchSave', { changes: [{ cubId, squad: '二小隊' }, { cubId: c2, squad: '不存在小隊' }] }).message, /不在小隊清單/);
+  assert.equal(env.rows('小狼名單').find((r) => r[0] === cubId)[2], '一小隊', '有錯就整批不寫入');
+  const r = call(L, 'cubBatchSave', { changes: [{ cubId, squad: '二小隊' }, { cubId: c2, squad: '一小隊', name: '測試小狼乙乙', joinDate: '2025-10-01' }, { cubId, squad: '二小隊' }] });
+  assert.equal(r.changed, 2);
+  const rows = env.rows('小狼名單');
+  assert.equal(rows.find((x) => x[0] === cubId)[2], '二小隊');
+  assert.deepEqual(rows.find((x) => x[0] === c2).slice(1, 4), ['測試小狼乙乙', '一小隊', '2025-10-01']);
+  assert.ok(env.rows('操作日誌').some((x) => x[2] === '編輯小狼' && x[3] === c2 && /測試小狼乙／／2025-09-01/.test(x[4])), '記錄修改前');
+  assert.match(call(L, 'cubBatchSave', { changes: [{ cubId, name: ' ' }] }).message, /姓名不可空白/);
+});

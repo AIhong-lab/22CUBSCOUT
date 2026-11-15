@@ -199,6 +199,57 @@ registerAdmin_('cubJoin', 'manageCubs', function (req, who) {
   });
 });
 
+/**
+ * 名單直接編輯（SPEC 附錄第 41 點）：一次儲存多位小狼的姓名、小隊、入團日。
+ * 全部檢查通過才寫入；每位有變更的小狼各寫一筆操作日誌（含修改前）。
+ */
+registerAdmin_('cubBatchSave', 'manageCubs', function (req, who) {
+  // 同一位小狼送了多筆時合併（後面的欄位蓋過前面的）
+  var merged = {}, order = [];
+  (req.changes || []).slice(0, 300).forEach(function (ch) {
+    var id = Logic.clean(ch && ch.cubId);
+    if (!merged[id]) { merged[id] = { cubId: id }; order.push(id); }
+    ['name', 'squad', 'joinDate'].forEach(function (k) { if (ch[k] !== undefined) merged[id][k] = ch[k]; });
+  });
+  var changes = order.map(function (id) { return merged[id]; });
+  if (!changes.length) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的變更。');
+  return withLock_(function () {
+    var byId = {};
+    loadCubs_().forEach(function (c) { byId[c.cubId] = c; });
+    var squads = loadSettings_().values['小隊清單'];
+    var ups = [], logs = [], errors = [];
+    changes.forEach(function (ch) {
+      var cub = byId[Logic.clean(ch.cubId)];
+      if (!cub || cub.status === '已匿名') { errors.push('找不到其中一位小狼，請重新整理。'); return; }
+      var row = cubRow_(cub);
+      var before = [row[1], row[2], dateStr_(row[3])].join('／');
+      if (ch.name !== undefined) {
+        var n = Logic.clean(ch.name);
+        if (!n || n.length > 30) { errors.push(cub.name + '：姓名不可空白，最多 30 字'); return; }
+        row[1] = n;
+      }
+      if (ch.squad !== undefined) {
+        var q = Logic.clean(ch.squad);
+        if (q && squads.indexOf(q) < 0 && q !== cub.squad) { errors.push(cub.name + '：「' + q + '」不在小隊清單中'); return; }
+        row[2] = q;
+      }
+      if (ch.joinDate !== undefined && cub.status !== Logic.TRIAL) {
+        var d = Logic.clean(ch.joinDate);
+        if (!Logic.isDateStr(d)) { errors.push(cub.name + '：入團日格式不正確'); return; }
+        row[3] = d;
+      }
+      var after = [row[1], row[2], dateStr_(row[3])].join('／');
+      if (after === before) return;
+      ups.push({ row: cub._row, values: row });
+      logs.push([cub.cubId, before, after]);
+    });
+    if (errors.length) throw new ApiError(ERR.BAD_INPUT, errors.join('\n'));
+    if (ups.length) updateRows_(SHEET.CUBS, ups);
+    logs.forEach(function (l) { logOp_(who.account.accountId, '編輯小狼', l[0], l[1], l[2]); });
+    return { changed: ups.length };
+  });
+});
+
 registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
   var d = requireDate_(Logic.clean(req.leftDate), '離團日');
   return withLock_(function () {

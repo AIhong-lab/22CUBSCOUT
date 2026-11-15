@@ -396,6 +396,20 @@ function seed(env) {
   assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
   await shot('14-overview');
 
+  // ═════ 名單直接編輯：表格裡改小隊，一次儲存 ═════
+  await tab('cubs');
+  await page.locator('#editMode').click();
+  await page.locator('#list table').waitFor();
+  const rowB = page.locator('#list tr', { hasText: '' }).filter({ has: page.locator('input[value="測試小狼乙"]') });
+  await rowB.locator('select[data-f=squad]').selectOption('一小隊');
+  assert.match(await page.locator('#esum').innerText(), /已修改 1 位/);
+  await shot('60-roster-edit'); await noHScroll('名單直接編輯');
+  await page.locator('#esave').click();
+  await page.getByText('已儲存 1 位小狼').waitFor();
+  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試小狼乙')[2], '一小隊');
+  await page.locator('#editMode').click();
+  await page.locator('#list .list-row').first().waitFor();
+
   // ═════ 體驗者：新增 → 小狼頁顯示體驗進度與「轉為入團」 ═════
   await tab('cubs');
   await page.locator('#addTrial').click();

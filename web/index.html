@@ -1739,18 +1739,44 @@ const ADMIN_PAGES = {
 
   // ───── 小狼名單 ─────
   async cubs(params) {
-    const d = await api('cubList');
-    const st = { squad: params.squad || '全團', status: params.status || '在團', sort: params.sort || 'squad' };
+    const [d, sq] = await Promise.all([api('cubList'), isLeader() ? api('squadList') : Promise.resolve({ squads: [] })]);
+    const st = { squad: params.squad || '全團', status: params.status || '在團', sort: params.sort || 'squad', edit: !!params.edit };
+    const squadNames = sq.squads.map((x) => x.name);
+    const edits = {}; // 直接編輯：cubId → {name, squad, joinDate}（只放有改的欄位）
+    const dirtyN = () => Object.keys(edits).filter((id) => Object.keys(edits[id]).length).length;
     $app.innerHTML = `
       <section class="card"><h2>🐺 小狼名單</h2>
-        ${isLeader() ? '<div class="row-flex"><button class="btn alt small" id="add">＋ 新增小狼</button><button class="btn ghost small" id="addTrial">🧪 新增體驗者</button></div>' : ''}
+        ${isLeader() ? `<div class="row-flex"><button class="btn alt small" id="add">＋ 新增小狼</button><button class="btn ghost small" id="addTrial">🧪 新增體驗者</button>
+          <button class="btn ${st.edit ? 'green' : 'ghost'} small" id="editMode">${st.edit ? '✅ 結束編輯' : '✏️ 直接編輯'}</button></div>` : ''}
+        ${st.edit ? '<p class="muted small">直接在表格裡改姓名、小隊、入團日，改完按下方「儲存」。有改的格子會標黃色。</p>' : ''}
         ${squadChips(d.squads, st.squad)}
         <div class="chips" id="sts">${['在團', '體驗', '離團', '已匿名', '全部'].map((s) => `<button class="chip ${s === st.status ? 'on' : ''}" data-st="${s}">${s}</button>`).join('')}</div>
         <div class="row-flex"><span class="muted small">排序：</span><select id="sort"><option value="squad">小隊</option><option value="join">入團日</option><option value="name">姓名</option></select></div>
-        <div id="list"></div></section>`;
+        <div id="list"></div>
+        ${st.edit ? '<div class="savebar"><div class="muted small" id="esum">沒有變更</div><button class="btn green" id="esave">💾 儲存</button></div>' : ''}</section>`;
     const draw = () => {
       const list = d.cubs.filter((c) => (st.squad === '全團' || c.squad === st.squad) && (st.status === '全部' || c.status === st.status));
       list.sort((a, b) => st.sort === 'join' ? (a.joinDate < b.joinDate ? -1 : 1) : st.sort === 'name' ? a.name.localeCompare(b.name, 'zh-Hant') : (a.squad || '').localeCompare(b.squad || '', 'zh-Hant') || a.name.localeCompare(b.name, 'zh-Hant'));
+      if (st.edit) {
+        const val = (c, k) => (edits[c.cubId] && edits[c.cubId][k] !== undefined ? edits[c.cubId][k] : c[k] || '');
+        const opts = (c) => { const o = [''].concat(squadNames); if (c.squad && !o.includes(c.squad)) o.push(c.squad); return o; };
+        const mk = (c, k) => (edits[c.cubId] && edits[c.cubId][k] !== undefined ? 'style="box-shadow:0 0 0 3px var(--yellow)"' : '');
+        $('#list').innerHTML = list.length ? `<div class="tbl-wrap"><table class="tbl" style="width:100%"><thead><tr><th>姓名</th><th>小隊</th><th>入團日</th></tr></thead><tbody>${list.map((c) => `<tr data-id="${esc(c.cubId)}">
+          <td><input type="text" data-f="name" maxlength="30" value="${esc(val(c, 'name'))}" ${mk(c, 'name')} style="min-width:120px"></td>
+          <td><select class="full" data-f="squad" ${mk(c, 'squad')}>${opts(c).map((n) => `<option value="${esc(n)}" ${n === val(c, 'squad') ? 'selected' : ''}>${n ? esc(n) : '（不分小隊）'}</option>`).join('')}</select></td>
+          <td>${c.status === '體驗' ? '<span class="s">🧪 體驗者</span>' : `<input type="date" data-f="joinDate" value="${esc(val(c, 'joinDate'))}" ${mk(c, 'joinDate')}>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">沒有符合條件的小狼。</p>';
+        $$('#list [data-f]').forEach((el) => {
+          el.onchange = () => {
+            const id = el.closest('tr').dataset.id, k = el.dataset.f, c = d.cubs.find((x) => x.cubId === id);
+            edits[id] = edits[id] || {};
+            if (el.value.trim() === (c[k] || '')) delete edits[id][k]; else edits[id][k] = el.value.trim();
+            const n = dirtyN();
+            $('#esum').textContent = n ? `已修改 ${n} 位小狼，記得儲存` : '沒有變更';
+            el.style.boxShadow = edits[id][k] !== undefined ? '0 0 0 3px var(--yellow)' : '';
+          };
+        });
+        return;
+      }
       $('#list').innerHTML = list.length ? list.map((c) => `<div class="list-row tap" data-id="${esc(c.cubId)}"><span style="font-size:28px">${c.status === '體驗' ? '🧪' : c.level ? LEVEL_ICON[c.level] : '🌱'}</span>
         <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">${c.status === '體驗' ? '體驗者' : '入團 ' + fmtDate(c.joinDate)}${c.level ? '・' + esc(lvName(c.level)) : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
       $$('#list .list-row').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.id }); });
@@ -1763,6 +1789,18 @@ const ADMIN_PAGES = {
     const add = $('#add');
     if (add) add.onclick = () => goAdmin('cubEdit', {});
     const at = $('#addTrial'); if (at) at.onclick = () => goAdmin('cubEdit', { trial: true });
+    if (st.edit) leaveGuard = Object.assign(() => !dirtyN() || confirm('名單的修改還沒儲存，確定要離開嗎？'), { dirty: () => dirtyN() > 0 });
+    const em = $('#editMode');
+    if (em) em.onclick = () => { if (canLeave()) { leaveGuard = null; goAdmin('cubs', { squad: st.squad, status: st.status, sort: st.sort, edit: !st.edit }); } };
+    const es = $('#esave');
+    if (es) es.onclick = () => act(es, async () => {
+      const changes = Object.keys(edits).filter((id) => Object.keys(edits[id]).length).map((id) => Object.assign({ cubId: id }, edits[id]));
+      if (!changes.length) return toast('沒有變更');
+      const r = await api('cubBatchSave', { changes });
+      leaveGuard = null;
+      toast(`已儲存 ${r.changed} 位小狼`);
+      goAdmin('cubs', { squad: st.squad, status: st.status, sort: st.sort, edit: true });
+    });
   },
 
   // ───── 新增／編輯小狼 ─────
