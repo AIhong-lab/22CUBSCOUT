@@ -282,7 +282,7 @@ test('備份：未設定資料夾提示、輪替保留份數、刪除所有舊�
   assert.equal(call(L, 'backupNow').ok, false);
   env.ctx.installBackupTrigger();
   env.ctx.installBackupTrigger();
-  assert.equal(env.triggers.length, 1, '重複安裝不重複');
+  assert.equal(env.triggers.filter((t) => t.getHandlerFunction() === 'weeklyBackup').length, 1, '重複安裝不重複');
 });
 
 test('連結 LINE 通知：配對碼正確才連結並回覆；錯誤不回覆', () => {
@@ -657,4 +657,126 @@ test('admin 是保留帳號：不能用公開註冊搶先註冊；選單重設�
   const pw = /密碼：(\S+)/.exec(env.ui.alerts.at(-1))[1];
   const r = env.api({ action: 'login', username: 'admin', password: pw });
   assert.equal(r.ok, true, '重設後可以馬上登入：' + JSON.stringify(r));
+});
+
+// ═════ 階段 5：LINE 主動通知（SPEC 第八節） ═════
+function linkLine(env, call, token, userId) {
+  const code = call(token, 'lineLinkStart').code;
+  env.ctx.doPost({ parameter: { key: env.props.WEBHOOK_KEY }, postData: { contents: JSON.stringify({ events: [{ type: 'message', message: { type: 'text', text: code }, source: { type: 'user', userId }, replyToken: 'r' }] }) } });
+}
+const say = (env, text, userId) => env.ctx.doPost({ parameter: { key: env.props.WEBHOOK_KEY }, postData: { contents: JSON.stringify({ events: [{ type: 'message', message: { type: 'text', text }, source: { type: 'user', userId }, replyToken: 'rt' }] }) } });
+const pushes = (env) => env.sent.filter((x) => /multicast/.test(x.url));
+
+test('LINE 通知：新達標推播一次（Flex＋前往頒章）、不重複、撤銷後清除可再通知、頒章後清除', () => {
+  const { env, call, L, A, cubId } = world();
+  env.props.LINE_MESSAGING_TOKEN = 'test-token';
+  const guide = itemsOf(env, '嚮導');
+  call(A, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
+  assert.equal(pushes(env).length, 0, '沒有人連結 LINE：不推播');
+  assert.equal(env.rows('通知紀錄').length, 0, '也不寫紀錄，之後連結了才通知');
+  linkLine(env, call, L, 'Uleader');
+  env.ctx.dailyJob();
+  assert.equal(pushes(env).length, 1);
+  const m = pushes(env)[0].body;
+  assert.deepEqual(m.to, ['Uleader']);
+  assert.equal(m.messages[0].type, 'flex');
+  const json = JSON.stringify(m.messages[0]);
+  assert.match(json, /測試小狼甲/); assert.match(json, /嚮導技能章/); assert.match(json, /前往頒章/);
+  assert.match(json, new RegExp('#award=' + encodeURIComponent(cubId + ',嚮導')));
+  assert.deepEqual(env.rows('通知紀錄').map((r) => [r[0], r[1], r[2]]), [[cubId, '嚮導', '達標']]);
+  env.ctx.dailyJob();
+  call(A, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
+  assert.equal(pushes(env).length, 1, '同一小狼同一章只通知一次');
+  // 撤銷 → 清除紀錄；重新簽核 → 再通知
+  call(L, 'signoffRevoke', { entries: [{ cubId, itemId: guide[0] }] });
+  assert.equal(env.rows('通知紀錄').length, 0);
+  call(A, 'signoff', { cubIds: [cubId], itemIds: [guide[0]], date: '2026-10-02' });
+  assert.equal(pushes(env).length, 2, '簽核後即時通知');
+  // 頒章後不再達標 → 清除
+  call(L, 'award', { date: '2026-10-05', entries: [{ cubId, unit: '嚮導' }] });
+  assert.equal(env.rows('通知紀錄').length, 0);
+  assert.equal(pushes(env).length, 2);
+});
+
+test('LINE 通知：多位合併一則、再提醒只一次、推播失敗記錄並在首頁標示、家長不會收到', () => {
+  const { env, call, L, A, cubId } = world();
+  env.props.LINE_MESSAGING_TOKEN = 'test-token';
+  linkLine(env, call, L, 'Uleader'); linkLine(env, call, A, 'Uhelper');
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '二小隊', joinDate: '2025-09-01' }).cubId;
+  env.net.code = 400;
+  call(A, 'signoff', { cubIds: [cubId, c2], itemIds: itemsOf(env, '環保'), date: '2026-10-01' });
+  assert.equal(env.rows('通知紀錄').length, 0, '失敗不寫紀錄，下次再試');
+  assert.equal(call(L, 'adminHome').alerts.notifyFailed, 1);
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '通知未送達'));
+  env.net.code = 200;
+  env.ctx.dailyJob();
+  const ok = pushes(env).at(-1).body;
+  assert.deepEqual([...ok.to].sort(), ['Uhelper', 'Uleader'], '只發給已連結的管理員');
+  assert.equal(ok.messages.length, 1);
+  assert.equal(ok.messages[0].contents.type, 'carousel');
+  assert.equal(ok.messages[0].contents.contents.length, 2, '兩位合併成一則');
+  assert.equal(call(L, 'adminHome').alerts.notifyFailed, 0);
+  // 再提醒：預設 14 天後一次
+  const n = pushes(env).length;
+  env.advance(13 * DAY); env.ctx.dailyJob();
+  assert.equal(pushes(env).length, n);
+  env.advance(2 * DAY); env.ctx.dailyJob();
+  assert.equal(pushes(env).length, n + 1);
+  assert.match(JSON.stringify(pushes(env).at(-1).body), /還沒頒章的提醒/);
+  env.advance(30 * DAY); env.ctx.dailyJob();
+  assert.equal(pushes(env).length, n + 1, '之後不再提醒');
+});
+
+test('LINE 關鍵字：可晉級／快達標只回已連結的管理員；進度任何人都只回網址', () => {
+  const { env, call, L, A, cubId } = world();
+  env.props.LINE_MESSAGING_TOKEN = 'test-token';
+  linkLine(env, call, L, 'Uleader');
+  call(A, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '環保'), date: '2026-10-01' });
+  call(A, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '嚮導').slice(0, 1), date: '2026-10-01' });
+  const replies = () => env.sent.filter((x) => /reply/.test(x.url));
+  let n = replies().length;
+  say(env, '可晉級', 'Ustranger'); say(env, '快達標', 'Ustranger');
+  assert.equal(replies().length, n, '未連結的人不回名單');
+  say(env, '進度', 'Ustranger');
+  assert.equal(replies().length, n + 1);
+  assert.ok(!/測試小狼/.test(JSON.stringify(replies().at(-1).body)), '不含任何個資');
+  assert.match(replies().at(-1).body.messages[0].text, /aihong-lab\.github\.io/);
+  say(env, '可晉級', 'Uleader');
+  assert.match(replies().at(-1).body.messages[0].text, /測試小狼甲：環保技能章/);
+  say(env, '快達標', 'Uleader');
+  assert.match(replies().at(-1).body.messages[0].text, /測試小狼甲：嚮導技能章（還差 1 項）/);
+});
+
+test('每日排程：setup 自動安裝；改設定的時間會重裝；不重複', () => {
+  const { env, call, L } = world();
+  const daily = () => env.triggers.filter((t) => t.getHandlerFunction() === 'dailyJob').length;
+  assert.equal(daily(), 1);
+  env.ctx.setup();
+  assert.equal(daily(), 1);
+  call(L, 'settingsSave', { changes: { '每日排程時間（幾點）': '20' } });
+  assert.equal(daily(), 1);
+  assert.equal(env.props.DAILY_HOUR, '20');
+});
+
+test('弱密碼被擋：常見密碼、跟帳號一樣、重複或連續字元', () => {
+  const { env, call, P } = world();
+  for (const pw of ['12345678', 'password1', 'abcd1234', 'aaaaaaaa', 'weakuser01', '12341234', 'Qwer1234']) {
+    const r = env.api({ action: 'register', identity: '服務員', username: 'weakuser01', password: pw, nickname: '測試' });
+    assert.equal(r.code, 'BAD_INPUT', pw);
+    assert.match(r.message, /太常見或太簡單/);
+  }
+  assert.equal(env.api({ action: 'register', identity: '服務員', username: 'weakuser01', password: 'tiger-walk-27', nickname: '測試' }).ok, true);
+  assert.match(call(P, 'changePassword', { oldPassword: 'parentpass1', newPassword: 'parent01' }).message, /太常見或太簡單/);
+});
+
+test('註冊審核可以直接核准為體驗者', () => {
+  const { env, call, L } = world();
+  const mom = apply(env, 'trialmom2', { identity: '家長', nickname: '體驗己媽媽', childNames: ['測試體驗己'] });
+  const rq = call(L, 'requestList').items.find((x) => x.name === '測試體驗己');
+  assert.equal(call(L, 'requestApprove', { requestId: rq.requestId, mode: 'trial', squad: '一小隊', joinDate: '2026-11-01' }).ok, true);
+  const cub = env.rows('小狼名單').find((r) => r[1] === '測試體驗己');
+  assert.deepEqual([cub[3], cub[7], cub[9]], ['', '體驗', '2026-11-01']);
+  const v = call(mom.token, 'cubDetail', { cubId: cub[0] });
+  assert.equal(v.cub.status, '體驗');
+  assert.deepEqual([v.trial.count, v.trial.need], [0, 4]);
 });

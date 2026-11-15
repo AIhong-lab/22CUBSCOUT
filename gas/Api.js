@@ -252,7 +252,7 @@ function apiResetPassword_(req) {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
     }
-    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度'], acc.username);
     if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
     setPassword_(acc, String(req.newPassword)); // 同時清除臨時碼（用過即失效）
     purgeSessions_(acc.accountId);
@@ -276,7 +276,7 @@ function apiChangePassword_(req, who) {
     if (!Logic.verifyPassword(String(req.oldPassword || ''), acc.salt, acc.passwordHash, hmacHex_)) {
       throw new ApiError(ERR.BAD_INPUT, '目前的密碼不正確。');
     }
-    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度'], acc.username);
     if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
     setPassword_(acc, String(req.newPassword));
     purgeSessions_(acc.accountId, who.sessionHash); // 其他裝置登出，目前這台保留

@@ -727,10 +727,26 @@ var Logic = (function () {
     return /^[A-Za-z0-9_]{4,20}$/.test(clean(name)) ? { ok: true } : { ok: false, error: '帳號需為 4～20 個英文字母、數字或底線' };
   }
 
-  function validatePassword(pw, minLength) {
+  /** 最常見的弱密碼（小寫比對）；另擋：與帳號相同、同一個字重複、連續數字或字母 */
+  var WEAK_PASSWORDS = ['password', 'password1', 'password12', 'password123', 'passw0rd', 'qwertyui', 'qwertyuiop', 'qwerty123', 'qwer1234', '1q2w3e4r', '1q2w3e4r5t',
+    '1qaz2wsx', 'asdfghjk', 'asdfghjkl', 'zxcvbnm1', 'iloveyou', 'iloveyou1', 'abcd1234', 'abc12345', 'abc123456', 'a1234567', 'a12345678', 'aa123456', 'admin123', 'admin1234',
+    'welcome1', 'welcome123', 'letmein1', 'sunshine1', 'princess1', 'football1', 'baseball1', 'superman1', 'pokemon1', 'scout123', 'scout1234', 'aaaa1111', 'asdf1234', 'qazwsxedc', '5201314a', 'woaini1314'];
+  function isWeakPassword(pw, username) {
+    var p = String(pw).toLowerCase(), u = clean(username).toLowerCase();
+    if (WEAK_PASSWORDS.indexOf(p) >= 0) return true;
+    if (u && (p === u || p === u + '1' || p === u + '123')) return true;
+    if (/^(.)\1+$/.test(p)) return true;
+    var seq = '0123456789012345678909876543210987654321abcdefghijklmnopqrstuvwxyz';
+    if (seq.indexOf(p) >= 0) return true;
+    if (/^(\d{1,4})\1+$/.test(p)) return true; // 12121212、12341234
+    return false;
+  }
+
+  function validatePassword(pw, minLength, username) {
     pw = pw === null || pw === undefined ? '' : String(pw);
     if (pw.length < minLength) return { ok: false, error: '密碼至少 ' + minLength + ' 個字元' };
     if (pw.length > 100) return { ok: false, error: '密碼太長' };
+    if (isWeakPassword(pw, username)) return { ok: false, error: '這組密碼太常見或太簡單，容易被猜到，請換一組（建議混合英文與數字，不要和帳號相同）' };
     return { ok: true };
   }
 
@@ -1039,7 +1055,7 @@ var Logic = (function () {
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
-    validateUsername: validateUsername, validatePassword: validatePassword, validateNickname: validateNickname,
+    validateUsername: validateUsername, validatePassword: validatePassword, isWeakPassword: isWeakPassword, validateNickname: validateNickname,
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,

@@ -285,7 +285,8 @@ test('帳號、密碼、稱呼格式檢查', () => {
   assert.equal(L.validateUsername('ab').ok, false);
   assert.equal(L.validateUsername('中文帳號').ok, false);
   assert.equal(L.validatePassword('1234567', 8).ok, false);
-  assert.equal(L.validatePassword('12345678', 8).ok, true);
+  assert.equal(L.validatePassword('12345678', 8).ok, false, '連續數字太弱');
+  assert.equal(L.validatePassword('blue-kite-58', 8).ok, true);
   assert.equal(L.validateNickname('').ok, false);
   assert.equal(L.validateNickname('測試小狼媽媽').ok, true);
 });

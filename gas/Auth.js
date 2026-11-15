@@ -142,7 +142,7 @@ function setPassword_(acc, password) {
 
 /** 輸入格式檢查，不合格丟 BAD_INPUT */
 function checkAccountInput_(username, password, nickname, settings) {
-  var checks = [Logic.validateUsername(username), Logic.validatePassword(password, settings['密碼最短長度'])];
+  var checks = [Logic.validateUsername(username), Logic.validatePassword(password, settings['密碼最短長度'], username)];
   if (nickname !== undefined) checks.push(Logic.validateNickname(nickname));
   checks.forEach(function (c) { if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error); });
 }

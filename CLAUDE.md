@@ -24,7 +24,8 @@
 - 體驗者（SPEC 附錄第 40 點）：狀態「體驗」、`Logic.trialProgress`（只算一般團集會）、`cubsOnDate_(date, type)`（大活動不列體驗者）、`cubJoin`（轉為入團）、`adminHome.trials`、家長端 `trial`；剛入團出席用 `newbieAfter`（入團日之後）。
 - 名單直接編輯（SPEC 附錄第 41 點）：`cubBatchSave`（同一位多筆會合併、有錯整批不寫）、前端 `ADMIN_PAGES.cubs` 的 `edit` 模式。
 - 2026-11-15 全面檢查後修正：體驗者的綁定碼可用（`checkBindCode`）、`admin` 為保留帳號（`isReservedUsername_`）且選單重設密碼時清除其登入失敗紀錄、視為通過的剛入團不顯示修改／撤銷頒章、出席總覽列出體驗者。
-- **目前狀態**：階段 4B 已完成（模擬測試）；**階段 5（LINE 主動通知、關鍵字回覆、每日排程）尚未實作**，團長說要做之前不動。設定裡的「未頒章再提醒天數」「每日排程時間（幾點）」目前沒有作用。團長正在正式環境試用，回報的問題優先處理。
+- 階段 5 完成（模擬測試，SPEC 第八節、附錄第 43 點）：`gas/Notify.js`——`syncNotifications_`（達標推播、去重、清除、再提醒）、`scanCubs_`（首頁與通知共用）、`linePush_`（multicast）、`handleKeyword_`、`dailyJob`／`ensureDailyTrigger_`；`registerAdmin_` 依 `NOTIFY_AFTER` 在動作後呼叫 `notifySafely_`（失敗不影響主要操作）。弱密碼檢查 `Logic.isWeakPassword`。審核可核准為體驗者（`mode: 'trial'`）。前端 `#award=` 連結。
+- **目前狀態**：階段 0A～5 的程式都已完成並通過模擬測試；**LINE 推播（Flex 訊息格式、multicast）尚未在真實 LINE 環境驗證**，要團長實測。第二期（ROADMAP）未做。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -109,6 +110,7 @@
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `ItemsAdmin.js` | 項目管理 API（SPEC 7.7，4B）：樹狀資料、改文字、新增（自動ID、影響預覽）、停用／啟用、排序、大項改名、技能章新增／改名、說明、本團細項、匯出、重新載入；改完清公開查詢快取 |
+| `Notify.js` | LINE 主動通知（階段 5）：達標推播與去重、再提醒、關鍵字回覆、每日排程 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`、`ensureBackup_`（setup 自動建立資料夾與排程） |
 | `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：團長預設帳號 admin（`ensureDefaultAdmin_`）、把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`ensureNewbieLevel_()`（補上剛入團，只做一次）、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
@@ -168,4 +170,4 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 - 逐格讀寫試算表（一律 getValues/setValues 批次），或寫入時不加 LockService。
 - 收集生日、身分證字號、電話、地址、照片。
 - `setup()` 覆蓋任何已有資料的分頁。
-- 團長說要做之前，動階段 5（LINE 主動通知）或第二期（ROADMAP）的功能。
+- 團長說要做之前，動第二期（ROADMAP）的功能。

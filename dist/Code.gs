@@ -734,10 +734,26 @@ var Logic = (function () {
     return /^[A-Za-z0-9_]{4,20}$/.test(clean(name)) ? { ok: true } : { ok: false, error: '帳號需為 4～20 個英文字母、數字或底線' };
   }
 
-  function validatePassword(pw, minLength) {
+  /** 最常見的弱密碼（小寫比對）；另擋：與帳號相同、同一個字重複、連續數字或字母 */
+  var WEAK_PASSWORDS = ['password', 'password1', 'password12', 'password123', 'passw0rd', 'qwertyui', 'qwertyuiop', 'qwerty123', 'qwer1234', '1q2w3e4r', '1q2w3e4r5t',
+    '1qaz2wsx', 'asdfghjk', 'asdfghjkl', 'zxcvbnm1', 'iloveyou', 'iloveyou1', 'abcd1234', 'abc12345', 'abc123456', 'a1234567', 'a12345678', 'aa123456', 'admin123', 'admin1234',
+    'welcome1', 'welcome123', 'letmein1', 'sunshine1', 'princess1', 'football1', 'baseball1', 'superman1', 'pokemon1', 'scout123', 'scout1234', 'aaaa1111', 'asdf1234', 'qazwsxedc', '5201314a', 'woaini1314'];
+  function isWeakPassword(pw, username) {
+    var p = String(pw).toLowerCase(), u = clean(username).toLowerCase();
+    if (WEAK_PASSWORDS.indexOf(p) >= 0) return true;
+    if (u && (p === u || p === u + '1' || p === u + '123')) return true;
+    if (/^(.)\1+$/.test(p)) return true;
+    var seq = '0123456789012345678909876543210987654321abcdefghijklmnopqrstuvwxyz';
+    if (seq.indexOf(p) >= 0) return true;
+    if (/^(\d{1,4})\1+$/.test(p)) return true; // 12121212、12341234
+    return false;
+  }
+
+  function validatePassword(pw, minLength, username) {
     pw = pw === null || pw === undefined ? '' : String(pw);
     if (pw.length < minLength) return { ok: false, error: '密碼至少 ' + minLength + ' 個字元' };
     if (pw.length > 100) return { ok: false, error: '密碼太長' };
+    if (isWeakPassword(pw, username)) return { ok: false, error: '這組密碼太常見或太簡單，容易被猜到，請換一組（建議混合英文與數字，不要和帳號相同）' };
     return { ok: true };
   }
 
@@ -1046,7 +1062,7 @@ var Logic = (function () {
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
-    validateUsername: validateUsername, validatePassword: validatePassword, validateNickname: validateNickname,
+    validateUsername: validateUsername, validatePassword: validatePassword, isWeakPassword: isWeakPassword, validateNickname: validateNickname,
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
@@ -1593,7 +1609,7 @@ function setPassword_(acc, password) {
 
 /** 輸入格式檢查，不合格丟 BAD_INPUT */
 function checkAccountInput_(username, password, nickname, settings) {
-  var checks = [Logic.validateUsername(username), Logic.validatePassword(password, settings['密碼最短長度'])];
+  var checks = [Logic.validateUsername(username), Logic.validatePassword(password, settings['密碼最短長度'], username)];
   if (nickname !== undefined) checks.push(Logic.validateNickname(nickname));
   checks.forEach(function (c) { if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error); });
 }
@@ -1853,7 +1869,7 @@ function apiResetPassword_(req) {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
     }
-    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度'], acc.username);
     if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
     setPassword_(acc, String(req.newPassword)); // 同時清除臨時碼（用過即失效）
     purgeSessions_(acc.accountId);
@@ -1877,7 +1893,7 @@ function apiChangePassword_(req, who) {
     if (!Logic.verifyPassword(String(req.oldPassword || ''), acc.salt, acc.passwordHash, hmacHex_)) {
       throw new ApiError(ERR.BAD_INPUT, '目前的密碼不正確。');
     }
-    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度']);
+    var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度'], acc.username);
     if (!pw.ok) throw new ApiError(ERR.BAD_INPUT, pw.error);
     setPassword_(acc, String(req.newPassword));
     purgeSessions_(acc.accountId, who.sessionHash); // 其他裝置登出，目前這台保留
@@ -2260,7 +2276,13 @@ function requireRole_(who, action) {
 
 /** 把後台動作包上權限檢查後註冊到 AUTHED_ACTIONS */
 function registerAdmin_(name, permission, fn) {
-  AUTHED_ACTIONS[name] = function (req, who) { requireRole_(who, permission); return fn(req, who); };
+  AUTHED_ACTIONS[name] = function (req, who) {
+    requireRole_(who, permission);
+    var out = fn(req, who);
+    // 階段 5：會影響達標的動作完成後，重算並推播（失敗不影響主要操作；等待確認的不算）
+    if (Object.prototype.hasOwnProperty.call(NOTIFY_AFTER, name) && !(out && out.needConfirm)) notifySafely_(NOTIFY_AFTER[name]);
+    return out;
+  };
 }
 
 function adminNames_() {
@@ -2330,17 +2352,8 @@ function refreshCubLevel_(cubId) {
 registerAdmin_('adminHome', 'viewOverview', function (req, who) {
   var ctx = progressCtx_();
   var cubs = loadCubs_();
-  var threshold = ctx.settings['快達標門檻（剩幾項以內）'];
-  var pending = [], near = [], waiting = [];
-  cubs.filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
-    progressOf_(ctx, c.cubId).units.forEach(function (u) {
-      var base = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, category: u.category, unit: u.unit };
-      if (u.status === Logic.STATUS.AWARDED) return;
-      if (u.eligible) pending.push(Object.assign(base, { eligibleDate: u.eligibleDate }));
-      else if (u.status === Logic.STATUS.DONE_PENDING) waiting.push(Object.assign(base, { waitingUntil: u.waitingUntil || '', attendSinceLast: u.attendSinceLast || 0, attendRequired: u.attendRequired || 0 }));
-      else if (Logic.isNearlyDone(u, threshold)) near.push(Object.assign(base, { remaining: u.remaining }));
-    });
-  });
+  var scan = scanCubs_(ctx, cubs);
+  var pending = scan.pending, near = scan.near, waiting = scan.waiting;
   // 體驗者：一般團集會出席滿設定次數 → 提醒團長「轉為入團」
   var trialNeed = ctx.settings['體驗所需出席次數'];
   var trials = cubs.filter(function (c) { return c.status === Logic.TRIAL; }).map(function (c) {
@@ -3003,6 +3016,7 @@ registerAdmin_('settingsSave', 'manageSettings', function (req, who) {
     });
     if (ups.length) updateRows_(SHEET.SETTINGS, ups);
     if (adds.length) appendRows_(SHEET.SETTINGS, adds);
+    if (stored['每日排程時間（幾點）'] !== undefined) { try { ensureDailyTrigger_(); } catch (e) { /* 沒有排程權限時略過，setup 會再裝 */ } }
     return { changed: changed };
   });
 });
@@ -3092,12 +3106,14 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
       var cname = Logic.clean(req.name).replace(/\s+/g, '') || r.name;
       if (!cname || cname.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
       var squad = requireSquad_(Logic.clean(req.squad).slice(0, 20));
-      var joinDate = requireDate_(Logic.clean(req.joinDate), '入團日');
+      // mode='trial'：新增為體驗者（日期是體驗開始日）；否則直接入團（日期是入團日）
+      var asTrial = Logic.clean(req.mode) === 'trial';
+      var joinDate = requireDate_(Logic.clean(req.joinDate), asTrial ? '體驗開始日' : '入團日');
       var settings = loadSettings_().values;
       var id = newId_('C', loadCubs_().map(function (c) { return c.cubId; }));
       var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
-      appendRows_(SHEET.CUBS, [[id, cname, squad, joinDate, '', code, settings['綁定碼可用次數'], '在團', '']]);
-      logOp_(who.account.accountId, '新增小狼', id, '', [cname, squad, joinDate].join('／') + '（註冊申請）');
+      appendRows_(SHEET.CUBS, [[id, cname, squad, asTrial ? '' : joinDate, '', code, settings['綁定碼可用次數'], asTrial ? Logic.TRIAL : '在團', '', asTrial ? joinDate : '']]);
+      logOp_(who.account.accountId, asTrial ? '新增體驗者' : '新增小狼', id, '', [cname, squad, (asTrial ? '體驗開始 ' : '') + joinDate].join('／') + '（註冊申請）');
       cub = findCub_(id);
     }
     // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）
@@ -3725,6 +3741,182 @@ registerAdmin_('itemsReload', 'manageItems', function () {
   return { errors: loadItems_().errors.length };
 });
 
+// ════════════════ Notify.js ════════════════
+/**
+ * LINE 主動通知（SPEC 第八節，階段 5）
+ * - 只通知「已連結 LINE」的管理員；家長不收任何推播。
+ * - 同一小狼同一級別或章只通知一次（通知紀錄）；不再達標時清除紀錄，重新達標可再通知。
+ * - 同一次觸發多位達標合併成一則；達標超過設定天數未頒章再提醒一次。
+ * - 通知失敗不可以影響簽核、點名等主要操作（呼叫端一律用 notifySafely_）。
+ */
+
+/** 做完這些後台動作後重算達標並通知；值為 true 表示用「摘要」文字（項目或設定修改造成的批次變動） */
+var NOTIFY_AFTER = {
+  signoff: false, signoffRevoke: false, award: false, awardRevoke: false, awardEdit: false, backfill: false,
+  attendanceSave: false, cubLeave: false, cubJoin: false, itemSave: true, itemToggle: true, settingsSave: true
+};
+
+function notifySafely_(summary) {
+  try { syncNotifications_({ summary: !!summary }); }
+  catch (e) { try { console.error('通知失敗：' + (e && e.message ? e.message : e)); } catch (e2) { /* 忽略 */ } }
+}
+
+/** 掃全部在團小狼：達標未頒章（pending）、項目完成等條件（waiting）、快達標（near） */
+function scanCubs_(ctx, cubs) {
+  var threshold = ctx.settings['快達標門檻（剩幾項以內）'];
+  var pending = [], near = [], waiting = [];
+  cubs.filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
+    progressOf_(ctx, c.cubId).units.forEach(function (u) {
+      var base = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, category: u.category, unit: u.unit };
+      if (u.status === Logic.STATUS.AWARDED) return;
+      if (u.eligible) pending.push(Object.assign(base, { eligibleDate: u.eligibleDate }));
+      else if (u.status === Logic.STATUS.DONE_PENDING) waiting.push(Object.assign(base, { waitingUntil: u.waitingUntil || '', attendSinceLast: u.attendSinceLast || 0, attendRequired: u.attendRequired || 0 }));
+      else if (Logic.isNearlyDone(u, threshold)) near.push(Object.assign(base, { remaining: u.remaining }));
+    });
+  });
+  return { pending: pending, waiting: waiting, near: near };
+}
+
+function unitLabel_(p) { return p.category === Logic.CATEGORY.PROGRESS ? (p.unit === Logic.NEWBIE ? p.unit : p.unit + '級') : p.unit + '技能章'; }
+function webUrl_() { return PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL; }
+function linkedLineIds_() { return loadAdmins_().map(function (a) { return a.lineUserId; }).filter(String); }
+
+/**
+ * 重算達標清單，與通知紀錄比對後推播。
+ * 沒有 token 或沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
+ * @return {{notified: number, reminded: number, cleared: number, skipped?: string}}
+ */
+function syncNotifications_(opts) {
+  opts = opts || {};
+  return withLock_(function () {
+    var ctx = progressCtx_();
+    var pending = scanCubs_(ctx, loadCubs_()).pending;
+    var byKey = {};
+    pending.forEach(function (p) { byKey[p.cubId + '|' + p.unit] = p; });
+    var rows = readRows_(SHEET.NOTIFY).filter(function (r) { return Logic.clean(r[0]); });
+    var key = function (r) { return Logic.clean(r[0]) + '|' + Logic.clean(r[1]); };
+    var notified = rows.filter(function (r) { return Logic.clean(r[2]) === '達標'; });
+    var diff = Logic.diffNotifications(Object.keys(byKey), notified.map(key));
+    // 不再達標（撤銷、已頒發、項目修改）：清除該小狼該級的所有通知紀錄
+    var clear = {};
+    diff.toClear.forEach(function (k) { clear[k] = true; });
+    var del = rows.filter(function (r) { return clear[key(r)]; }).map(function (r) { return r._row; });
+    if (del.length) deleteRows_(SHEET.NOTIFY, del);
+
+    var ids = linkedLineIds_();
+    var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
+    if (!token || !ids.length) return { notified: 0, reminded: 0, cleared: del.length, skipped: !token ? 'no_token' : 'no_linked_admin' };
+
+    var now = new Date(), add = [], result = { notified: 0, reminded: 0, cleared: del.length };
+    var fresh = diff.toNotify.map(function (k) { return byKey[k]; });
+    if (fresh.length) {
+      var ok = linePush_(ids, opts.summary ? summaryMessage_(fresh) : eligibleMessage_(fresh, '🎉 達標通知'), token);
+      if (ok) { fresh.forEach(function (p) { add.push([p.cubId, p.unit, '達標', now]); }); result.notified = fresh.length; }
+    }
+    // 再提醒：達標通知超過設定天數仍未頒章，只提醒一次
+    var days = ctx.settings['未頒章再提醒天數'];
+    if (days > 0) {
+      var reminded = {};
+      rows.forEach(function (r) { if (Logic.clean(r[2]) === '再提醒') reminded[key(r)] = true; });
+      var due = notified.filter(function (r) {
+        var k = key(r);
+        return byKey[k] && !reminded[k] && !clear[k] && ms_(r[3]) && Date.now() - ms_(r[3]) >= days * 86400000;
+      }).map(function (r) { return byKey[key(r)]; });
+      if (due.length && linePush_(ids, eligibleMessage_(due, '⏰ 還沒頒章的提醒'), token)) {
+        due.forEach(function (p) { add.push([p.cubId, p.unit, '再提醒', now]); });
+        result.reminded = due.length;
+      }
+    }
+    if (add.length) appendRows_(SHEET.NOTIFY, add);
+    return result;
+  });
+}
+
+/** 達標通知：Flex Message（最多 10 位各一張卡片，超過改用文字），附「前往頒章」按鈕 */
+function eligibleMessage_(list, title) {
+  var alt = title + '：' + list.map(function (p) { return p.name + '（' + unitLabel_(p) + '）'; }).join('、');
+  if (list.length > 10) return { type: 'text', text: alt.slice(0, 4500) + '\n' + webUrl_() };
+  var bubbles = list.map(function (p) {
+    return {
+      type: 'bubble',
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [
+        { type: 'text', text: title, size: 'sm', color: '#1f4e9c', weight: 'bold' },
+        { type: 'text', text: p.name, size: 'xl', weight: 'bold', wrap: true },
+        { type: 'text', text: unitLabel_(p) + '　達標', size: 'md', wrap: true },
+        { type: 'text', text: [p.squad || '未分小隊', '入團 ' + (p.joinDate || '－'), '達標日 ' + (p.eligibleDate || '－')].join('・'), size: 'sm', color: '#6b7385', wrap: true }
+      ] },
+      footer: { type: 'box', layout: 'vertical', contents: [
+        { type: 'button', style: 'primary', color: '#1f4e9c', action: { type: 'uri', label: '前往頒章', uri: webUrl_() + 'web/#award=' + encodeURIComponent(p.cubId + ',' + p.unit) } }
+      ] }
+    };
+  });
+  return { type: 'flex', altText: alt.slice(0, 380), contents: bubbles.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles } };
+}
+
+/** 項目或設定修改造成的批次變動：一則摘要 */
+function summaryMessage_(list) {
+  return { type: 'text', text: ('📋 項目或設定修改後，有 ' + list.length + ' 筆新達標：' + list.map(function (p) { return p.name + '（' + unitLabel_(p) + '）'; }).join('、')).slice(0, 4500) + '\n' + webUrl_() };
+}
+
+/** 推播給多位管理員（multicast）。失敗時寫操作日誌並累計「通知未送達」；成功則歸零 */
+function linePush_(ids, message, token) {
+  var props = PropertiesService.getScriptProperties();
+  var code = 0;
+  try {
+    code = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/multicast', {
+      method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token },
+      payload: JSON.stringify({ to: ids.slice(0, 500), messages: [message] }), muteHttpExceptions: true
+    }).getResponseCode();
+  } catch (e) { code = -1; }
+  if (code === 200) { props.setProperty('NOTIFY_FAILED', '0'); return true; }
+  props.setProperty('NOTIFY_FAILED', String(Number(props.getProperty('NOTIFY_FAILED') || 0) + 1));
+  logOp_('系統', '通知未送達', 'LINE', '', '回應代碼 ' + code);
+  return false;
+}
+
+// ───────────── 關鍵字回覆（不計入推播額度） ─────────────
+
+/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」只回覆已連結 LINE 的管理員 */
+function handleKeyword_(text, lineUserId, replyToken) {
+  if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
+  if (text !== '可晉級' && text !== '快達標') return null;
+  if (!loadAdmins_().some(function (a) { return a.lineUserId === lineUserId; })) return null;
+  var scan = scanCubs_(progressCtx_(), loadCubs_());
+  var lines;
+  if (text === '可晉級') {
+    lines = scan.pending.map(function (p) { return '・' + p.name + '：' + unitLabel_(p) + '（達標 ' + (p.eligibleDate || '－') + '）'; });
+    return lineReply_(replyToken, lines.length ? ('🏅 達標未頒章 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有達標未頒章的小狼。');
+  }
+  lines = scan.near.map(function (p) { return '・' + p.name + '：' + unitLabel_(p) + '（還差 ' + p.remaining + ' 項）'; });
+  return lineReply_(replyToken, lines.length ? ('🔥 快達標 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有快達標的小狼。');
+}
+
+// ───────────── 每日排程 ─────────────
+
+/** 每天掃一次：抓「項目早就全過、今天剛滿晉級間隔」與再提醒 */
+function dailyJob() {
+  DB_CACHE_ = {};
+  notifySafely_(false);
+}
+
+/** 安裝每日排程（時間依設定「每日排程時間（幾點）」）；重複執行不會重複安裝 */
+function installDailyTrigger() {
+  removeTriggers_('dailyJob');
+  var hour = loadSettings_().values['每日排程時間（幾點）'];
+  ScriptApp.newTrigger('dailyJob').timeBased().everyDays(1).atHour(hour).create();
+  PropertiesService.getScriptProperties().setProperty('DAILY_HOUR', String(hour));
+  Logger.log('已安裝每日排程（每天 ' + hour + ' 點）。');
+}
+
+/** setup 與設定修改後呼叫：沒有排程或時間改了才重裝 */
+function ensureDailyTrigger_() {
+  var hour = String(loadSettings_().values['每日排程時間（幾點）']);
+  var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'dailyJob'; });
+  if (has && PropertiesService.getScriptProperties().getProperty('DAILY_HOUR') === hour) return false;
+  installDailyTrigger();
+  return true;
+}
+
 // ════════════════ Backup.js ════════════════
 /**
  * 備份與試算表權限檢查（SPEC 7.11）
@@ -3879,7 +4071,7 @@ function handleWebhook_(e) {
     if (!ev.source || ev.source.type !== 'user' || !ev.source.userId || !ev.replyToken) return;
     var text = String(ev.message.text || '').trim();
     if (/^\d{6}$/.test(text)) handlePairing_(text, ev.source.userId, ev.replyToken);
-    // 階段 5：關鍵字回覆
+    else { DB_CACHE_ = {}; handleKeyword_(text, ev.source.userId, ev.replyToken); }
   });
 }
 
@@ -3898,7 +4090,7 @@ function handlePairing_(code, lineUserId, replyToken) {
     logOp_(accountId, '連結 LINE 通知', a.name, '', ''); // 不記 userId
     return a.name;
   });
-  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團幼童軍進程系統的通知。之後小狼達標時會在這裡通知你。');
+  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團幼童軍進程系統的通知。之後小狼達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
 }
 
 /** 回覆訊息（不計入推播額度） */
@@ -3951,6 +4143,7 @@ function setup() {
     if (missing.length) { appendRows_(SHEET.SETTINGS, missing); report.seeded.push(SHEET.SETTINGS + ' 補上 ' + missing.length + ' 項'); }
 
     report.hidden = organizeSheets_(true);
+    try { if (ensureDailyTrigger_()) report.seeded.push('開啟每日達標檢查排程'); } catch (e2) { report.seeded.push('⚠️ 每日排程安裝失敗：' + (e2 && e2.message ? e2.message : e2)); }
     try { ensureBackup_().forEach(function (x) { report.seeded.push(x); }); }
     catch (e) { report.seeded.push('⚠️ 自動備份設定失敗：' + (e && e.message ? e.message : e) + '（可稍後在 Apps Script 執行 installBackupTrigger）'); }
     report.firstLeaderInvite = ensureFirstLeaderInvite_();

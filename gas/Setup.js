@@ -35,6 +35,7 @@ function setup() {
     if (missing.length) { appendRows_(SHEET.SETTINGS, missing); report.seeded.push(SHEET.SETTINGS + ' 補上 ' + missing.length + ' 項'); }
 
     report.hidden = organizeSheets_(true);
+    try { if (ensureDailyTrigger_()) report.seeded.push('開啟每日達標檢查排程'); } catch (e2) { report.seeded.push('⚠️ 每日排程安裝失敗：' + (e2 && e2.message ? e2.message : e2)); }
     try { ensureBackup_().forEach(function (x) { report.seeded.push(x); }); }
     catch (e) { report.seeded.push('⚠️ 自動備份設定失敗：' + (e && e.message ? e.message : e) + '（可稍後在 Apps Script 執行 installBackupTrigger）'); }
     report.firstLeaderInvite = ensureFirstLeaderInvite_();

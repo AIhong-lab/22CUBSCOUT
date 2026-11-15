@@ -16,7 +16,7 @@ function handleWebhook_(e) {
     if (!ev.source || ev.source.type !== 'user' || !ev.source.userId || !ev.replyToken) return;
     var text = String(ev.message.text || '').trim();
     if (/^\d{6}$/.test(text)) handlePairing_(text, ev.source.userId, ev.replyToken);
-    // 階段 5：關鍵字回覆
+    else { DB_CACHE_ = {}; handleKeyword_(text, ev.source.userId, ev.replyToken); }
   });
 }
 
@@ -35,7 +35,7 @@ function handlePairing_(code, lineUserId, replyToken) {
     logOp_(accountId, '連結 LINE 通知', a.name, '', ''); // 不記 userId
     return a.name;
   });
-  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團幼童軍進程系統的通知。之後小狼達標時會在這裡通知你。');
+  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團幼童軍進程系統的通知。之後小狼達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
 }
 
 /** 回覆訊息（不計入推播額度） */

@@ -14,7 +14,13 @@ function requireRole_(who, action) {
 
 /** 把後台動作包上權限檢查後註冊到 AUTHED_ACTIONS */
 function registerAdmin_(name, permission, fn) {
-  AUTHED_ACTIONS[name] = function (req, who) { requireRole_(who, permission); return fn(req, who); };
+  AUTHED_ACTIONS[name] = function (req, who) {
+    requireRole_(who, permission);
+    var out = fn(req, who);
+    // 階段 5：會影響達標的動作完成後，重算並推播（失敗不影響主要操作；等待確認的不算）
+    if (Object.prototype.hasOwnProperty.call(NOTIFY_AFTER, name) && !(out && out.needConfirm)) notifySafely_(NOTIFY_AFTER[name]);
+    return out;
+  };
 }
 
 function adminNames_() {
@@ -84,17 +90,8 @@ function refreshCubLevel_(cubId) {
 registerAdmin_('adminHome', 'viewOverview', function (req, who) {
   var ctx = progressCtx_();
   var cubs = loadCubs_();
-  var threshold = ctx.settings['快達標門檻（剩幾項以內）'];
-  var pending = [], near = [], waiting = [];
-  cubs.filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
-    progressOf_(ctx, c.cubId).units.forEach(function (u) {
-      var base = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, category: u.category, unit: u.unit };
-      if (u.status === Logic.STATUS.AWARDED) return;
-      if (u.eligible) pending.push(Object.assign(base, { eligibleDate: u.eligibleDate }));
-      else if (u.status === Logic.STATUS.DONE_PENDING) waiting.push(Object.assign(base, { waitingUntil: u.waitingUntil || '', attendSinceLast: u.attendSinceLast || 0, attendRequired: u.attendRequired || 0 }));
-      else if (Logic.isNearlyDone(u, threshold)) near.push(Object.assign(base, { remaining: u.remaining }));
-    });
-  });
+  var scan = scanCubs_(ctx, cubs);
+  var pending = scan.pending, near = scan.near, waiting = scan.waiting;
   // 體驗者：一般團集會出席滿設定次數 → 提醒團長「轉為入團」
   var trialNeed = ctx.settings['體驗所需出席次數'];
   var trials = cubs.filter(function (c) { return c.status === Logic.TRIAL; }).map(function (c) {
@@ -757,6 +754,7 @@ registerAdmin_('settingsSave', 'manageSettings', function (req, who) {
     });
     if (ups.length) updateRows_(SHEET.SETTINGS, ups);
     if (adds.length) appendRows_(SHEET.SETTINGS, adds);
+    if (stored['每日排程時間（幾點）'] !== undefined) { try { ensureDailyTrigger_(); } catch (e) { /* 沒有排程權限時略過，setup 會再裝 */ } }
     return { changed: changed };
   });
 });
@@ -846,12 +844,14 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
       var cname = Logic.clean(req.name).replace(/\s+/g, '') || r.name;
       if (!cname || cname.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
       var squad = requireSquad_(Logic.clean(req.squad).slice(0, 20));
-      var joinDate = requireDate_(Logic.clean(req.joinDate), '入團日');
+      // mode='trial'：新增為體驗者（日期是體驗開始日）；否則直接入團（日期是入團日）
+      var asTrial = Logic.clean(req.mode) === 'trial';
+      var joinDate = requireDate_(Logic.clean(req.joinDate), asTrial ? '體驗開始日' : '入團日');
       var settings = loadSettings_().values;
       var id = newId_('C', loadCubs_().map(function (c) { return c.cubId; }));
       var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
-      appendRows_(SHEET.CUBS, [[id, cname, squad, joinDate, '', code, settings['綁定碼可用次數'], '在團', '']]);
-      logOp_(who.account.accountId, '新增小狼', id, '', [cname, squad, joinDate].join('／') + '（註冊申請）');
+      appendRows_(SHEET.CUBS, [[id, cname, squad, asTrial ? '' : joinDate, '', code, settings['綁定碼可用次數'], asTrial ? Logic.TRIAL : '在團', '', asTrial ? joinDate : '']]);
+      logOp_(who.account.accountId, asTrial ? '新增體驗者' : '新增小狼', id, '', [cname, squad, (asTrial ? '體驗開始 ' : '') + joinDate].join('／') + '（註冊申請）');
       cub = findCub_(id);
     }
     // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）

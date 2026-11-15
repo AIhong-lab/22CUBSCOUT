@@ -481,6 +481,15 @@ function seed(env) {
   await page.getByText('家長畫面').click();
   await page.getByText('還沒有綁定孩子').waitFor();
 
+  // ═════ LINE 通知的「前往頒章」連結：登入中直接到頒章表單 ═════
+  await page.goto('about:blank'); await page.goto(PAGE + '#award=' + encodeURIComponent('C1,狼'));
+  await page.getByText('同一場儀式可勾選多位小狼').waitFor();
+  assert.equal(new URL(page.url()).hash, '', '用過就清掉');
+  await page.locator('[data-back]').click();
+  await page.getByText('待頒章').first().waitFor();
+  await page.getByText('家長畫面').click();
+  await page.getByText('還沒有綁定孩子').waitFor();
+
   // ═════ 電腦寬螢幕：上方導覽列、後台左側選單、四級橫排 ═════
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.locator('#toAdmin').click();

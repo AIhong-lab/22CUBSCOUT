@@ -101,7 +101,7 @@ function loadGas(opts = {}) {
     alert(...a) { ui.alerts.push(a.filter((x) => typeof x === 'string').join('\n')); },
     createMenu(title) { const m = { title, items: [], addItem(t, f) { m.items.push([t, f]); return m; }, addSeparator() { return m; }, addToUi() { ui.menus.push(m); } }; return m; },
   };
-  const logs = [], sent = [], cache = {}, triggers = [];
+  const logs = [], sent = [], cache = {}, triggers = [], net = { code: 200 };
   // 模擬雲端硬碟：一份試算表檔案與備份資料夾
   const drive = { files: [], sharing: { file: 'PRIVATE', folder: 'PRIVATE' }, failCopy: false };
   drive.api = {
@@ -142,7 +142,7 @@ function loadGas(opts = {}) {
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
     },
-    UrlFetchApp: { fetch: (url, o) => { sent.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => 200 }; } },
+    UrlFetchApp: { fetch: (url, o) => { sent.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => net.code }; } },
     CacheService: { getScriptCache: () => ({
       get: (k) => (cache[k] && cache[k].exp > clock ? cache[k].v : null),
       put: (k, v, sec) => { cache[k] = { v: String(v), exp: clock + sec * 1000 }; },
@@ -160,7 +160,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers,
+    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

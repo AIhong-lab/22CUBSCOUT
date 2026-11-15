@@ -767,8 +767,20 @@ async function renderReconsent() {
 
 // ═════════════ 主流程 ═════════════
 
+const pendingAward = {
+  get() { try { return sessionStorage.getItem('pendingAward'); } catch (e) { return null; } },
+  set(v) { try { sessionStorage.setItem('pendingAward', v); } catch (e) {} },
+  clear() { try { sessionStorage.removeItem('pendingAward'); } catch (e) {} },
+};
+
 async function start() {
   const h = location.hash;
+  const am = /^#award=(.+)$/.exec(h);
+  if (am) {
+    try { pendingAward.set(decodeURIComponent(am[1])); } catch (e) {}
+    setHash('');
+    if (!store.get('token')) return renderLogin({ notice: '請先登入，登入後會直接打開頒章畫面。' });
+  }
   if (h === '#home' || h === '#catalog') return renderHome();
   if (h === '#progress' || h === '#badges') return renderCatalog(h.slice(1));
   if (!store.get('token')) return renderHome(); // 沒登入：先看首頁（SPEC 附錄第 34 點）
@@ -788,6 +800,11 @@ async function start() {
   if (!state.cubId || !state.me.cubs.some((c) => c.cubId === state.cubId)) state.cubId = (state.me.cubs[0] || {}).cubId || null;
   state.view = back ? back.view : 'home';
   if (back && back.admin) state.admin = back.admin;
+  const pa = pendingAward.get();
+  if (pa) {
+    pendingAward.clear();
+    if (state.me.role === '團長') { state.mode = 'admin'; state.admin = { tab: 'home', page: { name: 'award', params: { deeplink: pa } } }; }
+  }
   route();
 }
 
@@ -964,6 +981,7 @@ function viewMap(d) {
   const sel = units.find((u) => u.unit === state.mapSel);
   $app.innerHTML = `
     <section class="card"><h2>🗺️ 闖關地圖</h2>
+      ${d.trial ? '<div class="msg info small">🧪 目前是體驗者：入團後才開始闖關。可以先看看每一關要做什麼。</div>' : ''}
       <p class="muted small">點一個關卡，看看要完成哪些任務！</p>
       <div class="map">${units.map((u) => {
         const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
@@ -1208,8 +1226,8 @@ function renderHome() {
     </section>
     <section class="card">
       <h2>🎖️ 什麼是「技能章」？</h2>
-      <div class="row-flex" style="justify-content:space-around;margin:4px 0 8px">${[['🤝', '服務類', 8], ['🏃', '健身類', 9], ['🎨', '技巧類', 9]].map(([ic, g, n]) => `<span class="center"><span style="font-size:40px">${ic}</span><br><b class="small">${g}</b><br><span class="s">${n} 個</span></span>`).join('')}</div>
-      <p>技能章是依興趣與專長挑戰的徽章，共分 <b>3 類 26 個</b>。完成某個技能章的合格標準並經評核，就能拿到那一個章，收集越多越厲害！</p>
+      <div class="row-flex" style="justify-content:space-around;margin:4px 0 8px">${[['🤝', '服務類', 8], ['🏃', '健身類', 9], ['🎨', '技巧類', 9]].map(([ic, g, n]) => `<span class="center"><span style="font-size:40px">${ic}</span><br><b class="small">${g}</b><br><span class="s"><span data-gc="${g}">${n}</span> 個</span></span>`).join('')}</div>
+      <p>技能章是依興趣與專長挑戰的徽章，共分 <b>3 類 <span id="badgeTotal">26</span> 個</b>。完成某個技能章的合格標準並經評核，就能拿到那一個章，收集越多越厲害！</p>
       <button class="btn alt" data-go="badges">🎖️ 技能章查詢</button>
     </section>
     <section class="card">
@@ -1221,6 +1239,13 @@ function renderHome() {
     </section>
     <p class="muted small center">進程與技能章內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉；進程項目下的「本團細項」由本團自訂。<br>查詢頁不會顯示任何孩子的資料。</p>`;
   $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
+  // 技能章數量以實際資料為準（團長可以在項目管理新增技能章）
+  loadCatalog().then((d) => {
+    const bs = d.units.filter((u) => u.category === '技能章');
+    const t = $('#badgeTotal'); if (!t) return;
+    t.textContent = bs.length;
+    $$('[data-gc]').forEach((el) => { el.textContent = bs.filter((u) => u.group === el.dataset.gc).length; });
+  }).catch(() => {});
 }
 
 /** 進程查詢（view='progress'）或技能章查詢（view='badges'），各自一頁、各自搜尋 */
@@ -1588,24 +1613,28 @@ const ADMIN_PAGES = {
         <div class="name">🧒 ${esc(r.name)}</div>
         <div class="muted small">申請人：${esc(r.nickname)}（帳號 ${esc(r.username)}）・${fmtTime(Date.parse(r.at))}</div>
         ${r.sameName.length ? '<div class="msg warn small">已經有同名的小狼，可能是爸爸或媽媽已經申請過，建議選「連結到現有小狼」。</div>' : ''}
-        <div class="chips"><label class="check" style="margin:4px 12px 4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="new" ${r.sameName.length ? '' : 'checked'}> 新增小狼</label>
+        <div class="chips"><label class="check" style="margin:4px 12px 4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="new" ${r.sameName.length ? '' : 'checked'}> 新增小狼（直接入團）</label>
+          <label class="check" style="margin:4px 12px 4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="trial"> 🧪 新增為體驗者</label>
           <label class="check" style="margin:4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="link" ${r.sameName.length ? 'checked' : ''} ${d.cubs.length ? '' : 'disabled'}> 連結到現有小狼</label></div>
         <div data-pane="new" ${r.sameName.length ? 'hidden' : ''}>
           <label>小狼姓名（可修正錯字）</label><input type="text" name="name" maxlength="30" value="${esc(r.name)}">
           <label>小隊</label><select class="full" name="squad"><option value="">（未分小隊）</option>${d.squads.map((q) => `<option>${esc(q)}</option>`).join('')}</select>
-          <label>入團日</label><input type="date" name="joinDate" value="${esc(d.today)}" max="${esc(d.today)}">
+          <label data-dl>入團日</label><input type="date" name="joinDate" value="${esc(d.today)}" max="${esc(d.today)}">
         </div>
         <div data-pane="link" ${r.sameName.length ? '' : 'hidden'}><label>選擇小狼</label><select class="full" name="cubId">${cubOpt(r.sameName)}</select></div>
         <div class="row-flex"><button class="btn green small" data-ok>✅ 核准</button><button class="btn danger small" data-no>退回</button></div><div class="out"></div>
       </div>`;
     $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 註冊審核 <span class="pill st-已完成待頒發">${d.items.length}</span></h2>
-      <p class="muted small">家長與服務員自己註冊後，在這裡核准。孩子核准時可以「新增小狼」或「連結到現有小狼」（例如爸爸、媽媽各自申請同一個孩子）。</p>
+      <p class="muted small">家長與服務員自己註冊後，在這裡核准。孩子核准時可以「新增小狼（直接入團）」「新增為體驗者」或「連結到現有小狼」（例如爸爸、媽媽各自申請同一個孩子）。</p>
       ${d.items.length ? d.items.map(card).join('') : '<p class="muted">目前沒有待審核的申請。</p>'}</section>`;
     wireBack();
     $$('[data-req]').forEach((box) => {
       const id = box.dataset.req;
       const val = (n) => { const el = box.querySelector(`[name=${n}]`); return el ? el.value : ''; };
-      $$('input[type=radio]', box).forEach((rb) => { rb.onchange = () => $$('[data-pane]', box).forEach((p) => { p.hidden = p.dataset.pane !== rb.value; }); });
+      $$('input[type=radio]', box).forEach((rb) => { rb.onchange = () => {
+        $$('[data-pane]', box).forEach((p) => { p.hidden = p.dataset.pane !== (rb.value === 'link' ? 'link' : 'new'); });
+        const dl = box.querySelector('[data-dl]'); if (dl) dl.textContent = rb.value === 'trial' ? '體驗開始日' : '入團日';
+      }; });
       box.querySelector('[data-ok]').onclick = (ev) => act(ev.target, async () => {
         const mode = (box.querySelector('input[type=radio]:checked') || {}).value || 'new';
         try { await api('requestApprove', { requestId: id, mode, name: val('name'), squad: val('squad'), joinDate: val('joinDate'), cubId: val('cubId') }); }
@@ -1932,6 +1961,12 @@ const ADMIN_PAGES = {
   async award(params) {
     const h = await api('adminHome');
     const cands = h.pending.map((p) => Object.assign({ ok: true }, p)).concat(h.waiting.map((p) => Object.assign({ ok: false }, p)));
+    if (params.deeplink) {
+      // 從 LINE 通知點進來：只勾那一位；已經頒過或找不到就照平常顯示
+      const [cid, un] = String(params.deeplink).split(',');
+      const hit = cands.find((x) => x.cubId === cid && x.unit === un);
+      params = Object.assign({}, params, { preset: hit ? [hit] : null });
+    }
     (params.preset || []).forEach((p) => { if (!cands.some((x) => x.cubId === p.cubId && x.unit === p.unit)) cands.unshift(Object.assign({ ok: false }, p)); });
     const key = (p) => p.cubId + '|' + p.unit;
     const chosen = new Set((params.preset || []).map(key));
