@@ -886,7 +886,9 @@ async function logout() {
 
 // ═════════════ 家長畫面：闖關冒險 ═════════════
 
-const PARENT_TABS = [['home', '🏕️', '冒險'], ['progress', '🗺️', '闖關'], ['badges', '🎖️', '徽章'], ['attendance', '🐾', '集點'], ['mine', '👤', '我的']];
+// 三個分頁：首頁、進度（闖關｜徽章｜出席 用上方切換）、我的（SPEC 附錄第 44 點）
+const PARENT_TABS = [['home', '🏠', '首頁'], ['progress', '🗺️', '進度'], ['mine', '👤', '我的']];
+const PARENT_SEGS = [['map', '🗺️ 闖關'], ['badges', '🎖️ 徽章'], ['attendance', '🐾 出席']];
 
 function renderParentHeader() {
   const me = state.me;
@@ -904,6 +906,8 @@ function renderParentHeader() {
 async function renderParent(keep) {
   document.getElementById('title').textContent = '🐾 22團幼童軍';
   renderParentHeader();
+  // 舊的分頁名稱（徽章、集點）對應到「進度」裡的切換
+  if (state.view === 'badges' || state.view === 'attendance') { state.seg = state.view; state.view = 'progress'; }
   setTabs(PARENT_TABS, state.view, (v) => { state.view = v; renderParent(true); });
   scrollTop();
   if (state.view === 'mine') return renderMine();
@@ -919,7 +923,12 @@ async function renderParent(keep) {
       return;
     }
   }
-  ({ home: viewHome, progress: viewMap, badges: viewBadges, attendance: viewStamps })[state.view](state.detail);
+  if (state.view === 'home') return viewHome(state.detail);
+  // 進度：先畫選到的那一種，再把切換列放到最上面
+  const seg = PARENT_SEGS.some((x) => x[0] === state.seg) ? state.seg : 'map';
+  ({ map: viewMap, badges: viewBadges, attendance: viewStamps })[seg](state.detail);
+  $app.insertAdjacentHTML('afterbegin', `<div class="seg" id="pseg">${PARENT_SEGS.map(([k, t]) => `<button data-seg="${k}" class="${k === seg ? 'on' : ''}">${t}</button>`).join('')}</div>`);
+  $$('#pseg button').forEach((b) => { b.onclick = () => { state.seg = b.dataset.seg; renderParent(true); }; });
 }
 
 function requestsHtml(reqs) {
@@ -1017,9 +1026,11 @@ function viewHome(d) {
         <p>參加滿 <b>${t.need} 次一般團集會</b>（大活動、特殊團集會不算，請假不算）就可以入團。${t.ready ? '<br>🎉 已經滿了！團長確認後會幫孩子轉為入團，接著開始挑戰「🌱 剛入團」。' : ''}</p>
         <div class="bar ${t.ready ? 'full' : ''}"><span style="width:${Math.min(100, Math.round(t.count / t.need * 100))}%"></span></div>
         <button class="btn ghost small" id="toMap" data-lv="剛入團">🌱 先看看剛入團要做什麼 →</button></section>`;
-    $('#toMap').onclick = () => { state.mapSel = '剛入團'; state.view = 'progress'; renderParent(true); };
+    $('#toMap').onclick = () => { state.mapSel = '剛入團'; state.seg = 'map'; state.view = 'progress'; renderParent(true); };
     return;
   }
+  const nowLv = d.units.find((u) => u.category === '進程' && (u.status === '進行中' || u.status === '已完成待頒發'));
+  const nextMeet = (d.attendance.upcoming || [])[0];
   $app.innerHTML = `
     <section class="card hero">
       <div class="top"><div class="avatar">${av}</div>
@@ -1027,17 +1038,20 @@ function viewHome(d) {
           <div class="sub">${esc(c.squad || '')}${c.squad ? '・' : ''}入團 ${fmtDate(c.joinDate)}</div>
           <div class="sub">在團時間 ${esc(c.tenure)}</div>
           <span class="levelchip">${c.currentLevel ? '目前級別：' + esc(lvName(c.currentLevel)) : '新入團：先挑戰剛入團'}</span></div></div>
-      <div class="stats3"><div><b>⭐ ${stars}</b>收集的星星</div><div><b>🏅 ${got.length}</b>拿到的章</div><div><b>🐾 ${d.attendance.counts.attended}</b>出席次數</div></div>
+      <div class="stats3"><div><b>${nowLv ? nowLv.done + '／' + nowLv.total : '⭐ ' + stars}</b>${nowLv ? esc(lvName(nowLv.unit)) + '進度' : '收集的星星'}</div><div><b>${got.filter((u) => u.category === '技能章').length}</b>技能章</div><div><b>${d.attendance.rate ? esc(d.attendance.rate.text) : d.attendance.counts.attended + ' 次'}</b>${d.attendance.rate ? '出席率' : '出席'}</div></div>
     </section>
-    <section class="card"><h2>🎯 下一步挑戰</h2>${next}</section>
-    <section class="card"><h2>🔥 正在挑戰的</h2>
+    <section class="card"><h2>下一步挑戰</h2>${next}</section>
+    <section class="card"><div class="row-flex"><span class="grow"><b>下次集會</b><br><span class="s">${nextMeet ? fmtDate(nextMeet.date) + '　' + esc(nextMeet.name) : '行事曆還沒有之後的集會'}</span></span><button class="btn ghost small" id="toAtt" style="margin-top:0">出席紀錄 ›</button></div></section>
+    <section class="card"><h2>正在挑戰的</h2>
       ${challenging.length ? challenging.map(unitCard).join('') : '<p class="muted">目前沒有進行中的關卡。</p>'}</section>
-    <section class="card"><h2>🏆 已經拿到的</h2>
+    <section class="card"><h2>已經拿到的</h2>
       ${got.length ? got.map(unitCard).join('') : '<p class="muted">還沒有拿到章，一起加油！💪</p>'}</section>
     ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的技能章（${notStarted.length} 個）▾</summary>
       ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
   const tm = $('#toMap');
-  if (tm) tm.onclick = () => { state.mapSel = tm.dataset.lv; state.view = 'progress'; renderParent(true); };
+  if (tm) tm.onclick = () => { state.mapSel = tm.dataset.lv; state.seg = 'map'; state.view = 'progress'; renderParent(true); };
+  const ta = $('#toAtt');
+  if (ta) ta.onclick = () => { state.seg = 'attendance'; state.view = 'progress'; renderParent(true); };
 }
 
 /** 闖關地圖：剛入團 → 羚羊 → 狼 → 鹿 → 豹 */

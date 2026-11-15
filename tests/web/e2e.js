@@ -63,6 +63,8 @@ function seed(env) {
   const noHScroll = async (where) => assert.ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)), '不可橫向捲動：' + where);
   const text = () => page.locator('#app').innerText();
   const tab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
+  /** 家長「進度」分頁裡的切換：map（闖關）、badges（徽章）、attendance（出席） */
+  const seg = async (k) => { await page.locator('nav.tabs button[data-v=progress]').click(); await page.locator(`#pseg button[data-seg=${k}]`).click(); };
 
   // ═════ 公開首頁與兩個查詢頁（不用登入） ═════
   await page.goto(PAGE);
@@ -169,7 +171,8 @@ function seed(env) {
   assert.match(home, /項目已全部完成，等待團長評核頒發/, '環保章待頒發文字');
   assert.ok(!/可晉級/.test(home));
   assert.ok(home.indexOf('嚮導') > home.indexOf('已經拿到的'), '已頒發的嚮導章在已經拿到的');
-  assert.match(home, /⭐ 36/, '星星數＝完成項目數（羚羊 10＋狼 20＋環保 5＋嚮導 1）');
+  assert.match(home, /20／32\s*狼級進度[\s\S]*1\s*技能章[\s\S]*28%\s*出席率/, '首頁三個數字：這一級進度、技能章、出席率');
+  assert.match(home, /下次集會[\s\S]*12\/6 團集會/, '首頁就看得到下次集會');
   await shot('03-home'); await noHScroll('首頁');
   await page.locator('#toMap').click();
   await page.locator('#lvPanel').waitFor();
@@ -208,8 +211,9 @@ function seed(env) {
   await page.locator('.stage[data-unit=羚羊]').click();
   assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務[\s\S]*6 月團集會/);
 
-  // 徽章收藏冊
-  await tab('badges');
+  // 徽章收藏冊（進度 → 徽章）
+  assert.equal(await page.locator('nav.tabs button').count(), 3, '家長只有三個分頁：首頁、進度、我的');
+  await seg('badges');
   await page.getByText('我的徽章收藏冊').waitFor();
   const b = await text();
   assert.ok(b.indexOf('服務類') < b.indexOf('健身類') && b.indexOf('健身類') < b.indexOf('技巧類'));
@@ -224,8 +228,8 @@ function seed(env) {
   await shot('06b-badge-sheet');
   await page.locator('.sheet [data-close]').click();
 
-  // 出席集點卡
-  await tab('attendance');
+  // 出席集點卡（進度 → 出席）
+  await seg('attendance');
   await page.getByText('出席集點卡').waitFor();
   const a = await text();
   assert.match(a, /28%/, '(3 出席 + 2 額外) ÷ 18');
