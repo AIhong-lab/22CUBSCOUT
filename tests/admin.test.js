@@ -955,3 +955,35 @@ test('刪除小狼只有 admin 可以；其他團長只能匿名化（附錄第 
   assert.equal(call(O, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).ok, true);
   assert.ok(!env.rows('小狼名單').some((r) => r[0] === cubId));
 });
+
+test('網站內容（附錄第 49 點）：公開的活動時間與了解幼童軍、只有團長能改、FB 網址要檢查', () => {
+  const { env, call, L, A } = world();
+  const pub = () => env.api({ action: 'siteInfo' });
+  const d0 = pub();
+  assert.equal(d0.ok, true, '不用登入');
+  assert.match(d0.about, /幼童軍/, '還沒設定時有範本');
+  assert.equal(d0.fb, '');
+  call(L, 'meetingSave', { lines: '2020-01-05 很久以前的集會\n2099-03-07 三月團集會\n2099-03-21 露營\n2099-04-04 停辦的集會' });
+  const off = call(L, 'meetingList').meetings.find((m) => m.date === '2099-04-04');
+  call(L, 'meetingSave', { meetingId: off.meetingId, enabled: false });
+  const d1 = pub();
+  assert.deepEqual(d1.meetings.filter((m) => m.date > '2099').map((m) => [m.date, m.name]), [['2099-03-07', '三月團集會'], ['2099-03-21', '露營']]);
+  assert.ok(!d1.meetings.some((m) => m.date === '2020-01-05'), '本月以前的不列');
+  assert.deepEqual(Object.keys(d1.meetings[0]).sort(), ['date', 'name', 'note', 'type'], '只回白名單欄位，不含集會ID 與建立人');
+  assert.ok(!d1.meetings.some((m) => m.date === '2099-04-04'), '停用的不列');
+  // 權限與檢查
+  assert.equal(call(A, 'siteContentSave', { about: 'x' }).code, 'FORBIDDEN');
+  assert.equal(env.api({ action: 'siteContentSave', about: 'x' }).ok, false);
+  assert.match(call(L, 'siteContentSave', { about: '我們是 22 團', activity: '每月第一、三週日', fb: 'http://evil.example/x' }).message, /Facebook/);
+  assert.equal(call(L, 'siteContentSave', { about: '我們是 22 團', activity: '每月第一、三週日 9:00', fb: 'https://www.facebook.com/example22' }).ok, true);
+  const d2 = pub();
+  assert.equal(d2.about, '我們是 22 團');
+  assert.equal(d2.activity, '每月第一、三週日 9:00');
+  assert.equal(d2.fb, 'https://www.facebook.com/example22');
+  assert.equal(call(L, 'siteContentGet').about, '我們是 22 團');
+  // 再存一次是更新同一列，不會越存越多
+  call(L, 'siteContentSave', { about: '改過了', activity: '', fb: '' });
+  assert.equal(env.rows('網站內容').length, 3);
+  assert.equal(pub().about, '改過了');
+  assert.equal(pub().fb, '');
+});

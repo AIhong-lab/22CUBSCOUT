@@ -29,13 +29,14 @@
 - 最高權限鎖在 admin（SPEC 附錄第 46 點）：`ownerId_()`（帳號名稱 admin 的帳號ID）、`Logic.validateAdminChange(admins, actorId, change, ownerId)`、`guardOwner_`（帳號停用／刪除／臨時碼）；`me.isOwner`、`adminList.ownerExists`。沒有 admin 帳號時照舊規則。
 - 後台選單整理（SPEC 附錄第 47 點）：選單顯示「帳號申請」（頁面鍵仍是 `requests`）、「列印紙本」（`print`）；`PAGE_GROUPS`／`mountPageSeg` 把 overview＋attOverview、calendar＋periods、admins＋accounts 各合併成一個選單項目（頁內切換鈕 `#gseg`）。
 - 後台首頁與刪除權限（SPEC 附錄第 48 點）：`ADMIN_PAGES.home` 上半部用 `homeIntroHtml`（和 `renderHome` 共用），後台區塊從 `#adminZone` 開始、快捷按鈕 `#adminQuick`；`privacyExecute` 的 `delete` 只有 admin（`me.ownerExists`／`me.isOwner`）。
+- LINE 圖文選單與公開頁面（SPEC 附錄第 49 點）：分頁「網站內容」（`SHEET.SITE`，鍵 about／activity／fb）、公開 API `siteInfo`（含本月起的啟用集會，白名單 date/name/type/note）、`siteContentGet`／`siteContentSave`（在 TeamApi.js）；前端 `loadSite`、`drawCalendar`（首頁 `#calCard`）、`renderInfo('notices'|'calendar'|'about')`（`INFO_PAGES`，網址 `#notices`、`#calendar`、`#about`）、首頁 `#homeLinks`、設定頁表單 `#fw`。畫面上稱「公佈欄」。圖文選單圖片 `docs/line-richmenu.jpg`（由 scratch 腳本產生，六格都是「連結」動作）。
 - **目前狀態**：階段 0A～5 的程式都已完成並通過模擬測試；**LINE 推播（Flex 訊息格式、multicast）尚未在真實 LINE 環境驗證**，要團長實測。第二期（ROADMAP）未做。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
 - 後端：Google Apps Script Web App（`gas/`，用 clasp 管理），資料庫是 Google 試算表。
 - 登入：家長、服務員、團長都用帳號密碼。註冊改為自己選身分送出申請、團長審核（SPEC 附錄第 31 點）；綁定碼仍可直接註冊；邀請碼已拿掉，只剩 setup() 的第一位團長邀請碼（附錄第 33 點）。密碼加鹽多次雜湊；登入後發隨機憑證，前端存瀏覽器，後端只存雜湊。忘記密碼由團長產生臨時碼。
-- LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。
+- LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。圖文選單是給所有人的六個網頁連結（附錄第 49 點），不經過後端。
 - 前端呼叫 GAS：`fetch` POST，`Content-Type: text/plain`，body 放 JSON（避免 CORS 預檢）。
 - `doPost` 同時接前端 API 與 LINE webhook：網址帶 `key=` 參數且符合 Script Properties 的 webhook 密鑰 → 當 webhook；否則當前端 API（body 帶登入憑證）。
 - 憑證過期或無效時後端回明確錯誤代碼（預定 `SESSION_EXPIRED`），前端清除憑證回登入畫面，登入後回到原畫面。
@@ -88,6 +89,7 @@
 | 小隊輔 | 小隊、帳號ID、設定人、設定時間 |
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
 | 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架） |
+| 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
 | 設定 | 鍵、值、說明 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 

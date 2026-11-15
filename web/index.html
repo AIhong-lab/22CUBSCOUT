@@ -322,6 +322,19 @@
   .stats div { background: #fff; border: 1px solid var(--gray-line); border-radius: 12px; padding: 12px; cursor: pointer; }
   .stats b { display: block; font-size: 24px; line-height: 1.2; }
   .stats span { font-size: 13px; color: var(--gray); }
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .cal-head b { font-size: 18px; }
+  .cal-head button { border: 1px solid var(--gray-line); background: #fff; border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; color: var(--blue); }
+  .cal-head button:disabled { opacity: .35; cursor: default; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+  .cal-grid .wd { font-size: 13px; color: var(--gray); font-weight: 700; padding: 2px 0; }
+  .cal-grid .d { padding: 8px 0; border-radius: 10px; font-size: 15px; min-height: 38px; }
+  .cal-grid .d.has { background: var(--blue); color: #fff; font-weight: 800; }
+  .cal-grid .d.big { background: var(--yellow, #f5b82e); color: #14213d; font-weight: 800; }
+  .cal-grid .d.today { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .cal-legend { font-size: 13px; color: var(--gray); margin: 8px 0 4px; }
+  .cal-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; vertical-align: -1px; margin: 0 4px 0 10px; }
+  .prose { white-space: pre-wrap; line-height: 1.8; margin: 0; }
   .zone-title { margin: 26px 4px 12px; padding-top: 18px; border-top: 2px solid var(--line, #dfe3ec); font-size: 20px; color: var(--blue); }
   .seg { display: flex; background: var(--gray-soft); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
   .seg button { flex: 1; border: 0; background: none; padding: 8px 6px; border-radius: 8px; font-weight: 700; color: var(--gray); cursor: pointer; font-size: 15px; }
@@ -487,17 +500,77 @@ function downloadCsv(filename, rows) {
   a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
   a.download = filename; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
 }
-/** 公告欄（公開資料，不含個資） */
+/** 公佈欄（公開資料，不含個資） */
 let noticeData = null;
 async function loadNotices(force) { if (!noticeData || force) noticeData = (await api('notices')).notices; return noticeData; }
 function noticesHtml(list, max) {
   const show = (list || []).slice(0, max || 30);
   if (!show.length) return '';
-  return `<section class="card" id="noticeCard"><h2>📣 公告欄</h2>${show.map((n) => `<div class="list-row" style="display:block">
+  return `<section class="card" id="noticeCard"><h2>📣 公佈欄</h2>${show.map((n) => `<div class="list-row" style="display:block">
     <div><span class="t">${n.pinned ? '📌 ' : ''}${esc(n.title)}</span> <span class="s">${fmtDate(n.date)}</span></div>
     ${n.meeting ? `<div class="s">📅 ${fmtDate(n.meeting.date)}　${esc(n.meeting.name)}</div>` : ''}
     ${n.content ? `<div style="white-space:pre-wrap">${esc(n.content)}</div>` : ''}</div>`).join('')}</section>`;
 }
+/** 網站內容（公開）：了解幼童軍、活動時間說明、FB 網址、這個月起的集會（SPEC 附錄第 49 點） */
+let siteData = null;
+async function loadSite(force) { if (!siteData || force) siteData = await api('siteInfo'); return siteData; }
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+/** 月曆：ym = 'YYYY-MM'；有集會的日子上色，下面列出當月集會 */
+function drawCalendar(el, site, ym) {
+  const first = site.today.slice(0, 7);
+  ym = ym && ym >= first ? ym : first;
+  const y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+  const days = new Date(y, m, 0).getDate(), lead = new Date(y, m - 1, 1).getDay();
+  const pad = (n) => ('0' + n).slice(-2);
+  const inMonth = site.meetings.filter((x) => x.date.slice(0, 7) === ym);
+  const byDay = {};
+  inMonth.forEach((x) => { const d = +x.date.slice(8); byDay[d] = byDay[d] === '大活動' || x.type === '大活動' ? '大活動' : '一般'; });
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="d"></span>');
+  for (let d = 1; d <= days; d++) {
+    const ds = `${ym}-${pad(d)}`;
+    cells.push(`<span class="d ${byDay[d] ? (byDay[d] === '大活動' ? 'big' : 'has') : ''} ${ds === site.today ? 'today' : ''}">${d}</span>`);
+  }
+  const step = (k) => { const t = new Date(y, m - 1 + k, 1); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}`; };
+  el.innerHTML = `<h2>📅 團集會行事曆</h2>
+    <div class="cal-head"><button data-cal="${step(-1)}" aria-label="上個月" ${ym <= first ? 'disabled' : ''}>‹</button><b>${y} 年 ${m} 月</b><button data-cal="${step(1)}" aria-label="下個月">›</button></div>
+    <div class="cal-grid">${WEEKDAYS.map((w) => `<span class="wd">${w}</span>`).join('')}${cells.join('')}</div>
+    <div class="cal-legend"><i style="background:var(--blue);margin-left:0"></i>團集會<i style="background:var(--yellow,#f5b82e)"></i>大活動</div>
+    ${inMonth.length ? inMonth.map((x) => `<div class="list-row"><span class="grow"><span class="t">${+x.date.slice(5, 7)}/${+x.date.slice(8)}（${WEEKDAYS[new Date(+x.date.slice(0, 4), +x.date.slice(5, 7) - 1, +x.date.slice(8)).getDay()]}）</span>　${esc(x.name)}${x.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${x.note ? `<br><span class="s">${esc(x.note)}</span>` : ''}</span></div>`).join('') : '<p class="muted" style="margin:8px 0 0">這個月沒有排定的集會。</p>'}`;
+  el.querySelectorAll('[data-cal]').forEach((b) => { b.onclick = () => drawCalendar(el, site, b.dataset.cal); });
+}
+/** 公佈欄、活動時間、了解幼童軍：不用登入的三個頁面（LINE 圖文選單會直接連到這裡） */
+const INFO_PAGES = { notices: '📣 公佈欄', calendar: '📅 活動時間', about: '🧭 了解幼童軍' };
+async function renderInfo(kind) {
+  document.getElementById('title').textContent = '🐾 22團幼童軍';
+  setHeader(''); setHash('#' + kind);
+  setTabs(PUBLIC_TABS(), 'home', onPublicTab);
+  scrollTop(); loading();
+  const back = '<button class="back" id="infoBack">← 首頁</button>';
+  try {
+    if (kind === 'notices') {
+      const list = await loadNotices(true);
+      $app.innerHTML = back + (noticesHtml(list, 30) || '<section class="card"><h2>📣 公佈欄</h2><p class="muted">目前沒有公告。</p></section>');
+    } else {
+      const site = await loadSite(true);
+      if (kind === 'calendar') {
+        $app.innerHTML = `${back}${site.activity ? `<section class="card"><h2>🕘 活動時間</h2><p class="prose">${esc(site.activity)}</p></section>` : ''}<section class="card" id="calCard"></section>
+          <p class="muted small center">實際時間以公佈欄的通知為準。</p>`;
+        drawCalendar($('#calCard'), site);
+      } else {
+        $app.innerHTML = `${back}<section class="card"><h2>🧭 了解幼童軍</h2><p class="prose">${esc(site.about)}</p></section>
+          <div class="quick" style="grid-template-columns:repeat(2,1fr)"><button data-info="calendar"><span class="ic">📅</span>活動時間</button>${site.fb ? `<button data-fb="1"><span class="ic">👍</span>22 團 FB</button>` : '<button data-go2="progress"><span class="ic">🗺️</span>進程查詢</button>'}</div>`;
+        const fb = $('[data-fb]'); if (fb) fb.onclick = () => window.open(site.fb, '_blank', 'noopener');
+        const g2 = $('[data-go2]'); if (g2) g2.onclick = () => onPublicTab('progress');
+        $$('[data-info]').forEach((b) => { b.onclick = () => renderInfo(b.dataset.info); });
+      }
+    }
+  } catch (e) {
+    $app.innerHTML = `${back}<section class="card"><div class="msg err">${esc(e.message)}</div></section>`;
+  }
+  $('#infoBack').onclick = () => (state.me ? route() : renderHome());
+}
+
 /** 在 $app 最前面（或指定元素後面）補上公告；載入失敗就不顯示 */
 function mountNotices(max, afterSel) {
   loadNotices().then((list) => {
@@ -872,6 +945,7 @@ async function start() {
   }
   if (h === '#home' || h === '#catalog') return renderHome();
   if (h === '#progress' || h === '#badges') return renderCatalog(h.slice(1));
+  if (INFO_PAGES[h.slice(1)]) return renderInfo(h.slice(1)); // LINE 圖文選單的連結
   if (!store.get('token')) return renderHome(); // 沒登入：先看首頁（SPEC 附錄第 34 點）
   loading();
   try { state.me = await api('me'); }
@@ -1336,6 +1410,8 @@ function homeIntroHtml(third, withLogin) {
       <button data-go="badges"><span class="ic">🎖️</span>技能章查詢</button>
       ${third}
     </div>
+    <div class="chips" id="homeLinks">${Object.keys(INFO_PAGES).map((k) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
+    <section class="card" id="calCard" hidden></section>
     <section class="card">
       <h2>什麼是「進程」？</h2>
       <div class="row-flex" style="justify-content:space-around;margin:4px 0 8px">${LEVELS.map((l) => `<span class="center" style="font-size:30px">${LEVEL_ICON[l]}<br><span class="small" style="font-size:14px;font-weight:700">${lvName(l)}</span></span>`).join('')}</div>
@@ -1359,7 +1435,17 @@ function homeIntroHtml(third, withLogin) {
 }
 function wireHomeIntro() {
   $$('[data-go]').forEach((b) => { b.onclick = () => (b.dataset.go === 'parent' ? document.getElementById('toParent').click() : onPublicTab(b.dataset.go)); });
-  mountNotices(5, '.quick');
+  mountNotices(5, '#homeLinks');
+  $$('#homeLinks [data-info]').forEach((b) => { b.onclick = () => { if (canLeave()) renderInfo(b.dataset.info); }; });
+  loadSite().then((site) => {
+    const c = $('#calCard'); if (!c) return;
+    c.hidden = false; drawCalendar(c, site);
+    const links = $('#homeLinks');
+    if (site.fb && links && !$('#fbLink')) {
+      links.insertAdjacentHTML('beforeend', '<button class="chip" id="fbLink">👍 22 團 FB</button>');
+      $('#fbLink').onclick = () => window.open(site.fb, '_blank', 'noopener');
+    }
+  }).catch(() => {});
   // 技能章數量以實際資料為準（團長可以在項目管理新增技能章）
   loadCatalog().then((d) => {
     const bs = d.units.filter((u) => u.category === '技能章');
@@ -1472,7 +1558,7 @@ const ADMIN_GROUPS = ['每次集會', '名單', '設定', '系統'];
 function adminMoreItems() {
   const L = isLeader();
   return [
-    ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公告欄', true, '每次集會'],
+    ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公佈欄', true, '每次集會'],
     ['requests', '📝', '帳號申請', L, '名單'], ['overview', '📊', '總覽', true, '名單'], ['print', '🖨️', '列印紙本', true, '名單'],
     ['calendar', '📅', '行事曆', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
     ['admins', '👥', '帳號與權限', L, '設定'],
@@ -1711,7 +1797,7 @@ const ADMIN_PAGES = {
     });
   },
 
-  // ───── 公告欄（團長、服務員都能發；不用登入就看得到，所以不要寫孩子的姓名） ─────
+  // ───── 公佈欄（團長、服務員都能發；不用登入就看得到，所以不要寫孩子的姓名） ─────
   async notices() {
     const d = await api('noticeList');
     const form = (n) => `<label>標題</label><input name="title" type="text" maxlength="60" value="${esc(n ? n.title : '')}" required>
@@ -1748,7 +1834,7 @@ const ADMIN_PAGES = {
 
   // ───── 設定（團長，SPEC 7.8） ─────
   async settings() {
-    const d = await api('settingsGet');
+    const [d, site] = await Promise.all([api('settingsGet'), api('siteContentGet')]);
     const field = (x) => {
       const id = 'st-' + d.settings.indexOf(x);
       const input = x.type === 'bool'
@@ -1762,6 +1848,12 @@ const ADMIN_PAGES = {
       <p class="muted small">改完按最下面「儲存」，立即生效。小隊名稱請到「🏕️ 小隊設定」。</p>
       <form id="fs">${d.settings.map(field).join('')}
         <div class="savebar"><button class="btn green" type="submit">💾 儲存設定</button><div class="out"></div></div></form></section>
+      <section class="card"><h2>🌐 網站內容（不用登入就看得到）</h2>
+        <p class="muted small">這三項會出現在網站首頁、「活動時間」與「了解幼童軍」頁，也是 LINE 選單按鈕連到的內容。<b>不要寫孩子的姓名或其他個人資料。</b></p>
+        <form id="fw"><label>了解幼童軍（團的介紹、怎麼加入、聯絡方式）</label><textarea name="about" maxlength="5000" style="min-height:220px">${esc(site.about)}</textarea>
+          <label>活動時間說明（固定的時間與地點，例如「每月第一、三週日 9:00～12:00」）</label><textarea name="activity" maxlength="1000" style="min-height:90px">${esc(site.activity)}</textarea>
+          <label>22 團 FB 粉絲專頁網址</label><input name="fb" type="url" placeholder="https://www.facebook.com/…" value="${esc(site.fb)}">
+          <button class="btn alt" type="submit">儲存網站內容</button><div class="out"></div></form></section>
       <section class="card"><h2>📜 個資說明（家長註冊時看到的內容）</h2>
         <p class="muted small">目前是第 ${esc(d.consent ? d.consent.version : '－')} 版${d.consent && d.consent.effective ? '（' + fmtDate(d.consent.effective) + ' 起）' : ''}。儲存後會變成新的一版，舊版保留；<b>已綁定的家長下次登入要重新同意</b>。</p>
         <form id="fc"><textarea name="content" style="min-height:260px">${esc(d.consent ? d.consent.content : '')}</textarea>
@@ -1771,6 +1863,7 @@ const ADMIN_PAGES = {
     $$('[data-k]').forEach((el) => { orig[el.dataset.k] = el.value; });
     const changes = () => { const c = {}; $$('[data-k]').forEach((el) => { if (el.value.trim() !== orig[el.dataset.k]) c[el.dataset.k] = el.value.trim(); }); return c; };
     leaveGuard = Object.assign(() => !Object.keys(changes()).length || confirm('設定還沒儲存，確定要離開嗎？'), { dirty: () => Object.keys(changes()).length > 0 });
+    bindForm($('#fw'), async (fd, out) => { await api('siteContentSave', { about: fd.get('about'), activity: fd.get('activity'), fb: fd.get('fb') }); siteData = null; msg(out, '已儲存，網站上立即更新。', 'ok'); toast('網站內容已儲存'); });
     bindForm($('#fs'), async (fd, out) => {
       const c = changes();
       if (!Object.keys(c).length) return msg(out, '沒有修改任何設定。', 'info');

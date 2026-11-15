@@ -697,6 +697,24 @@ function seed(env) {
   await page.getByText('已取消請假').waitFor();
   assert.equal(env.rows('出席紀錄').filter((r) => r[1] === kid && r[2] === '請假').length, 0, '取消後沒有請假紀錄');
 
+  // LINE 圖文選單連到的三個公開頁面與首頁月曆（附錄第 49 點）
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#calCard .cal-grid').waitFor();
+  assert.match(await page.locator('#calCard').innerText(), /團集會行事曆[\s\S]*年 \d+ 月/);
+  assert.ok(await page.locator('#calCard .d.today').count() === 1, '月曆標出今天');
+  for (let i = 0; i < 3 && !(await page.locator('#calCard').innerText()).includes('12/6 團集會'); i++) await page.locator('#calCard [data-cal]').last().click();
+  assert.match(await page.locator('#calCard').innerText(), /12\/6（日）[\s\S]*12\/6 團集會/, '月曆下方列出當月集會');
+  await shot('50-home-calendar'); await noHScroll('首頁月曆');
+  await page.locator('#homeLinks [data-info=about]').click();
+  await page.getByText('這是範本').waitFor();
+  assert.equal(new URL(page.url()).hash, '#about');
+  await page.goto('about:blank'); await page.goto(PAGE + '#calendar'); await page.locator('#calCard .cal-grid').waitFor();
+  await shot('51-info-calendar');
+  await page.goto('about:blank'); await page.goto(PAGE + '#notices'); await page.locator('#noticeCard').waitFor();
+  assert.match(await page.locator('#noticeCard').innerText(), /12 月團集會通知/);
+  await page.locator('#infoBack').click();
+  await page.getByText('什麼是「進程」？').waitFor();
+
   // 沒登入的首頁也看得到公告
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#noticeCard').waitFor();

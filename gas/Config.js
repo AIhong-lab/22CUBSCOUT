@@ -35,6 +35,7 @@ var SHEET = {
   SQUAD_STAFF: '小隊輔',
   ROLES: '職務紀錄',
   NOTICES: '公告',
+  SITE: '網站內容',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -67,6 +68,7 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
+HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
@@ -95,6 +97,7 @@ TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
+TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {

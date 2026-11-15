@@ -1132,6 +1132,7 @@ var SHEET = {
   SQUAD_STAFF: '小隊輔',
   ROLES: '職務紀錄',
   NOTICES: '公告',
+  SITE: '網站內容',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -1164,6 +1165,7 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
+HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
@@ -1192,6 +1194,7 @@ TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
+TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -3756,6 +3759,66 @@ function apiParentLeave_(req, who) {
   });
 }
 AUTHED_ACTIONS.parentLeave = apiParentLeave_;
+
+// ───────────── 網站內容：了解幼童軍、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
+
+var SITE_KEYS = ['about', 'activity', 'fb'];
+/** 還沒設定「了解幼童軍」時顯示的範本，請團長在後台改成實際內容 */
+var DEFAULT_ABOUT = [
+  '【這是範本，請團長到後台「系統設定 → 網站內容」改成實際內容】',
+  '',
+  '幼童軍是什麼？',
+  '幼童軍是給國小階段孩子參加的童軍活動。孩子在小隊裡和夥伴一起玩遊戲、學技能、到戶外探索，從「做中學」培養自己動手、照顧別人和團隊合作的習慣。',
+  '',
+  '我們平常做什麼？',
+  '定期舉行團集會，內容包含遊戲、手作、繩結、戶外活動與服務學習；每年另有露營等大活動。',
+  '',
+  '怎麼加入？',
+  '歡迎先來體驗：參加 4 次一般團集會後就可以正式入團。想帶孩子來體驗，請聯絡團長：【請填寫聯絡方式】。'
+].join('\n');
+
+function loadSite_() {
+  var o = {};
+  readRows_(SHEET.SITE).forEach(function (r) { var k = Logic.clean(r[0]); if (SITE_KEYS.indexOf(k) >= 0) o[k] = { value: String(r[1] === undefined || r[1] === null ? '' : r[1]), _row: r._row }; });
+  return o;
+}
+function siteValues_() {
+  var s = loadSite_();
+  return { about: s.about ? s.about.value : DEFAULT_ABOUT, activity: s.activity ? s.activity.value : '', fb: s.fb ? s.fb.value : '' };
+}
+
+/** 公開：了解幼童軍、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
+function apiSiteInfo_() {
+  var today = today_(), from = today.slice(0, 8) + '01';
+  var v = siteValues_();
+  var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
+    .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note }; });
+  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings };
+}
+PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
+
+registerAdmin_('siteContentGet', 'manageSettings', function () { return siteValues_(); });
+
+registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
+  var text = function (v) { return String(v === undefined || v === null ? '' : v).replace(/\r\n/g, '\n').trim(); };
+  var next = { about: text(req.about), activity: text(req.activity), fb: Logic.clean(req.fb) };
+  if (next.about.length > 5000) throw new ApiError(ERR.BAD_INPUT, '「了解幼童軍」最多 5000 字。');
+  if (next.activity.length > 1000) throw new ApiError(ERR.BAD_INPUT, '「活動時間說明」最多 1000 字。');
+  if (next.fb && !/^https:\/\/((www|m)\.)?(facebook\.com|fb\.com|fb\.me)\/[^\s<>"']{1,300}$/.test(next.fb)) throw new ApiError(ERR.BAD_INPUT, 'FB 網址請貼 Facebook 粉絲專頁的網址（https://www.facebook.com/…）。');
+  return withLock_(function () {
+    var cur = loadSite_(), ups = [], adds = [], now = new Date();
+    SITE_KEYS.forEach(function (k) {
+      var row = [k, next[k], who.account.accountId, now];
+      if (cur[k]) { if (cur[k].value !== next[k]) ups.push({ row: cur[k]._row, values: row }); } else adds.push(row);
+    });
+    if (ups.length) updateRows_(SHEET.SITE, ups);
+    if (adds.length) appendRows_(SHEET.SITE, adds);
+    logOp_(who.account.accountId, '修改網站內容', '了解幼童軍／活動時間／FB', '', '');
+    return { changed: ups.length + adds.length };
+  });
+});
+
 
 // ════════════════ ItemsAdmin.js ════════════════
 /**
