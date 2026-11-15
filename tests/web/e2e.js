@@ -366,14 +366,23 @@ function seed(env) {
 
   // 簽核：小隊批次（選二小隊 → 進程・羚羊級 → 兩項）→ 復原
   await tab('sign');
-  await page.locator('#flt').waitFor();
+  // 三步驟：① 小隊 → ② 項目 → ③ 小狼與日期
   await page.locator('#squads .chip[data-s=二小隊]').click();
+  assert.match(await page.locator('#sqInfo').innerText(), /共 2 位小狼/);
+  await page.locator('#next').click();
+  await page.locator('#next').click();
+  assert.match(dialogs[dialogs.length - 1], /請至少選一個項目/, '沒選項目不能往下');
   await page.selectOption('#flt', '進程|羚羊');
   await page.locator('#items input').nth(0).check();
   await page.locator('#items input').nth(1).check();
   assert.match(await page.locator('#sum').innerText(), /2 個項目 × 2 位小狼：將新增 4 筆/);
   assert.match(await page.locator('#items').innerText(), /已完成 0／2 位/, '每個項目顯示已完成幾位');
-  await shot('13-sign');
+  await shot('13-sign'); await noHScroll('簽核第 2 步');
+  await page.locator('#next').click();
+  assert.equal(await page.locator('#cubs input:checked').count(), 2, '預設全選該小隊');
+  await page.locator('#prev').click();
+  assert.equal(await page.locator('#items input:checked').count(), 2, '回上一步保留已選的項目');
+  await page.locator('#next').click();
   await page.locator('#go').click();
   await page.getByText('新增 4 筆、略過 0 筆').waitFor();
   await page.selectOption('#flt', '進程|羚羊');

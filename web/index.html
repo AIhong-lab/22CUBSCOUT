@@ -1797,67 +1797,98 @@ const ADMIN_PAGES = {
   },
 
   // ───── 簽核（小隊批次） ─────
+  // 三步驟：① 選小隊 → ② 選項目 → ③ 選小狼與日期（SPEC 附錄第 44 點）；送出後留在第 ② 步可以接著簽下一批
   async sign(params) {
     const d = await api('signoffData');
-    const st = { squad: params.squad || '全團', items: new Set(), cubs: null, filter: d.recent.length ? 'recent' : '', section: '' };
+    const st = { step: 1, squad: params.squad || '全團', items: new Set(), cubs: null, filter: d.recent.length ? 'recent' : '', section: '', result: '' };
     const doneSet = new Set(d.done);
     const unitsList = [];
     d.items.forEach((i) => { const k = i.category + '|' + i.unit; if (!unitsList.includes(k)) unitsList.push(k); });
     if (!st.filter) st.filter = unitsList[0] || 'recent';
-    $app.innerHTML = `
-      <section class="card"><h2>✅ 簽核</h2>
-        <h3>① 選小隊</h3>${squadChips(d.squads, st.squad)}
-        <h3>② 選項目</h3>
-        <select class="full" id="flt"><option value="recent">⭐ 最近簽過的項目</option>${unitsList.map((k) => { const [c, u] = k.split('|'); return `<option value="${esc(k)}">${c === '進程' ? '進程・' + esc(lvName(u)) : '技能章・' + esc(u)}</option>`; }).join('')}</select>
-        <div id="secs" class="chips"></div><div id="items"></div>
-        <h3>③ 選小狼與日期</h3><div id="cubs"></div>
-        <label>完成日期</label><input type="date" id="date" value="${esc(d.today)}" max="${esc(d.today)}">
-        <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="go">送出簽核</button></div>
-        <div id="result"></div></section>`;
-    const drawItems = () => {
-      let list = st.filter === 'recent' ? d.recent.map((id) => d.items.find((i) => i.id === id)).filter(Boolean) : d.items.filter((i) => i.category + '|' + i.unit === st.filter);
-      const secs = [...new Set(list.map((i) => i.section))].filter((s) => s !== '－');
-      $('#secs').innerHTML = secs.length > 1 ? ['全部'].concat(secs).map((s) => `<button class="chip ${(st.section || '全部') === s ? 'on' : ''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('') : '';
-      if (st.section && st.section !== '全部') list = list.filter((i) => i.section === st.section);
-      const cubsNow = st.cubs ? [...st.cubs] : [];
-      const doneCount = (id) => cubsNow.filter((c) => doneSet.has(c + '|' + id)).length;
-      $('#items').innerHTML = list.length ? list.map((i) => { const dc = doneCount(i.id); return `<label class="check"><input type="checkbox" data-item="${esc(i.id)}" ${st.items.has(i.id) ? 'checked' : ''}><span>${st.filter === 'recent' ? `<span class="s">${esc(i.unit)}${i.section !== '－' ? '・' + esc(i.section) : ''}</span><br>` : ''}${esc(i.text)}<br><span class="s" style="color:${cubsNow.length && dc === cubsNow.length ? 'var(--green-dark)' : 'var(--gray)'}">已完成 ${dc}／${cubsNow.length} 位${cubsNow.length && dc === cubsNow.length ? ' ✅' : ''}</span></span></label>`; }).join('')
-        : `<p class="muted">${st.filter === 'recent' ? '還沒有最近簽過的項目，請從上方選級別或技能章。' : '沒有項目。'}</p>`;
-      $$('#secs .chip').forEach((b) => { b.onclick = () => { st.section = b.dataset.sec; drawItems(); }; });
-      $$('#items input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.items.add(cb.dataset.item) : st.items.delete(cb.dataset.item); drawSum(); }; });
-    };
-    const drawCubs = () => {
-      const list = d.cubs.filter((c) => st.squad === '全團' || c.squad === st.squad);
-      if (!st.cubs) st.cubs = new Set(list.map((c) => c.cubId)); // 預設全選該小隊
-      $('#cubs').innerHTML = list.map((c) => `<label class="check"><input type="checkbox" data-cub="${esc(c.cubId)}" ${st.cubs.has(c.cubId) ? 'checked' : ''}>${esc(c.name)} <span class="s">${esc(c.squad || '')}</span></label>`).join('') || '<p class="muted">沒有小狼。</p>';
-      $$('#cubs input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.cubs.add(cb.dataset.cub) : st.cubs.delete(cb.dataset.cub); drawItems(); drawSum(); }; });
-    };
-    const drawSum = () => {
+    const squadCubs = () => d.cubs.filter((c) => st.squad === '全團' || c.squad === st.squad);
+    const ensureCubs = () => { if (!st.cubs) st.cubs = new Set(squadCubs().map((c) => c.cubId)); };
+    const sumText = () => {
+      ensureCubs();
       let n = 0, skip = 0;
       st.cubs.forEach((c) => st.items.forEach((i) => { doneSet.has(c + '|' + i) ? skip++ : n++; }));
-      $('#sum').textContent = `已選 ${st.items.size} 個項目 × ${st.cubs.size} 位小狼：將新增 ${n} 筆${skip ? `，略過已完成 ${skip} 筆` : ''}`;
+      return `已選 ${st.items.size} 個項目 × ${st.cubs.size} 位小狼：將新增 ${n} 筆${skip ? `，略過已完成 ${skip} 筆` : ''}`;
     };
-    $('#flt').value = st.filter;
-    $('#flt').onchange = () => { st.filter = $('#flt').value; st.section = ''; drawItems(); };
-    onSquad((s) => { st.squad = s; st.cubs = null; drawCubs(); drawItems(); drawSum(); });
-    drawCubs(); drawItems(); drawSum();
-    $('#go').onclick = (ev) => act(ev.target, async () => {
-      if (!st.items.size || !st.cubs.size) return alert('請至少選一個項目和一位小狼。');
-      const r = await api('signoff', { cubIds: [...st.cubs], itemIds: [...st.items], date: $('#date').value });
-      r.batch.forEach((b) => doneSet.add(b.cubId + '|' + b.itemId));
-      st.items.forEach((i) => { if (!d.recent.includes(i)) d.recent.unshift(i); });
-      st.items.clear(); drawItems(); drawSum();
-      $('#result').innerHTML = `<div class="msg ok">✅ 新增 ${r.added} 筆、略過 ${r.skipped} 筆（已完成的不重複寫入）</div>${r.added ? '<button class="btn ghost small" id="undo">↩️ 復原剛才這一批</button>' : ''}`;
-      toast(`簽核完成：新增 ${r.added} 筆`);
-      const u = $('#undo');
-      if (u) u.onclick = (e2) => act(e2.target, async () => {
+    const TITLES = ['', '要簽哪一個小隊？', '這次完成了哪些項目？', '哪些小狼完成了？'];
+    const render = () => {
+      ensureCubs();
+      const head = `<div class="row-flex"><h2 class="grow" style="margin:0">✅ 簽核</h2><span class="muted small">步驟 ${st.step}／3</span></div>
+        <div class="steps">${[1, 2, 3].map((n) => `<i class="${n <= st.step ? 'on' : ''}"></i>`).join('')}</div>
+        <div id="result">${st.result}</div><h3 style="margin-top:0">${TITLES[st.step]}</h3>`;
+      let body = '', bar = '';
+      if (st.step === 1) {
+        body = `${squadChips(d.squads, st.squad)}<p class="muted small" id="sqInfo"></p>`;
+        bar = `<div class="savebar"><button class="btn cta" id="next" style="margin-top:0">下一步：選項目</button></div>`;
+      } else if (st.step === 2) {
+        body = `<p class="muted small">${esc(st.squad)}・照團集會實際完成的內容選，可以跨級。</p>
+          <select class="full" id="flt"><option value="recent">⭐ 最近簽過的項目</option>${unitsList.map((k) => { const [c, u] = k.split('|'); return `<option value="${esc(k)}">${c === '進程' ? '進程・' + esc(lvName(u)) : '技能章・' + esc(u)}</option>`; }).join('')}</select>
+          <div id="secs" class="chips"></div><div id="items"></div>`;
+        bar = `<div class="savebar"><div class="muted small" id="sum"></div><div class="row-flex" style="flex-wrap:nowrap"><button class="btn ghost" id="prev" style="margin-top:6px;flex:0 0 auto;width:auto">‹ 上一步</button><button class="btn cta" id="next" style="margin-top:6px">下一步：選小狼</button></div></div>`;
+      } else {
+        body = `<p class="muted small">預設全選${esc(st.squad)}，沒完成的取消勾選。</p><div id="cubs"></div>
+          <label>完成日期</label><input type="date" id="date" value="${esc(d.today)}" max="${esc(d.today)}">`;
+        bar = `<div class="savebar"><div class="muted small" id="sum"></div><div class="row-flex" style="flex-wrap:nowrap"><button class="btn ghost" id="prev" style="margin-top:6px;flex:0 0 auto;width:auto">‹ 上一步</button><button class="btn cta" id="go" style="margin-top:6px">送出簽核</button></div></div>`;
+      }
+      $app.innerHTML = `<section class="card">${head}${body}${bar}</section>`;
+      const drawSum = () => { const el = $('#sum'); if (el) el.textContent = sumText(); };
+      const pv = $('#prev'); if (pv) pv.onclick = () => { st.step--; st.result = ''; render(); };
+      wireUndo();
+      if (st.step === 1) {
+        const info = () => { $('#sqInfo').textContent = `共 ${squadCubs().length} 位小狼`; };
+        info();
+        onSquad((q) => { st.squad = q; st.cubs = null; info(); });
+        $('#next').onclick = () => { if (!squadCubs().length) return alert('這個小隊沒有小狼。'); st.cubs = null; st.step = 2; st.result = ''; render(); };
+      } else if (st.step === 2) {
+        const drawItems = () => {
+          let list = st.filter === 'recent' ? d.recent.map((id) => d.items.find((i) => i.id === id)).filter(Boolean) : d.items.filter((i) => i.category + '|' + i.unit === st.filter);
+          const secs = [...new Set(list.map((i) => i.section))].filter((x) => x !== '－');
+          $('#secs').innerHTML = secs.length > 1 ? ['全部'].concat(secs).map((x) => `<button class="chip ${(st.section || '全部') === x ? 'on' : ''}" data-sec="${esc(x)}">${esc(x)}</button>`).join('') : '';
+          if (st.section && st.section !== '全部') list = list.filter((i) => i.section === st.section);
+          const cubsNow = [...st.cubs];
+          const doneCount = (id) => cubsNow.filter((c) => doneSet.has(c + '|' + id)).length;
+          $('#items').innerHTML = list.length ? list.map((i) => { const dc = doneCount(i.id); return `<label class="check"><input type="checkbox" data-item="${esc(i.id)}" ${st.items.has(i.id) ? 'checked' : ''}><span>${st.filter === 'recent' ? `<span class="s">${esc(i.unit)}${i.section !== '－' ? '・' + esc(i.section) : ''}</span><br>` : ''}${esc(i.text)}<br><span class="s" style="color:${cubsNow.length && dc === cubsNow.length ? 'var(--green-dark)' : 'var(--gray)'}">已完成 ${dc}／${cubsNow.length} 位${cubsNow.length && dc === cubsNow.length ? ' ✅' : ''}</span></span></label>`; }).join('')
+            : `<p class="muted">${st.filter === 'recent' ? '還沒有最近簽過的項目，請從上方選級別或技能章。' : '沒有項目。'}</p>`;
+          $$('#secs .chip').forEach((b2) => { b2.onclick = () => { st.section = b2.dataset.sec; drawItems(); }; });
+          $$('#items input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.items.add(cb.dataset.item) : st.items.delete(cb.dataset.item); drawSum(); }; });
+        };
+        $('#flt').value = st.filter;
+        $('#flt').onchange = () => { st.filter = $('#flt').value; st.section = ''; drawItems(); };
+        drawItems(); drawSum();
+        $('#next').onclick = () => { if (!st.items.size) return alert('請至少選一個項目。'); st.step = 3; st.result = ''; render(); };
+      } else {
+        $('#cubs').innerHTML = squadCubs().map((c) => `<label class="check"><input type="checkbox" data-cub="${esc(c.cubId)}" ${st.cubs.has(c.cubId) ? 'checked' : ''}>${esc(c.name)} <span class="s">${esc(c.squad || '')}</span></label>`).join('') || '<p class="muted">沒有小狼。</p>';
+        $$('#cubs input').forEach((cb) => { cb.onchange = () => { cb.checked ? st.cubs.add(cb.dataset.cub) : st.cubs.delete(cb.dataset.cub); drawSum(); }; });
+        drawSum();
+        $('#go').onclick = (ev) => act(ev.target, async () => {
+          if (!st.items.size || !st.cubs.size) return alert('請至少選一個項目和一位小狼。');
+          const r = await api('signoff', { cubIds: [...st.cubs], itemIds: [...st.items], date: $('#date').value });
+          r.batch.forEach((x) => doneSet.add(x.cubId + '|' + x.itemId));
+          st.items.forEach((i) => { if (!d.recent.includes(i)) d.recent.unshift(i); });
+          st.items.clear();
+          st.lastBatch = r.added ? r : null;
+          st.result = `<div class="msg ok">✅ 新增 ${r.added} 筆、略過 ${r.skipped} 筆（已完成的不重複寫入）。可以接著簽下一批。</div>${r.added ? '<button class="btn ghost small" id="undo">↩️ 復原剛才這一批</button>' : ''}`;
+          toast(`簽核完成：新增 ${r.added} 筆`);
+          st.step = 2; render(); scrollTop();
+        });
+      }
+    };
+    const wireUndo = () => {
+      const u = $('#undo'), r = st.lastBatch;
+      if (!u || !r) return;
+      u.onclick = (e2) => act(e2.target, async () => {
         if (!confirm(`確定要復原剛才的 ${r.added} 筆簽核嗎？`)) return;
         const x = await api('signoffRevoke', { entries: r.batch });
-        r.batch.forEach((b) => doneSet.delete(b.cubId + '|' + b.itemId));
-        $('#result').innerHTML = `<div class="msg info">已復原 ${x.removed} 筆。</div>`;
-        drawSum();
+        r.batch.forEach((y) => doneSet.delete(y.cubId + '|' + y.itemId));
+        st.lastBatch = null;
+        st.result = `<div class="msg info">已復原 ${x.removed} 筆。</div>`;
+        render();
       });
-    });
+    };
+    render();
   },
 
   // ───── 小狼名單 ─────
