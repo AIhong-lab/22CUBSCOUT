@@ -149,6 +149,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 `SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）、`BACKUP_FOLDER_ID`（setup 自動建立）；選用：`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
 
 ## 維護守則（SPEC 第十四節，必須遵守）
+- **開發紀錄白板**（2026-11-15 團長要求）：每次完成新的修改或決議後，除了更新 SPEC／CHANGELOG，也要把重點加到團長的白板 https://claude.ai/artifact/L3KxAvGf868X5VzEnUfcVm （Whiteboard 類型，用 ArtifactData 寫入 `elements/<id>`，先讀 `board/meta` 與現有元素再新增，不重建）：在「這次對話做了什麼」接著加一個方塊（編號續編），並同步更新「接下來要你做」「還沒在真實環境驗證」兩區。不放任何真實姓名。
 - 改任何功能前先讀 CLAUDE.md、docs/SPEC.md 與相關檔案；改完同步更新 SPEC.md、CLAUDE.md 與 CHANGELOG.md。
 - 項目ID 一經產生永不更改、永不重用。
 - 不得刪除或重排試算表既有欄位；要加欄位只能加在最右邊，並更新 setup()。
