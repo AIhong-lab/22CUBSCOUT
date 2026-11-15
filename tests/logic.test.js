@@ -328,8 +328,8 @@ test('同意版本過期判定', () => {
 // ───── 權限 ─────
 
 test('角色權限矩陣', () => {
-  const leaderOnly = ['manageCubs', 'manageCalendar', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff', 'reviewRequests'];
-  const both = ['signoff', 'attendance', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine'];
+  const leaderOnly = ['manageCubs', 'manageCalendar', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff', 'reviewRequests', 'manageSquadStaff', 'manageRoles'];
+  const both = ['signoff', 'attendance', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine', 'postNotice'];
   for (const a of leaderOnly) {
     assert.equal(L.can('團長', a), true, a);
     assert.equal(L.can('服務員', a), false, a);
@@ -405,7 +405,7 @@ function privacyData() {
 test('完全刪除涵蓋所有相關分頁', () => {
   const plan = L.planPrivacy(privacyData(), 'C1', 'delete');
   assert.equal(plan.ok, true);
-  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2], '出席紀錄': [2, 4], '額外出席': [2], '註冊申請': [2] });
+  assert.deepEqual(plan.deleteRows, { '小狼名單': [2], '綁定紀錄': [2, 4], '完成紀錄': [2, 4], '頒章紀錄': [2], '通知紀錄': [2], '出席紀錄': [2, 4], '額外出席': [2], '註冊申請': [2], '職務紀錄': [] });
   assert.deepEqual(Object.keys(plan.deleteRows).sort(), Object.keys(L.CUB_ID_COLUMNS).sort());
   assert.equal(plan.updateRows['操作日誌'].length, 1);
   const v = plan.updateRows['操作日誌'][0].values;

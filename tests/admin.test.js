@@ -780,3 +780,110 @@ test('註冊審核可以直接核准為體驗者', () => {
   assert.equal(v.cub.status, '體驗');
   assert.deepEqual([v.trial.count, v.trial.need], [0, 4]);
 });
+
+// ═════ 小隊輔、正副小隊長、公告欄、匯入、家長請假、升團（SPEC 附錄第 45 點） ═════
+test('小隊輔：團長指定、me 帶出自己的小隊、家長看得到姓名、小隊改名與刪除會同步', () => {
+  const { env, call, L, A, P, cubId } = world();
+  const ids = Object.fromEntries(call(L, 'squadList').admins.map((a) => [a.name, a.accountId]));
+  assert.equal(call(A, 'squadStaffSave', { squad: '一小隊', accountIds: [ids['陳服務員']] }).code, 'FORBIDDEN');
+  assert.match(call(L, 'squadStaffSave', { squad: '一小隊', accountIds: ['U不存在'] }).message, /只能選團長或服務員/);
+  assert.equal(call(L, 'squadStaffSave', { squad: '一小隊', accountIds: [ids['陳服務員'], ids['陳服務員']] }).count, 1);
+  assert.deepEqual([...call(A, 'me').mySquads], ['一小隊']);
+  assert.deepEqual([...call(L, 'me').mySquads], []);
+  assert.deepEqual(call(L, 'squadList').squads.find((x) => x.name === '一小隊').staff.map((x) => x.name), ['陳服務員']);
+  const pv = call(P, 'cubDetail', { cubId });
+  assert.deepEqual([...pv.cub.squadStaff], ['陳服務員']);
+  assert.ok(!JSON.stringify(pv).includes(ids['陳服務員']), '家長端不含帳號ID');
+  call(L, 'squadSave', { type: 'rename', name: '一小隊', newName: '黑豹小隊' });
+  assert.deepEqual([...call(A, 'me').mySquads], ['黑豹小隊']);
+});
+
+test('正副小隊長：狼級以上才能擔任、每小隊各一位（換人先確認）、任期紀錄、換小隊或離團自動卸任', () => {
+  const { env, call, L, A, cubId } = world();
+  assert.equal(call(A, 'cubRoleSave', { cubId, role: '小隊長' }).code, 'FORBIDDEN');
+  assert.match(call(L, 'cubRoleSave', { cubId, role: '小隊長' }).message, /狼級以上才能擔任/);
+  call(L, 'backfill', { cubId, unit: '狼', date: '2026-01-01', includeLower: true });
+  assert.equal(call(L, 'cubRoleSave', { cubId, role: '小隊長', date: '2026-09-01' }).changed, 1);
+  assert.equal(env.rows('小狼名單').find((r) => r[0] === cubId)[10], '小隊長');
+  // 同小隊第二位狼級小狼要當小隊長 → 先確認，確定後原本那位卸任
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '一小隊', joinDate: '2025-03-01' }).cubId;
+  call(L, 'backfill', { cubId: c2, unit: '狼', date: '2026-01-01', includeLower: true });
+  const ask = call(L, 'cubRoleSave', { cubId: c2, role: '小隊長', date: '2026-11-01' });
+  assert.equal(ask.needConfirm, true);
+  assert.match(ask.warnings[0], /目前是 測試小狼甲/);
+  call(L, 'cubRoleSave', { cubId: c2, role: '小隊長', date: '2026-11-01', confirm: true });
+  assert.equal(env.rows('小狼名單').find((r) => r[0] === cubId)[10], '');
+  const d1 = call(L, 'cubAdminDetail', { cubId });
+  assert.deepEqual(d1.roles.map((x) => [x.role, x.start, x.end]), [['小隊長', '2026-09-01', '2026-11-01']], '任期有起訖');
+  assert.equal(call(L, 'cubAdminDetail', { cubId: c2 }).cub.role, '小隊長');
+  call(L, 'cubRoleSave', { cubId, role: '副小隊長' });
+  // 換小隊 → 自動卸任
+  call(L, 'cubBatchSave', { changes: [{ cubId, squad: '二小隊' }] });
+  assert.equal(env.rows('小狼名單').find((r) => r[0] === cubId)[10], '');
+  assert.ok(call(L, 'cubAdminDetail', { cubId }).roles.every((x) => x.end), '任期都已結束');
+  // 升團 → 卸任、狀態「升團」
+  assert.equal(call(L, 'cubLeave', { cubId: c2, leftDate: '2026-11-10', reason: '升團' }).status, '升團');
+  const g = env.rows('小狼名單').find((r) => r[0] === c2);
+  assert.deepEqual([g[7], g[10]], ['升團', '']);
+  assert.ok(!call(L, 'signoffData').cubs.some((c) => c.cubId === c2), '升團後不在簽核名單');
+});
+
+test('公告欄：團長與服務員可發、不用登入就看得到、置頂在前、下架不顯示、不含帳號ID', () => {
+  const { env, call, L, A, P } = world();
+  assert.equal(call(P, 'noticeSave', { title: 'x', content: 'y' }).code, 'FORBIDDEN');
+  call(L, 'meetingSave', { lines: '2026-12-06 團集會' });
+  const m = call(L, 'noticeList').meetings[0];
+  const n1 = call(A, 'noticeSave', { title: '12/6 團集會通知', content: '請穿制服、帶水壺', meetingId: m.meetingId });
+  env.advance(1000);
+  const n2 = call(L, 'noticeSave', { title: '一般公告', content: '內容' });
+  env.advance(1000);
+  call(L, 'noticeSave', { title: '重要：場地更改', content: '改到活動中心', pinned: true });
+  const pub = env.api({ action: 'notices' });
+  assert.equal(pub.ok, true);
+  assert.deepEqual(pub.notices.map((x) => x.title), ['重要：場地更改', '一般公告', '12/6 團集會通知']);
+  assert.deepEqual(pub.notices[2].meeting, { date: '2026-12-06', name: '團集會' });
+  assert.deepEqual(Object.keys(pub.notices[0]).sort(), ['content', 'date', 'id', 'meeting', 'pinned', 'title']);
+  assert.ok(!/U[A-Z2-9]{8}/.test(JSON.stringify(pub)), '公開資料不含帳號ID');
+  call(L, 'noticeSave', { id: n2.id, title: '一般公告', content: '內容', visible: false });
+  assert.equal(env.api({ action: 'notices' }).notices.length, 2);
+  assert.equal(call(L, 'noticeList').notices.length, 3, '後台看得到下架的');
+  assert.match(call(L, 'noticeSave', { title: '', content: 'x' }).message, /標題/);
+  assert.ok(n1.id);
+});
+
+test('批次匯入名單：全部正確才寫入、同名先確認、每位都有綁定碼', () => {
+  const { env, call, L, A } = world();
+  assert.equal(call(A, 'cubImport', { lines: '測試小狼丙' }).code, 'FORBIDDEN');
+  const bad = call(L, 'cubImport', { lines: '測試小狼丙 一小隊 2025-09-01\n測試小狼丁 不存在小隊\n測試小狼戊 2099-01-01' });
+  assert.match(bad.message, /第 2 行[\s\S]*第 3 行/);
+  assert.equal(env.rows('小狼名單').length, 1, '有錯整批不寫');
+  const dup = call(L, 'cubImport', { lines: '測試小狼甲 一小隊' });
+  assert.equal(dup.needConfirm, true);
+  const r = call(L, 'cubImport', { lines: '測試小狼丙 一小隊 2025/9/1\n測試小狼丁,二小隊\n測試小狼戊' });
+  assert.equal(r.added, 3, JSON.stringify(r));
+  const rows = env.rows('小狼名單');
+  assert.deepEqual(rows.find((x) => x[1] === '測試小狼丙').slice(2, 4), ['一小隊', '2025-09-01']);
+  assert.equal(rows.find((x) => x[1] === '測試小狼丁')[2], '二小隊');
+  assert.equal(new Set(rows.map((x) => x[5])).size, rows.length, '綁定碼不重複');
+});
+
+test('家長線上請假：只能幫自己的孩子、只能請未來的集會、已點名出席不能改、可取消；點名頁看得到', () => {
+  const { env, call, L, A, P, cubId } = world();
+  call(L, 'meetingSave', { lines: '2026-11-01 團集會\n2026-11-22 團集會\n2026-11-29 團集會' });
+  const up = call(P, 'cubDetail', { cubId }).attendance.upcoming;
+  assert.deepEqual(up.map((m) => [m.date, m.leave]), [['2026-11-22', false], ['2026-11-29', false]]);
+  assert.equal(call(P, 'parentLeave', { cubId, meetingId: up[0].meetingId }).leave, true);
+  assert.equal(call(P, 'cubDetail', { cubId }).attendance.upcoming[0].leave, true);
+  assert.equal(call(A, 'attendanceSheet', { meetingId: up[0].meetingId }).cubs.find((c) => c.cubId === cubId).status, '請假', '點名時直接帶出請假');
+  assert.equal(call(P, 'parentLeave', { cubId, meetingId: up[0].meetingId, leave: false }).leave, false);
+  assert.equal(env.rows('出席紀錄').length, 0);
+  // 不是自己的孩子
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '二小隊', joinDate: '2025-09-01' }).cubId;
+  assert.equal(call(P, 'parentLeave', { cubId: c2, meetingId: up[0].meetingId }).code, 'NOT_FOUND');
+  // 過去的集會、已點名出席
+  const past = call(L, 'meetingList').meetings.find((m) => m.date === '2026-11-01');
+  assert.match(call(P, 'parentLeave', { cubId, meetingId: past.meetingId }).message, /已經過了/);
+  call(A, 'attendanceSave', { meetingId: up[1].meetingId, marks: { [cubId]: '出席' } });
+  assert.match(call(P, 'parentLeave', { cubId, meetingId: up[1].meetingId }).message, /已經點名為出席/);
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '家長請假'));
+});

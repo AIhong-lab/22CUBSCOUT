@@ -385,6 +385,11 @@ var Logic = (function () {
   // ───────────── 體驗者（SPEC 附錄第 40 點） ─────────────
 
   var TRIAL = '體驗';
+  /** 升上童軍團（畢業）：和中途離團分開記（SPEC 附錄第 45 點） */
+  var GRADUATED = '升團';
+  /** 正副小隊長：狼級以上才能擔任 */
+  var CUB_ROLES = ['小隊長', '副小隊長'];
+  var ROLE_LEVELS = ['狼', '鹿', '豹'];
   var MEETING_TYPES = ['一般', '大活動'];
 
   /**
@@ -845,7 +850,10 @@ var Logic = (function () {
     manageSettings: [ROLE.LEADER],
     privacy: [ROLE.LEADER],
     backup: [ROLE.LEADER],
-    reviewRequests: [ROLE.LEADER]
+    reviewRequests: [ROLE.LEADER],
+    manageSquadStaff: [ROLE.LEADER],
+    manageRoles: [ROLE.LEADER],
+    postNotice: [ROLE.LEADER, ROLE.ASSISTANT]
   };
 
   function can(role, action) {
@@ -917,7 +925,8 @@ var Logic = (function () {
     '通知紀錄': 0,
     '出席紀錄': 1,
     '額外出席': 1,
-    '註冊申請': 8
+    '註冊申請': 8,
+    '職務紀錄': 0
   };
 
   /**
@@ -987,7 +996,7 @@ var Logic = (function () {
   function overdueForPrivacy(cubs, days, today) {
     if (!days) return [];
     return (cubs || []).filter(function (c) {
-      if (c.status !== '離團' || !isDateStr(c.leftDate)) return false;
+      if ((c.status !== '離團' && c.status !== GRADUATED) || !isDateStr(c.leftDate)) return false;
       var due = new Date(Date.parse(c.leftDate + 'T00:00:00Z') + days * 86400000).toISOString().slice(0, 10);
       return today >= due;
     });
@@ -1059,7 +1068,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,

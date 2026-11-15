@@ -31,11 +31,11 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   const env = loadGas();
   const r = env.ctx.setup();
   const names = Object.values(env.ctx.SHEET);
-  assert.equal(names.length, 21);
+  assert.equal(names.length, 24);
   // 只顯示團長要編輯的 5 個分頁，排最前面；其他系統分頁隱藏
   const shown = env.ctx.ss_().getSheets().filter((x) => !x.isSheetHidden()).map((x) => x.getName());
   assert.deepEqual(shown, ['項目總表', '進程細項', '級別與章說明', '設定', '告知同意內容']);
-  assert.equal(r.hidden, 16);
+  assert.equal(r.hidden, 19);
   for (const n of names) {
     assert.ok(env.sheet(n), '缺分頁 ' + n);
     assert.deepEqual(env.sheet(n).getRange(1, 1, 1, env.ctx.HEADERS[n].length).getValues()[0], [...env.ctx.HEADERS[n]]);
@@ -185,7 +185,7 @@ test('查詢：只能看自己綁定的小狼；回傳欄位採白名單', () =>
   assert.equal(env.api({ action: 'cubDetail', token: leaderToken, cubId: 'C1' }).code, 'NOT_FOUND', '管理員的家長畫面也只看自己綁定的');
   const d = env.api({ action: 'cubDetail', token, cubId: 'C1' });
   assert.equal(d.ok, true);
-  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'squad', 'status', 'tenure', 'trialStart']);
+  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'role', 'squad', 'squadStaff', 'status', 'tenure', 'trialStart']);
   assert.equal(d.cub.joinDate, '2025-09-01');
   assert.equal(d.cub.tenure, '1 年 2 個月');
   assert.equal(d.nextChallenge.type, 'start');
@@ -410,7 +410,7 @@ test('分頁顯示切換：顯示全部再收起，只動顯示狀態不動資�
   env.ctx.ss_().insertSheet('團長自己的筆記');
   env.ctx.organizeSheets_(false);
   assert.equal(env.ctx.ss_().getSheets().filter((x) => x.isSheetHidden()).length, 0);
-  assert.equal(env.ctx.organizeSheets_(true), 16);
+  assert.equal(env.ctx.organizeSheets_(true), 19);
   assert.equal(env.sheet('團長自己的筆記').isSheetHidden(), false);
   assert.equal(JSON.stringify(env.rows('帳號')), before);
   // 隱藏中的分頁照常讀寫（系統功能不受影響）

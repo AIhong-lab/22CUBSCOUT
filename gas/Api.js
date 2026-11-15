@@ -425,6 +425,7 @@ function apiMe_(req, who) {
     role: who.admin ? who.admin.role : null,
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
+    mySquads: who.admin ? squadsOfStaff_(who.account.accountId) : [],
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
     requests: (function () {
@@ -498,7 +499,8 @@ function buildCubView_(cub, today) {
   var since = cub.trialStart && (!cub.joinDate || cub.trialStart < cub.joinDate) ? cub.trialStart : cub.joinDate;
   var inTeam = meetings.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
   var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-  var upcoming = inTeam.filter(function (m) { return m.date > today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 5);
+  // 今天（含）以後的集會：家長可以先請假
+  var upcoming = inTeam.filter(function (m) { return m.date >= today && statusOf[m.meetingId] !== '出席'; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
   var period = Logic.periodOf(loadPeriods_(), today);
   var rate = null;
   if (period) {
@@ -511,7 +513,8 @@ function buildCubView_(cub, today) {
   return {
     cub: {
       cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate,
-      tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart
+      tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart,
+      role: cub.role, squadStaff: squadStaffNames_(cub.squad)
     },
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, settings['體驗所需出席次數']) : null,
     nextChallenge: (function (n) {
@@ -521,7 +524,7 @@ function buildCubView_(cub, today) {
     units: unitViews,
     attendance: {
       meetings: past.map(function (m) { return { date: m.date, name: m.name, status: statusOf[m.meetingId] || '－' }; }),
-      upcoming: upcoming.map(function (m) { return { date: m.date, name: m.name }; }),
+      upcoming: upcoming.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, note: m.note, leave: statusOf[m.meetingId] === '請假' }; }),
       counts: Logic.attendanceCounts(attRecords),
       rate: rate
     }

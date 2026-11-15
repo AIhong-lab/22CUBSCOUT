@@ -125,7 +125,7 @@ registerAdmin_('cubList', 'viewRoster', function (req, who) {
   var bindCount = {};
   loadBindings_().forEach(function (b) { bindCount[b.cubId] = (bindCount[b.cubId] || 0) + 1; });
   var cubs = loadCubs_().map(function (c) {
-    var o = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, level: c.level, status: c.status, leftDate: c.leftDate };
+    var o = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, level: c.level, status: c.status, leftDate: c.leftDate, role: c.role };
     if (leader) { o.code = c.code; o.codeUsesLeft = c.codeUsesLeft; o.bindCount = bindCount[c.cubId] || 0; }
     return o;
   });
@@ -161,6 +161,7 @@ registerAdmin_('cubSave', 'manageCubs', function (req, who) {
       var cub = findCub_(req.cubId);
       var row = cubRow_(cub);
       var before = [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／');
+      if (Logic.clean(row[2]) !== squad) endRoleInRow_(cub, row, today_());
       row[1] = name; row[2] = squad;
       if (trialCub) row[9] = trialStart; else row[3] = joinDate;
       updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
@@ -228,6 +229,7 @@ registerAdmin_('cubBatchSave', 'manageCubs', function (req, who) {
       if (ch.squad !== undefined) {
         var q = Logic.clean(ch.squad);
         if (q && squads.indexOf(q) < 0 && q !== cub.squad) { errors.push(cub.name + '：「' + q + '」不在小隊清單中'); return; }
+        if (q !== cub.squad) endRoleInRow_(cub, row, today_());
         row[2] = q;
       }
       if (ch.joinDate !== undefined && cub.status !== Logic.TRIAL) {
@@ -252,11 +254,14 @@ registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
   return withLock_(function () {
     var cub = findCub_(req.cubId);
     if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '這位小狼目前不是在團狀態。');
+    // reason='升團'：升上童軍團（畢業），和中途離團分開統計
+    var status = Logic.clean(req.reason) === Logic.GRADUATED && cub.status === '在團' ? Logic.GRADUATED : '離團';
     var row = cubRow_(cub);
-    row[5] = ''; row[6] = 0; row[7] = '離團'; row[8] = d; // 綁定碼立即失效
+    endRoleInRow_(cub, row, d);
+    row[5] = ''; row[6] = 0; row[7] = status; row[8] = d; // 綁定碼立即失效
     updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-    logOp_(who.account.accountId, '標記離團', cub.cubId, cub.status, '離團 ' + d);
-    return {};
+    logOp_(who.account.accountId, status === Logic.GRADUATED ? '標記升團' : '標記離團', cub.cubId, cub.status, status + ' ' + d);
+    return { status: status };
   });
 });
 
@@ -374,7 +379,8 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
     rate.period = period.name;
   }
   return {
-    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart },
+    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: Logic.ROLE_LEVELS.indexOf(cub.level) >= 0, squadStaff: squadStaffNames_(cub.squad) },
+    roles: roleHistory_(cub.cubId),
     trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, ctx.settings['體驗所需出席次數']) : null,
     units: p.units.map(function (u) {
       var info = units[u.category + '|' + u.unit] || {};
@@ -942,7 +948,7 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
 function cubsOnDate_(date, type) {
   return loadCubs_().filter(function (c) {
     if (c.status === '已匿名') return false;
-    if (c.status === '離團' && c.leftDate && c.leftDate < date) return false;
+    if ((c.status === '離團' || c.status === Logic.GRADUATED) && c.leftDate && c.leftDate < date) return false;
     if (c.joinDate && c.joinDate <= date) return true;
     // 體驗者（含已轉入團者的體驗期間）：只參加「一般」團集會
     return !!(c.trialStart && c.trialStart <= date && (type || '一般') === '一般');
@@ -1140,8 +1146,13 @@ registerAdmin_('squadList', 'viewRoster', function () {
   loadCubs_().forEach(function (c) { if (c.status === '在團' && c.squad) count[c.squad] = (count[c.squad] || 0) + 1; });
   var list = loadSettings_().values['小隊清單'];
   var extra = Object.keys(count).filter(function (k) { return list.indexOf(k) < 0; });
+  var staff = loadSquadStaff_(), names = adminNames_();
   return {
-    squads: list.map(function (n) { return { name: n, count: count[n] || 0 }; }),
+    squads: list.map(function (n) {
+      var mine = staff.filter(function (x) { return x.squad === n && names[x.accountId]; });
+      return { name: n, count: count[n] || 0, staff: mine.map(function (x) { return { accountId: x.accountId, name: names[x.accountId] }; }) };
+    }),
+    admins: loadAdmins_().map(function (a) { return { accountId: a.accountId, name: a.name, role: a.role }; }),
     notInList: extra.map(function (n) { return { name: n, count: count[n] }; })
   };
 });
@@ -1169,6 +1180,12 @@ registerAdmin_('squadSave', 'manageCubs', function (req, who) {
       });
       updateRows_(SHEET.CUBS, ups);
       moved = ups.length;
+      var st = readRows_(SHEET.SQUAD_STAFF).filter(function (x) { return Logic.clean(x[0]) === from; });
+      if (st.length) updateRows_(SHEET.SQUAD_STAFF, st.map(function (x) { return { row: x._row, values: [to, x[1], x[2], x[3]] }; }));
+    }
+    if (req.type === 'remove') {
+      var gone = loadSquadStaff_().filter(function (x) { return x.squad === Logic.clean(req.name); });
+      if (gone.length) deleteRows_(SHEET.SQUAD_STAFF, gone.map(function (x) { return x._row; }));
     }
     logOp_(who.account.accountId, '小隊設定', Logic.clean(req.type), cur.join('、'), r.list.join('、') + (moved ? '（更新 ' + moved + ' 位小狼）' : ''));
     return { squads: r.list, moved: moved };

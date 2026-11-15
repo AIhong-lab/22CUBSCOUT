@@ -32,6 +32,9 @@ var SHEET = {
   FAILURES: '失敗紀錄',
   CONSENT: '告知同意內容',
   REQUESTS: '註冊申請',
+  SQUAD_STAFF: '小隊輔',
+  ROLES: '職務紀錄',
+  NOTICES: '公告',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -44,7 +47,7 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
 HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本'];
@@ -62,6 +65,9 @@ HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備�
 HEADERS[SHEET.NOTIFY] = ['小狼ID', '級別或章名', '通知類型', '通知時間'];
 HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
+HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
+HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
+HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
@@ -86,6 +92,9 @@ TEXT_COLUMNS[SHEET.EXTRA] = [2];
 TEXT_COLUMNS[SHEET.NOTIFY] = [1];
 TEXT_COLUMNS[SHEET.CONSENT] = [3];
 TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
+TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
+TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
