@@ -1117,6 +1117,7 @@ async function renderMine() {
     await api('requestChildren', { childNames: kids, consentVersion: consent ? consent.version : undefined });
     state.me = await api('me');
     toast('已送出申請，等待團長審核');
+    if (state.mode === 'admin') return goAdmin('mine');
     renderParent(true);
   });
   bindForm($('#fb'), async (fd, out) => {
@@ -1325,7 +1326,7 @@ function adminMoreItems() {
   return [
     ['requests', '📝', '註冊審核', L], ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
     ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['squads', '🏕️', '小隊設定', L], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
-    ['items', '📝', '項目管理', L], ['settings', '⚙️', '設定', L], ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '公開查詢頁', true],
+    ['items', '📝', '項目管理', L], ['settings', '⚙️', '設定', L], ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['mine', '👤', '我的帳號（改密碼）', true], ['pub', '📖', '公開查詢頁', true],
   ].filter((x) => x[3]);
 }
 const isWide = () => !!(window.matchMedia && matchMedia('(min-width: 1000px)').matches);
@@ -1523,6 +1524,13 @@ const ADMIN_PAGES = {
         });
       };
     });
+  },
+
+  // ───── 我的帳號（改密碼、改稱呼；管理員在後台也找得到） ─────
+  async mine() {
+    await renderMine();
+    $app.insertAdjacentHTML('afterbegin', backBtn());
+    wireBack();
   },
 
   // ───── 設定（團長，SPEC 7.8） ─────

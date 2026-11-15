@@ -396,6 +396,18 @@ function seed(env) {
   assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
   await shot('14-overview');
 
+  // ═════ 後台也能改密碼（修正：原本只有家長畫面的「我的」才有） ═════
+  await tab('more');
+  await page.locator('.menu-grid button[data-p=mine]').click();
+  await page.getByText('🔒 修改密碼').click();
+  await page.fill('#fp input[name=oldPassword]', 'leaderpass1');
+  await page.fill('#fp input[name=newPassword]', 'leaderpass2'); await page.fill('#fp input[name=newPassword2]', 'leaderpass2');
+  await page.click('#fp button[type=submit]');
+  await page.getByText('密碼已修改').waitFor();
+  assert.equal(env.api({ action: 'login', username: 'leader01', password: 'leaderpass2' }).ok, true);
+  await page.locator('[data-back]').click();
+  await page.locator('.menu-grid').waitFor();
+
   // ═════ 名單直接編輯：表格裡改小隊，一次儲存 ═════
   await tab('cubs');
   await page.locator('#editMode').click();
@@ -538,7 +550,7 @@ function seed(env) {
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
   await tab('login');
-  await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
+  await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass2');
   await page.click('button[type=submit]');
   await page.locator('#toReq').click();
   await page.locator('[data-req]').first().waitFor();
