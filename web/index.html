@@ -322,6 +322,7 @@
   .stats div { background: #fff; border: 1px solid var(--gray-line); border-radius: 12px; padding: 12px; cursor: pointer; }
   .stats b { display: block; font-size: 24px; line-height: 1.2; }
   .stats span { font-size: 13px; color: var(--gray); }
+  .zone-title { margin: 26px 4px 12px; padding-top: 18px; border-top: 2px solid var(--line, #dfe3ec); font-size: 20px; color: var(--blue); }
   .seg { display: flex; background: var(--gray-soft); border-radius: 10px; padding: 3px; margin-bottom: 14px; }
   .seg button { flex: 1; border: 0; background: none; padding: 8px 6px; border-radius: 8px; font-weight: 700; color: var(--gray); cursor: pointer; font-size: 15px; }
   .seg button.on { background: #fff; color: var(--blue); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
@@ -1322,13 +1323,18 @@ function renderHome() {
   setHeader(''); setHash('#home');
   setTabs(PUBLIC_TABS(), 'home', onPublicTab);
   scrollTop();
-  $app.innerHTML = `
+  $app.innerHTML = homeIntroHtml(`<button class="pri" data-go="login"><span class="ic">🔑</span>${state.me ? '回到我的頁面' : '登入／註冊'}</button>`, true);
+  wireHomeIntro();
+}
+/** 網站首頁的內容（訪客與管理員共用）。third：第三個入口按鈕；withLogin：是否顯示「怎麼登入」 */
+function homeIntroHtml(third, withLogin) {
+  return `
     <section class="card"><h2 style="font-size:22px;margin-bottom:4px">22 團幼童軍　進程與技能章</h2>
       <p class="muted" style="margin:0">查每一級要完成的任務、可以挑戰的技能章；家長登入後可以看孩子的進度。</p></section>
     <div class="quick" style="grid-template-columns:repeat(3,1fr)">
       <button data-go="progress"><span class="ic">🗺️</span>進程查詢</button>
       <button data-go="badges"><span class="ic">🎖️</span>技能章查詢</button>
-      <button class="pri" data-go="login"><span class="ic">🔑</span>${state.me ? '回到我的頁面' : '登入／註冊'}</button>
+      ${third}
     </div>
     <section class="card">
       <h2>什麼是「進程」？</h2>
@@ -1345,12 +1351,14 @@ function renderHome() {
       <h2>什麼是「技能章」？</h2>
       <p style="margin:0">依興趣與專長挑戰的徽章，共分 <b>3 類 <span id="badgeTotal">26</span> 個</b>（${['服務類', '健身類', '技巧類'].map((g, i) => `${g} <span data-gc="${g}">${[8, 9, 9][i]}</span>`).join('、')}）。完成合格標準並經評核，就能拿到那一個章。</p>
     </section>
-    <section class="card">
+    ${withLogin ? `<section class="card">
       <h2>怎麼登入？</h2>
       <p class="small" style="margin:0">家長、團長、服務員都從這裡登入，系統會依帳號自動帶你到對的地方：家長看到自己孩子的進度；團長、服務員直接進入管理員後台。第一次使用請按「登入／註冊 → 註冊新帳號」，團長審核後就能使用。</p>
-    </section>
+    </section>` : ''}
     <p class="muted small center">內容依據中華民國童軍總會〈幼童軍活動進程〉與〈幼童軍技能章合格標準〉；進程項目下的「本團細項」由本團自訂。<br>查詢頁不會顯示任何孩子的資料。</p>`;
-  $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
+}
+function wireHomeIntro() {
+  $$('[data-go]').forEach((b) => { b.onclick = () => (b.dataset.go === 'parent' ? document.getElementById('toParent').click() : onPublicTab(b.dataset.go)); });
   mountNotices(5, '.quick');
   // 技能章數量以實際資料為準（團長可以在項目管理新增技能章）
   loadCatalog().then((d) => {
@@ -1550,13 +1558,14 @@ const ADMIN_PAGES = {
     h.near.forEach((p) => todo.push([p, `${unitLabel(p)} 還差 ${p.remaining} 項`, '快達標', 'st-已完成待頒發']));
     (h.trials || []).filter((t) => !t.ready).forEach((t) => todo.push([t, `體驗 ${t.count}／${t.need} 次`, '體驗中', 'st-未開始']));
     const cnt = (n) => (n ? `<span class="cnt-badge">${n}</span>` : '');
-    $app.innerHTML = `
+    $app.innerHTML = homeIntroHtml('<button data-go="parent"><span class="ic">👨‍👩‍👧</span>家長畫面</button>', false) + `
+      <h2 class="zone-title" id="adminZone">🛠️ 後台：今天要做的事</h2>
       <section class="card">
         <div class="muted small">${esc(h.me.name)}${h.me.name === h.me.role ? '' : '（' + esc(h.me.role) + '）'}・${fmtDate(today)}</div>
         ${todayM ? `<h2 style="margin:4px 0">今天：${esc(todayM.name)}</h2><div class="muted small">已點名出席 ${todayM.attended} 人</div>`
         : `<h2 style="margin:4px 0">今天沒有集會</h2><div class="muted small">${nextM ? `下次集會：${fmtDate(nextM.date)} ${esc(nextM.name)}` : (L ? '行事曆還沒有之後的集會。' : '')}</div>
           ${!nextM && L ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
-      <div class="quick">
+      <div class="quick" id="adminQuick">
         <button class="${todayM ? 'pri' : ''}" id="goRoll"><span class="ic">📋</span>${todayM ? '開始點名' : '點名'}</button>
         <button id="goSign"><span class="ic">✅</span>簽核進程</button>
         ${L ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button><button id="qReq"><span class="ic">📝</span>帳號申請${cnt(al.pendingRequests)}</button>`
@@ -1568,6 +1577,7 @@ const ADMIN_PAGES = {
           : '<p class="muted">目前沒有待頒章的小狼，也沒有快達標的。</p>'}
         ${h.pending.length && L ? '<button class="btn cta" id="toAward">🏅 前往頒章</button>' : ''}</section>
       <section class="card"><details ${hot ? 'open' : ''}><summary class="fold" id="sysTips">系統提示（${alerts.length}）${hot ? ' ⚠️' : ''}</summary>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</details></section>`;
+    wireHomeIntro();
     const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
     const tabTo = (t) => { state.admin = { tab: t, page: null }; renderAdmin(); };
     on('#toAward', () => goAdmin('award')); on('#qAward', () => goAdmin('award'));
@@ -2513,7 +2523,7 @@ const ADMIN_PAGES = {
       <label>小狼</label><select class="full" id="cub">${cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === params.cubId ? 'selected' : ''}>${esc(c.name)}（${esc(c.status)}${c.leftDate ? ' ' + fmtDate(c.leftDate) : ''}）</option>`).join('')}</select>
       <label>處理方式</label>
       <label class="check"><input type="radio" name="mode" value="anonymize" checked> 匿名化：姓名改為「已離團小狼＋流水號」、清空小隊、刪除綁定；進程與出席紀錄保留供統計</label>
-      <label class="check"><input type="radio" name="mode" value="delete"> 完全刪除：刪除這位小狼在所有分頁的資料</label>
+      ${!state.me.ownerExists || state.me.isOwner ? '<label class="check"><input type="radio" name="mode" value="delete"> 完全刪除：刪除這位小狼在所有分頁的資料</label>' : '<p class="muted small">🔒 完全刪除只有 admin 帳號可以使用。</p>'}
       <button class="btn ghost" id="pv">① 預覽會影響幾列資料</button><div id="out"></div></section>`;
     wireBack(params.cubId ? { name: 'cub', params: { cubId: params.cubId } } : null);
     $('#pv').onclick = (ev) => act(ev.currentTarget, async () => {

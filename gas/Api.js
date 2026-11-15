@@ -424,6 +424,7 @@ function apiMe_(req, who) {
     nickname: who.account.nickname,
     role: who.admin ? who.admin.role : null,
     isOwner: !!who.admin && isReservedUsername_(who.account.username),
+    ownerExists: who.admin ? !!findAccountByName_(DEFAULT_ADMIN_USERNAME) : undefined,
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId) : [],

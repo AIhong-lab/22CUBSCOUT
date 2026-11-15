@@ -28,6 +28,7 @@
 - 小隊輔、正副小隊長、公告欄等（SPEC 附錄第 45 點）：`gas/TeamApi.js`——`squadStaffSave`（`me.mySquads` 讓點名／簽核預設帶自己的小隊，不限制權限）、`cubRoleSave`／`canLeadSquad_`（狼級以上；小隊沒有狼級以上時羚羊也可）／`endRoleInRow_`（換小隊、離團、升團自動卸任）、公開 API `notices`＋`noticeList`／`noticeSave`（只下架不刪除）、`cubImport`、`parentLeave`；狀態「升團」（`Logic.GRADUATED`，`cubLeave` 帶 `reason`）。前端 `mountNotices`、`ADMIN_PAGES.notices`、`downloadCsv`、`mySquad()`。交接手冊 `docs/HANDOVER.md`。
 - 最高權限鎖在 admin（SPEC 附錄第 46 點）：`ownerId_()`（帳號名稱 admin 的帳號ID）、`Logic.validateAdminChange(admins, actorId, change, ownerId)`、`guardOwner_`（帳號停用／刪除／臨時碼）；`me.isOwner`、`adminList.ownerExists`。沒有 admin 帳號時照舊規則。
 - 後台選單整理（SPEC 附錄第 47 點）：選單顯示「帳號申請」（頁面鍵仍是 `requests`）、「列印紙本」（`print`）；`PAGE_GROUPS`／`mountPageSeg` 把 overview＋attOverview、calendar＋periods、admins＋accounts 各合併成一個選單項目（頁內切換鈕 `#gseg`）。
+- 後台首頁與刪除權限（SPEC 附錄第 48 點）：`ADMIN_PAGES.home` 上半部用 `homeIntroHtml`（和 `renderHome` 共用），後台區塊從 `#adminZone` 開始、快捷按鈕 `#adminQuick`；`privacyExecute` 的 `delete` 只有 admin（`me.ownerExists`／`me.isOwner`）。
 - **目前狀態**：階段 0A～5 的程式都已完成並通過模擬測試；**LINE 推播（Flex 訊息格式、multicast）尚未在真實 LINE 環境驗證**，要團長實測。第二期（ROADMAP）未做。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構

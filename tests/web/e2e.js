@@ -304,10 +304,13 @@ function seed(env) {
   // ═════ 團長後台 ═════
   await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');
   await page.click('button[type=submit]');
-  await page.locator('.quick').waitFor();
+  await page.locator('#adminQuick').waitFor();
   await page.locator('#sysTips').evaluate((el) => { el.parentNode.open = true; });
   const ah = await text();
   assert.match(ah, /今天沒有集會/);
+  // 後台首頁上半部和網站首頁一樣，下面才是後台（附錄第 48 點）
+  assert.match(ah, /進程查詢[\s\S]*技能章查詢[\s\S]*什麼是「進程」？[\s\S]*後台：今天要做的事[\s\S]*今天沒有集會[\s\S]*系統提示/);
+  assert.ok(!/怎麼登入？/.test(ah), '已登入不用再看怎麼登入');
   assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
   assert.match(ah, /還沒有備份紀錄/, 'setup 已自動建立備份資料夾，只是還沒備份過');
   await shot('10-admin-home'); await noHScroll('後台首頁');
@@ -491,7 +494,7 @@ function seed(env) {
   await page.locator('.menu-grid').first().waitFor();
 
   // 切換到家長畫面
-  await page.getByText('家長畫面').click();
+  await page.locator('#toParent').click();
   await page.getByText('還沒有綁定孩子').waitFor();
 
   // ═════ LINE 通知的「前往頒章」連結：登入中直接到頒章表單 ═════
@@ -499,8 +502,8 @@ function seed(env) {
   await page.getByText('同一場儀式可勾選多位小狼').waitFor();
   assert.equal(new URL(page.url()).hash, '', '用過就清掉');
   await page.locator('[data-back]').click();
-  await page.locator('.quick').waitFor();
-  await page.getByText('家長畫面').click();
+  await page.locator('#adminQuick').waitFor();
+  await page.locator('#toParent').click();
   await page.getByText('還沒有綁定孩子').waitFor();
 
   // ═════ 電腦寬螢幕：上方導覽列、後台左側選單、四級橫排 ═════

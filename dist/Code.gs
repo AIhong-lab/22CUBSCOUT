@@ -2067,6 +2067,7 @@ function apiMe_(req, who) {
     nickname: who.account.nickname,
     role: who.admin ? who.admin.role : null,
     isOwner: !!who.admin && isReservedUsername_(who.account.username),
+    ownerExists: who.admin ? !!findAccountByName_(DEFAULT_ADMIN_USERNAME) : undefined,
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId) : [],
@@ -3386,6 +3387,9 @@ registerAdmin_('privacyPreview', 'privacy', function (req) {
 registerAdmin_('privacyExecute', 'privacy', function (req, who) {
   return withLock_(function () {
     var mode = Logic.clean(req.mode);
+    // 完全刪除只有最高權限帳號（admin）可以；還沒有 admin 帳號時照舊（SPEC 附錄第 48 點）
+    var owner = ownerId_();
+    if (mode === 'delete' && owner && who.account.accountId !== owner) throw new ApiError(ERR.FORBIDDEN, '只有最高權限帳號（admin）可以刪除小狼；其他團長可以用匿名化。');
     var plan = Logic.planPrivacy(privacyData_(), Logic.clean(req.cubId), mode);
     if (!plan.ok) throw new ApiError(ERR.BAD_INPUT, plan.error);
     if (Logic.clean(req.confirmName) !== plan.cubName) throw new ApiError(ERR.BAD_INPUT, '輸入的姓名不符，未執行。');

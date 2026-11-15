@@ -942,3 +942,16 @@ test('最高權限鎖在 admin：只有 admin 能指定或取消團長，admin �
   assert.equal(call(O, 'adminUpdate', { accountId: helper, role: '服務員' }).ok, true);
   assert.equal(call(O, 'adminRemove', { accountId: acc('leader01') }).ok, true);
 });
+
+test('刪除小狼只有 admin 可以；其他團長只能匿名化（附錄第 48 點）', () => {
+  const { env, call, L, cubId } = world();
+  assert.equal(call(L, 'me').ownerExists, false);
+  const made = env.ctx.ensureDefaultAdmin_();
+  const O = env.api({ action: 'login', username: made.username, password: made.password }).token;
+  assert.equal(call(L, 'me').ownerExists, true);
+  call(L, 'cubLeave', { cubId, leftDate: '2026-01-01' });
+  assert.match(call(L, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).message, /只有最高權限帳號（admin）可以刪除小狼/);
+  assert.ok(env.rows('小狼名單').some((r) => r[0] === cubId), '被拒絕時資料還在');
+  assert.equal(call(O, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).ok, true);
+  assert.ok(!env.rows('小狼名單').some((r) => r[0] === cubId));
+});
