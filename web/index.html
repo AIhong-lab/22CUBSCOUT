@@ -1465,9 +1465,9 @@ function adminMoreItems() {
   const L = isLeader();
   return [
     ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公告欄', true, '每次集會'],
-    ['requests', '📝', '註冊審核', L, '名單'], ['overview', '📊', '進程總覽', true, '名單'], ['attOverview', '🐾', '出席總覽', true, '名單'], ['print', '🖨️', '列印簽核單', true, '名單'],
-    ['calendar', '📅', '行事曆', L, '設定'], ['periods', '🎯', '年度出席', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
-    ['admins', '👥', '管理員', L, '設定'], ['accounts', '🔑', '帳號管理', L, '設定'],
+    ['requests', '📝', '帳號申請', L, '名單'], ['overview', '📊', '總覽', true, '名單'], ['print', '🖨️', '列印紙本', true, '名單'],
+    ['calendar', '📅', '行事曆', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
+    ['admins', '👥', '帳號與權限', L, '設定'],
     ['privacy', '🔐', '個資處理', L, '系統'], ['backup', '💾', '備份與權限', L, '系統'], ['line', '💬', '連結 LINE 通知', true, '系統'], ['mine', '👤', '我的帳號（改密碼）', true, '系統'], ['pub', '📖', '公開查詢頁', true, '系統'],
   ].filter((x) => x[3]);
 }
@@ -1476,6 +1476,21 @@ function adminSideTabs() {
   const more = adminMoreItems(), base = (k) => ADMIN_TABS.find((t) => t[0] === k);
   const of = (g) => more.filter((x) => x[4] === g).map(([k, ic, t]) => [k, ic, t]);
   return [['#', '', '每次集會'], base('home'), base('roll'), base('sign')].concat(of('每次集會'), [['#', '', '名單'], base('cubs')], of('名單'), [['#', '', '設定']], of('設定'), [['#', '', '系統']], of('系統'));
+}
+/** 合併成同一個選單項目的頁面：頁面上方用切換鈕互換（SPEC 附錄第 47 點） */
+const PAGE_GROUPS = [
+  [['overview', '📊 進程'], ['attOverview', '🐾 出席']],
+  [['calendar', '📅 集會行事曆'], ['periods', '🎯 年度出席']],
+  [['admins', '👥 管理員'], ['accounts', '🔑 所有帳號']],
+];
+const pageGroup = (name) => PAGE_GROUPS.find((g) => g.some((x) => x[0] === name));
+function mountPageSeg(name) {
+  const g = pageGroup(name);
+  if (!g || document.getElementById('gseg')) return;
+  const html = `<div class="seg" id="gseg">${g.map(([k, t]) => `<button data-g="${k}" class="${k === name ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+  const back = $app.querySelector('[data-back]');
+  if (back) back.insertAdjacentHTML('afterend', html); else $app.insertAdjacentHTML('afterbegin', html);
+  document.querySelectorAll('#gseg button').forEach((b) => { b.onclick = () => { if (b.dataset.g !== name) goAdmin(b.dataset.g); }; });
 }
 const isWide = () => !!(window.matchMedia && matchMedia('(min-width: 1000px)').matches);
 
@@ -1488,12 +1503,14 @@ function renderAdmin() {
   const page = state.admin.page;
   // 寬螢幕：左側選單直接列出全部功能；手機：5 個分頁＋「更多」
   const tabs = isWide() ? adminSideTabs() : ADMIN_TABS;
-  const cur = page && tabs.some((t) => t[0] === page.name) ? page.name : state.admin.tab;
+  const head = page && pageGroup(page.name) ? pageGroup(page.name)[0][0] : page && page.name; // 合併頁面亮同一個選單項目
+  const cur = page && tabs.some((t) => t[0] === head) ? head : state.admin.tab;
   setTabs(tabs, cur, (v) => { state.admin = { tab: v, page: null }; renderAdmin(); });
   scrollTop();
   const fn = page ? ADMIN_PAGES[page.name] : ADMIN_PAGES[state.admin.tab];
+  const snap = state.admin;
   loading();
-  Promise.resolve().then(() => fn(page ? page.params : {})).catch((e) => {
+  Promise.resolve().then(() => fn(page ? page.params : {})).then(() => { if (state.admin === snap && state.admin.page === page) mountPageSeg(page ? page.name : snap.tab); }).catch((e) => {
     if (e.code === 'SESSION_EXPIRED') return;
     $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
     $('#re').onclick = renderAdmin;
@@ -1542,7 +1559,7 @@ const ADMIN_PAGES = {
       <div class="quick">
         <button class="${todayM ? 'pri' : ''}" id="goRoll"><span class="ic">📋</span>${todayM ? '開始點名' : '點名'}</button>
         <button id="goSign"><span class="ic">✅</span>簽核進程</button>
-        ${L ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button><button id="qReq"><span class="ic">📝</span>註冊審核${cnt(al.pendingRequests)}</button>`
+        ${L ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button><button id="qReq"><span class="ic">📝</span>帳號申請${cnt(al.pendingRequests)}</button>`
           : '<button id="qCubs"><span class="ic">🐺</span>小狼名單</button><button id="qOver"><span class="ic">📊</span>進程總覽</button>'}
       </div>
       ${al.pendingRequests ? `<section class="card"><div class="row-flex"><span class="grow"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></span><button class="btn cta small" id="toReq" style="margin-top:0">前往審核</button></div></section>` : ''}
@@ -1759,7 +1776,7 @@ const ADMIN_PAGES = {
     });
   },
 
-  // ───── 註冊審核（團長） ─────
+  // ───── 帳號申請（團長） ─────
   async requests() {
     const d = await api('requestList');
     const cubOpt = (sel) => d.cubs.map((c) => `<option value="${esc(c.cubId)}" ${sel.includes(c.cubId) ? 'selected' : ''}>${esc(c.name)}（${esc(c.squad || '未分小隊')}）</option>`).join('');
@@ -1785,7 +1802,7 @@ const ADMIN_PAGES = {
         <div data-pane="link" ${r.sameName.length ? '' : 'hidden'}><label>選擇小狼</label><select class="full" name="cubId">${cubOpt(r.sameName)}</select></div>
         <div class="row-flex"><button class="btn green small" data-ok>✅ 核准</button><button class="btn danger small" data-no>退回</button></div><div class="out"></div>
       </div>`;
-    $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 註冊審核 <span class="pill st-已完成待頒發">${d.items.length}</span></h2>
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 帳號申請 <span class="pill st-已完成待頒發">${d.items.length}</span></h2>
       <p class="muted small">家長與服務員自己註冊後，在這裡核准。孩子核准時可以「新增小狼（直接入團）」「新增為體驗者」或「連結到現有小狼」（例如爸爸、媽媽各自申請同一個孩子）。</p>
       ${d.items.length ? d.items.map(card).join('') : '<p class="muted">目前沒有待審核的申請。</p>'}</section>`;
     wireBack();
@@ -2388,7 +2405,7 @@ const ADMIN_PAGES = {
     const pre = new Set(params.cubIds || []);
     const cubs = cl.cubs.filter((c) => c.status === '在團' || pre.has(c.cubId));
     let squad = '全團', lv = '狼';
-    $app.innerHTML = `${backBtn()}<section class="card"><h2>🖨️ 列印簽核單（A4）</h2>
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🖨️ 列印紙本簽核單（A4）</h2>
       <label>級別</label><div class="chips" id="lv">${LEVELS.map((l) => `<button class="chip ${l === lv ? 'on' : ''}" data-l="${l}">${LEVEL_ICON[l]} ${lvName(l)}</button>`).join('')}</div>
       <label>小狼</label>${squadChips(cl.squads, squad)}<div id="list"></div>
       <button class="btn" id="go">🖨️ 列印</button></section>`;
@@ -2421,8 +2438,8 @@ const ADMIN_PAGES = {
         ${locked(x) ? '' : `<button class="btn ghost small" data-ad="${esc(x.accountId)}">管理</button>`}</div>`).join('')}</section>
       <section class="card"><h2>➕ 從已註冊的帳號指定</h2><p class="muted small">對方已有帳號（例如家長兼服務員）時用。</p>
         <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
-      <section class="card"><h2>🆕 新的服務員</h2><p class="muted small">請對方自己到網站「登入 → 註冊新帳號」選「服務員」，再到「📝 註冊審核」核准。</p>
-        <button class="btn alt small" id="toReq2">📝 前往註冊審核</button>
+      <section class="card"><h2>🆕 新的服務員</h2><p class="muted small">請對方自己到網站「登入 → 註冊新帳號」選「服務員」，再到「📝 帳號申請」核准。</p>
+        <button class="btn alt small" id="toReq2">📝 前往帳號申請</button>
         ${inv.invites.length ? `<h3>尚未使用的舊邀請碼</h3><p class="muted small">邀請碼功能已停用；這些是之前產生、還沒用掉的，建議作廢。</p>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('')}` : ''}</section>`;
     $('#toReq2').onclick = () => goAdmin('requests');
     wireBack();

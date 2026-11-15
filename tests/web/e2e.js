@@ -645,11 +645,24 @@ function seed(env) {
   assert.match(csvText, /^\ufeff姓名,小隊,剛入團,羚羊,狼,鹿,豹,技能章數,出席次數\r\n/, 'CSV 有 BOM 與標題列');
   assert.match(csvText, /測試小狼甲,一小隊/);
 
+  // 選單合併（附錄第 47 點）：總覽內切換進程／出席；行事曆內切換年度出席；帳號與權限內切換所有帳號
+  assert.equal(await page.locator('nav.tabs button[data-v=attOverview], nav.tabs button[data-v=periods], nav.tabs button[data-v=accounts]').count(), 0, '合併後選單不再各自一項');
+  assert.match(await page.locator('nav.tabs').innerText(), /帳號申請[\s\S]*總覽[\s\S]*列印紙本[\s\S]*帳號與權限/);
+  await page.locator('#gseg button[data-g=attOverview]').click();
+  await page.getByText('出席總覽').waitFor();
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'overview', '切到出席時選單仍亮「總覽」');
+  assert.equal(await page.locator('#gseg button.on').getAttribute('data-g'), 'attOverview');
+  await sideTab('calendar');
+  await page.locator('#gseg button[data-g=periods]').click();
+  await page.getByText('年度出席設定').waitFor();
+  await shot('48-merged-menu');
+
   // 最高權限鎖在 admin：一般團長看得到提示，admin 那一列沒有「管理」按鈕，指定時只能選服務員
   env.ctx.ensureDefaultAdmin_();
   await sideTab('admins');
   await page.locator('#ownerNote').waitFor();
   assert.match(await text(), /🔒 最高權限/);
+  assert.equal(await page.locator('#gseg button').count(), 2, '帳號與權限：管理員｜所有帳號');
   assert.equal(await page.locator('.list-row', { hasText: '帳號 admin' }).locator('[data-ad]').count(), 0, 'admin 不能被管理');
   assert.equal(await page.locator('.list-row', { hasText: '帳號 leader01' }).locator('[data-ad]').count(), 0, '一般團長不能動團長');
   await page.locator('[data-pick]').first().click();
