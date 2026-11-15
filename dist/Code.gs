@@ -399,6 +399,80 @@ var Logic = (function () {
   var ROLE_LEVELS = ['狼', '鹿', '豹'];
   var MEETING_TYPES = ['一般', '大活動'];
 
+  // ───────────── 活動報名（SPEC 附錄第 50 點） ─────────────
+  var EVENT_IDENTITIES = ['小狼', '稚齡', '童軍', '家長', '服務員'];
+  var EVENT_MAX_PER_ACCOUNT = 20;
+  /** 報名表不可以問的內容：不收集機敏資訊 */
+  var SENSITIVE_WORDS = ['電話', '手機', '地址', '住址', '身分證', '身份證', '生日', '出生', '護照', '病史', '銀行', '帳戶', '信用卡'];
+  var STAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+  function isStamp(s) { return STAMP_RE.test(String(s || '')) && isDateStr(String(s).slice(0, 10)) && Number(String(s).slice(11, 13)) < 24 && Number(String(s).slice(14, 16)) < 60; }
+  function multiline(v, max) { return String(v === null || v === undefined ? '' : v).replace(/\r\n/g, '\n').trim().slice(0, max); }
+
+  /** 檢查團長設定的活動；questions = [{ label, type:'choice'|'text', options:[…], required }] */
+  function validateEvent(req) {
+    req = req || {};
+    var title = clean(req.title);
+    if (!title || title.length > 60) return { ok: false, error: '請填寫活動名稱（最多 60 字）。' };
+    var date = clean(req.date), endDate = clean(req.endDate) || date;
+    if (!isDateStr(date)) return { ok: false, error: '請填寫活動日期。' };
+    if (!isDateStr(endDate) || endDate < date) return { ok: false, error: '活動結束日不可以早於開始日。' };
+    var regStart = clean(req.regStart), regEnd = clean(req.regEnd);
+    if (!isStamp(regStart) || !isStamp(regEnd)) return { ok: false, error: '請填寫開始報名與結束報名的時間。' };
+    if (regEnd <= regStart) return { ok: false, error: '結束報名時間要晚於開始報名時間。' };
+    var fee = req.fee === '' || req.fee === undefined || req.fee === null ? 0 : Number(req.fee);
+    if (!isFinite(fee) || fee < 0 || fee > 1000000 || Math.floor(fee) !== fee) return { ok: false, error: '費用需為 0～1000000 的整數。' };
+    var qs = Array.isArray(req.questions) ? req.questions : [];
+    if (qs.length > 10) return { ok: false, error: '自訂題目最多 10 題。' };
+    var out = [], seen = {}, err = '';
+    qs.forEach(function (q, i) {
+      if (err) return;
+      var label = clean(q && q.label), no = '第 ' + (i + 1) + ' 題';
+      if (!label || label.length > 60) { err = no + '：請填寫題目（最多 60 字）。'; return; }
+      var bad = SENSITIVE_WORDS.filter(function (w) { return label.indexOf(w) >= 0; })[0];
+      if (bad) { err = no + '：報名表不收集「' + bad + '」這類機敏資訊，請改用其他方式聯絡。'; return; }
+      if (seen[label]) { err = no + '：題目重複了。'; return; }
+      seen[label] = true;
+      var type = q.type === 'choice' ? 'choice' : 'text', options = [];
+      if (type === 'choice') {
+        (Array.isArray(q.options) ? q.options : []).forEach(function (o) { o = clean(o).slice(0, 30); if (o && options.indexOf(o) < 0) options.push(o); });
+        if (options.length < 2 || options.length > 10) { err = no + '：選擇題要有 2～10 個選項。'; return; }
+      }
+      out.push({ id: clean(q.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'q' + (i + 1), label: label, type: type, options: options, required: !!q.required });
+    });
+    if (err) return { ok: false, error: err };
+    var ids = {};
+    out.forEach(function (q, i) { if (ids[q.id]) q.id = 'q' + (i + 1) + 'x'; ids[q.id] = true; });
+    return { ok: true, event: { title: title, desc: multiline(req.desc, 2000), date: date, endDate: endDate, regStart: regStart, regEnd: regEnd, fee: fee, questions: out } };
+  }
+
+  /** 檢查一次送出的報名：people = [{ name, identity, answers:{ 題目id: 答案 } }] */
+  function validateEventPeople(people, questions) {
+    if (!Array.isArray(people) || !people.length) return { ok: false, error: '請至少填寫一位。' };
+    if (people.length > 10) return { ok: false, error: '一次最多報名 10 位，請分兩次送出。' };
+    var out = [], names = {}, err = '';
+    people.forEach(function (p, i) {
+      if (err) return;
+      var no = '第 ' + (i + 1) + ' 位', name = clean(p && p.name), identity = clean(p && p.identity);
+      if (!name || name.length > 30) { err = no + '：請填寫姓名。'; return; }
+      if (EVENT_IDENTITIES.indexOf(identity) < 0) { err = no + '（' + name + '）：請選擇身分別。'; return; }
+      if (names[name]) { err = '「' + name + '」重複了。'; return; }
+      names[name] = true;
+      var ans = {}, src = (p && p.answers) || {};
+      (questions || []).forEach(function (q) {
+        if (err) return;
+        var v = clean(src[q.id]).slice(0, 100);
+        if (!v) { if (q.required) err = no + '（' + name + '）：請回答「' + q.label + '」。'; return; }
+        if (q.type === 'choice' && q.options.indexOf(v) < 0) { err = no + '（' + name + '）：「' + q.label + '」請從選項中選擇。'; return; }
+        ans[q.id] = v;
+      });
+      if (!err) out.push({ name: name, identity: identity, answers: ans });
+    });
+    return err ? { ok: false, error: err } : { ok: true, people: out };
+  }
+
+  /** 章的圖片：前端縮小後的 data URL（png／jpeg／webp），放得進試算表一格 */
+  function isUnitImage(s) { return typeof s === 'string' && s.length <= 45000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/]+=*$/.test(s); }
+
   /**
    * 體驗者的進度：只算「一般」團集會的出席（大活動、請假不算）。
    * @param {Array<{date, status, type}>} records
@@ -855,6 +929,7 @@ var Logic = (function () {
     manageAccounts: [ROLE.LEADER],
     manageItems: [ROLE.LEADER],
     manageSettings: [ROLE.LEADER],
+    manageEvents: [ROLE.LEADER],
     privacy: [ROLE.LEADER],
     backup: [ROLE.LEADER],
     reviewRequests: [ROLE.LEADER],
@@ -1083,7 +1158,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
@@ -1133,6 +1208,9 @@ var SHEET = {
   ROLES: '職務紀錄',
   NOTICES: '公告',
   SITE: '網站內容',
+  EVENTS: '活動',
+  EVENT_REGS: '活動報名',
+  UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
   LOG: '操作日誌'
 };
@@ -1165,6 +1243,9 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
+HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間'];
+HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
+HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
@@ -1195,6 +1276,9 @@ TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
+TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9];
+TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
+TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -3015,6 +3099,7 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
     purgeSessions_(acc.accountId);
     deleteRows_(SHEET.BINDINGS, loadBindings_().filter(function (b) { return b.accountId === acc.accountId; }).map(function (b) { return b._row; }));
     deleteRows_(SHEET.ADMINS, admins.filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
+    deleteRegsOfAccount_(acc.accountId);
     deleteRows_(SHEET.REQUESTS, loadRequests_().filter(function (r) { return r.accountId === acc.accountId; }).map(function (r) { return r._row; }));
     deleteRows_(SHEET.ACCOUNTS, [acc._row]);
     logOp_(who.account.accountId, '刪除帳號', acc.accountId, '', '');
@@ -3794,7 +3879,7 @@ function apiSiteInfo_() {
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
     .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note }; });
-  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings };
+  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_() };
 }
 PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
 
@@ -3819,6 +3904,237 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
   });
 });
 
+
+// ════════════════ EventApi.js ════════════════
+// 活動報名與繳費紀錄、進程章與技能章圖片（SPEC 附錄第 50 點）
+// 報名只收「姓名、身分別」與團長自訂題目的答案；不收電話、地址、生日等機敏資訊。
+// 繳費只記錄金額與是否已繳，不經手金流。
+
+// ───────────── 讀取 ─────────────
+
+function parseJson_(v, fallback) { try { var o = JSON.parse(String(v || '')); return o === null || o === undefined ? fallback : o; } catch (e) { return fallback; } }
+
+function loadEvents_() {
+  return readRows_(SHEET.EVENTS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return {
+      id: Logic.clean(r[0]), title: Logic.clean(r[1]), desc: String(r[2] === undefined || r[2] === null ? '' : r[2]),
+      date: dateStr_(r[3]), endDate: dateStr_(r[4]), regStart: Logic.clean(r[5]), regEnd: Logic.clean(r[6]),
+      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', _row: r._row, _raw: r
+    };
+  });
+}
+
+function loadRegs_() {
+  return readRows_(SHEET.EVENT_REGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return {
+      id: Logic.clean(r[0]), eventId: Logic.clean(r[1]), accountId: Logic.clean(r[2]), name: Logic.clean(r[3]), identity: Logic.clean(r[4]),
+      answers: parseJson_(r[5], {}), amount: Number(r[6]) || 0, paid: Logic.clean(r[7]) === '是', at: ms_(r[8]), active: Logic.clean(r[9]) !== '取消', _row: r._row, _raw: r
+    };
+  });
+}
+
+/** 現在時間，格式和報名起訖一樣（'YYYY-MM-DDTHH:mm'，台灣時間），可以直接比字串 */
+function nowStamp_() { return Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm"); }
+function regState_(ev, now) { return !ev.enabled ? '已關閉' : now < ev.regStart ? '尚未開始' : now > ev.regEnd ? '已截止' : '報名中'; }
+
+/** 給報名的人看的活動資料（白名單） */
+function eventView_(ev, now) {
+  return { id: ev.id, title: ev.title, desc: ev.desc, date: ev.date, endDate: ev.endDate, regStart: ev.regStart, regEnd: ev.regEnd, fee: ev.fee, state: regState_(ev, now) };
+}
+
+/** 公開（月曆與活動頁用）：啟用中、還沒結束的活動；不含題目與任何報名資料 */
+function publicEvents_() {
+  var now = nowStamp_(), from = now.slice(0, 8) + '01';
+  return loadEvents_().filter(function (e) { return e.enabled && (e.endDate || e.date) >= from; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 50).map(function (e) { return eventView_(e, now); });
+}
+
+// ───────────── 報名（要登入；家長、服務員、團長都可以） ─────────────
+
+function apiEventList_(req, who) {
+  var now = nowStamp_(), today = now.slice(0, 10);
+  var events = loadEvents_().filter(function (e) { return e.enabled && (e.endDate || e.date) >= today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  var mine = loadRegs_().filter(function (r) { return r.accountId === who.account.accountId && r.active; });
+  return {
+    identities: Logic.EVENT_IDENTITIES,
+    events: events.map(function (e) {
+      var v = eventView_(e, now);
+      v.questions = e.questions;
+      v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid }; });
+      return v;
+    })
+  };
+}
+AUTHED_ACTIONS.eventList = apiEventList_;
+
+function apiEventRegister_(req, who) {
+  return withLock_(function () {
+    var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
+    if (!ev || !ev.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+    var st = regState_(ev, nowStamp_());
+    if (st !== '報名中') throw new ApiError(ERR.BAD_INPUT, '這個活動' + (st === '尚未開始' ? '還沒開始報名。' : '已經截止報名，請聯絡團長。'));
+    var v = Logic.validateEventPeople(req.people, ev.questions);
+    if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+    var regs = loadRegs_();
+    var mine = regs.filter(function (r) { return r.eventId === ev.id && r.accountId === who.account.accountId && r.active; });
+    if (mine.length + v.people.length > Logic.EVENT_MAX_PER_ACCOUNT) throw new ApiError(ERR.BAD_INPUT, '同一個帳號每個活動最多報名 ' + Logic.EVENT_MAX_PER_ACCOUNT + ' 位。');
+    var dup = v.people.filter(function (p) { return mine.some(function (r) { return r.name === p.name; }); })[0];
+    if (dup) throw new ApiError(ERR.BAD_INPUT, '「' + dup.name + '」已經報名過了。');
+    var ids = regs.map(function (r) { return r.id; }), now = new Date();
+    appendRows_(SHEET.EVENT_REGS, v.people.map(function (p) {
+      var id = newId_('R', ids); ids.push(id);
+      return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), ev.fee, '否', now, '有效', '', ''];
+    }));
+    logOp_(who.account.accountId, '活動報名', ev.id, '', v.people.length + ' 位');
+    return { added: v.people.length };
+  });
+}
+AUTHED_ACTIONS.eventRegister = apiEventRegister_;
+
+/** 自己取消報名：只能在報名期間內、且還沒登記繳費 */
+function apiEventCancel_(req, who) {
+  return withLock_(function () {
+    var r = loadRegs_().filter(function (x) { return x.id === Logic.clean(req.regId) && x.accountId === who.account.accountId && x.active; })[0];
+    if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
+    var ev = loadEvents_().filter(function (e) { return e.id === r.eventId; })[0];
+    if (!ev || regState_(ev, nowStamp_()) !== '報名中') throw new ApiError(ERR.BAD_INPUT, '報名已經截止，要取消請聯絡團長。');
+    if (r.paid) throw new ApiError(ERR.BAD_INPUT, '這筆報名已經登記繳費，要取消請聯絡團長。');
+    var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
+    row[9] = '取消'; row[10] = who.account.accountId; row[11] = new Date();
+    updateRows_(SHEET.EVENT_REGS, [{ row: r._row, values: row }]);
+    logOp_(who.account.accountId, '取消活動報名', r.eventId, '', '');
+    return {};
+  });
+}
+AUTHED_ACTIONS.eventCancel = apiEventCancel_;
+
+// ───────────── 後台：活動設定、報名名單、繳費紀錄（團長） ─────────────
+
+registerAdmin_('eventAdminList', 'manageEvents', function () {
+  var now = nowStamp_(), regs = loadRegs_().filter(function (r) { return r.active; });
+  return {
+    identities: Logic.EVENT_IDENTITIES,
+    events: loadEvents_().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).map(function (e) {
+      var mine = regs.filter(function (r) { return r.eventId === e.id; });
+      var v = eventView_(e, now);
+      v.questions = e.questions; v.enabled = e.enabled;
+      v.count = mine.length; v.paidCount = mine.filter(function (r) { return r.paid; }).length;
+      return v;
+    })
+  };
+});
+
+registerAdmin_('eventSave', 'manageEvents', function (req, who) {
+  var v = Logic.validateEvent(req);
+  if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+  var e = v.event;
+  return withLock_(function () {
+    var list = loadEvents_();
+    var cells = [e.title, e.desc, e.date, e.endDate, e.regStart, e.regEnd, e.fee, JSON.stringify(e.questions), req.enabled === false ? '關閉' : '開放'];
+    if (req.id) {
+      var cur = list.filter(function (x) { return x.id === Logic.clean(req.id); })[0];
+      if (!cur) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+      var row = cur._raw.slice(0, HEADERS[SHEET.EVENTS].length);
+      cells.forEach(function (c, i) { row[i + 1] = c; });
+      updateRows_(SHEET.EVENTS, [{ row: cur._row, values: row }]);
+      logOp_(who.account.accountId, '修改活動', cur.id, cur.title, e.title + (req.enabled === false ? '（關閉）' : ''));
+      return { id: cur.id };
+    }
+    var id = newId_('E', list.map(function (x) { return x.id; }));
+    appendRows_(SHEET.EVENTS, [[id].concat(cells, [who.account.accountId, new Date()])]);
+    logOp_(who.account.accountId, '新增活動', id, '', e.title);
+    return { id: id };
+  });
+});
+
+registerAdmin_('eventRegs', 'manageEvents', function (req) {
+  var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
+  if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+  var acc = accountsById_();
+  var v = eventView_(ev, nowStamp_());
+  v.questions = ev.questions; v.enabled = ev.enabled;
+  return {
+    event: v,
+    regs: loadRegs_().filter(function (r) { return r.eventId === ev.id && r.active; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
+      return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
+    })
+  };
+});
+
+/** 登記繳費：只記錄金額與是否已繳。updates = [{ regId, amount, paid }] */
+registerAdmin_('eventPay', 'manageEvents', function (req, who) {
+  var updates = Array.isArray(req.updates) ? req.updates : [];
+  if (!updates.length || updates.length > 300) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的變更。');
+  return withLock_(function () {
+    var regs = loadRegs_(), ups = [], now = new Date();
+    updates.forEach(function (u) {
+      var r = regs.filter(function (x) { return x.id === Logic.clean(u.regId) && x.active; })[0];
+      if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到其中一筆報名，請重新整理。');
+      var amount = Number(u.amount);
+      if (!isFinite(amount) || amount < 0 || amount > 1000000 || Math.floor(amount) !== amount) throw new ApiError(ERR.BAD_INPUT, r.name + '：金額需為 0～1000000 的整數。');
+      var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
+      row[6] = amount; row[7] = u.paid ? '是' : '否'; row[10] = who.account.accountId; row[11] = now;
+      ups.push({ row: r._row, values: row });
+    });
+    updateRows_(SHEET.EVENT_REGS, ups);
+    logOp_(who.account.accountId, '登記活動繳費', regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId); })[0].eventId, '', ups.length + ' 筆');
+    return { changed: ups.length };
+  });
+});
+
+/** 團長取消一筆報名（保留紀錄，狀態改為取消） */
+registerAdmin_('eventRegRemove', 'manageEvents', function (req, who) {
+  return withLock_(function () {
+    var r = loadRegs_().filter(function (x) { return x.id === Logic.clean(req.regId) && x.active; })[0];
+    if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
+    var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
+    row[9] = '取消'; row[10] = who.account.accountId; row[11] = new Date();
+    updateRows_(SHEET.EVENT_REGS, [{ row: r._row, values: row }]);
+    logOp_(who.account.accountId, '取消活動報名', r.eventId, '', '');
+    return {};
+  });
+});
+
+/** 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資） */
+function deleteRegsOfAccount_(accountId) {
+  var rows = loadRegs_().filter(function (r) { return r.accountId === accountId; }).map(function (r) { return r._row; });
+  if (rows.length) deleteRows_(SHEET.EVENT_REGS, rows);
+}
+
+// ───────────── 進程章與技能章的圖片（團長上傳，公開顯示） ─────────────
+
+function loadUnitImages_() {
+  var map = {};
+  readRows_(SHEET.UNIT_IMAGES).forEach(function (r) {
+    var k = Logic.clean(r[1]) + '|' + Logic.clean(r[0]);
+    if (Logic.clean(r[0]) && Logic.isUnitImage(String(r[2] || ''))) map[k] = { image: String(r[2]), _row: r._row };
+  });
+  return map;
+}
+
+/** 公開：{ '進程|狼': 'data:image/…', … }，只含還存在的級別與章 */
+function apiUnitImages_() {
+  var units = loadUnits_(), imgs = loadUnitImages_(), out = {};
+  Object.keys(imgs).forEach(function (k) { if (units[k]) out[k] = imgs[k].image; });
+  return { images: out };
+}
+PUBLIC_ACTIONS.unitImages = apiUnitImages_;
+
+/** image 是前端縮小後的 data URL；空字串＝移除圖片 */
+registerAdmin_('unitImageSave', 'manageItems', function (req, who) {
+  var category = Logic.clean(req.category), unit = Logic.clean(req.unit), image = String(req.image || '');
+  if (image && !Logic.isUnitImage(image)) throw new ApiError(ERR.BAD_INPUT, '圖片格式不正確或檔案太大，請換一張圖再試。');
+  return withLock_(function () {
+    var key = category + '|' + unit;
+    if (!loadUnits_()[key]) throw new ApiError(ERR.NOT_FOUND, '找不到這個級別或技能章。');
+    var cur = loadUnitImages_()[key];
+    if (!image) { if (cur) deleteRows_(SHEET.UNIT_IMAGES, [cur._row]); }
+    else if (cur) updateRows_(SHEET.UNIT_IMAGES, [{ row: cur._row, values: [unit, category, image, who.account.accountId, new Date()] }]);
+    else appendRows_(SHEET.UNIT_IMAGES, [[unit, category, image, who.account.accountId, new Date()]]);
+    logOp_(who.account.accountId, image ? '上傳章的圖片' : '移除章的圖片', key, '', '');
+    return {};
+  });
+});
 
 // ════════════════ ItemsAdmin.js ════════════════
 /**

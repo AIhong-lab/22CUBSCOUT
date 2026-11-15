@@ -392,6 +392,80 @@ var Logic = (function () {
   var ROLE_LEVELS = ['狼', '鹿', '豹'];
   var MEETING_TYPES = ['一般', '大活動'];
 
+  // ───────────── 活動報名（SPEC 附錄第 50 點） ─────────────
+  var EVENT_IDENTITIES = ['小狼', '稚齡', '童軍', '家長', '服務員'];
+  var EVENT_MAX_PER_ACCOUNT = 20;
+  /** 報名表不可以問的內容：不收集機敏資訊 */
+  var SENSITIVE_WORDS = ['電話', '手機', '地址', '住址', '身分證', '身份證', '生日', '出生', '護照', '病史', '銀行', '帳戶', '信用卡'];
+  var STAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+  function isStamp(s) { return STAMP_RE.test(String(s || '')) && isDateStr(String(s).slice(0, 10)) && Number(String(s).slice(11, 13)) < 24 && Number(String(s).slice(14, 16)) < 60; }
+  function multiline(v, max) { return String(v === null || v === undefined ? '' : v).replace(/\r\n/g, '\n').trim().slice(0, max); }
+
+  /** 檢查團長設定的活動；questions = [{ label, type:'choice'|'text', options:[…], required }] */
+  function validateEvent(req) {
+    req = req || {};
+    var title = clean(req.title);
+    if (!title || title.length > 60) return { ok: false, error: '請填寫活動名稱（最多 60 字）。' };
+    var date = clean(req.date), endDate = clean(req.endDate) || date;
+    if (!isDateStr(date)) return { ok: false, error: '請填寫活動日期。' };
+    if (!isDateStr(endDate) || endDate < date) return { ok: false, error: '活動結束日不可以早於開始日。' };
+    var regStart = clean(req.regStart), regEnd = clean(req.regEnd);
+    if (!isStamp(regStart) || !isStamp(regEnd)) return { ok: false, error: '請填寫開始報名與結束報名的時間。' };
+    if (regEnd <= regStart) return { ok: false, error: '結束報名時間要晚於開始報名時間。' };
+    var fee = req.fee === '' || req.fee === undefined || req.fee === null ? 0 : Number(req.fee);
+    if (!isFinite(fee) || fee < 0 || fee > 1000000 || Math.floor(fee) !== fee) return { ok: false, error: '費用需為 0～1000000 的整數。' };
+    var qs = Array.isArray(req.questions) ? req.questions : [];
+    if (qs.length > 10) return { ok: false, error: '自訂題目最多 10 題。' };
+    var out = [], seen = {}, err = '';
+    qs.forEach(function (q, i) {
+      if (err) return;
+      var label = clean(q && q.label), no = '第 ' + (i + 1) + ' 題';
+      if (!label || label.length > 60) { err = no + '：請填寫題目（最多 60 字）。'; return; }
+      var bad = SENSITIVE_WORDS.filter(function (w) { return label.indexOf(w) >= 0; })[0];
+      if (bad) { err = no + '：報名表不收集「' + bad + '」這類機敏資訊，請改用其他方式聯絡。'; return; }
+      if (seen[label]) { err = no + '：題目重複了。'; return; }
+      seen[label] = true;
+      var type = q.type === 'choice' ? 'choice' : 'text', options = [];
+      if (type === 'choice') {
+        (Array.isArray(q.options) ? q.options : []).forEach(function (o) { o = clean(o).slice(0, 30); if (o && options.indexOf(o) < 0) options.push(o); });
+        if (options.length < 2 || options.length > 10) { err = no + '：選擇題要有 2～10 個選項。'; return; }
+      }
+      out.push({ id: clean(q.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'q' + (i + 1), label: label, type: type, options: options, required: !!q.required });
+    });
+    if (err) return { ok: false, error: err };
+    var ids = {};
+    out.forEach(function (q, i) { if (ids[q.id]) q.id = 'q' + (i + 1) + 'x'; ids[q.id] = true; });
+    return { ok: true, event: { title: title, desc: multiline(req.desc, 2000), date: date, endDate: endDate, regStart: regStart, regEnd: regEnd, fee: fee, questions: out } };
+  }
+
+  /** 檢查一次送出的報名：people = [{ name, identity, answers:{ 題目id: 答案 } }] */
+  function validateEventPeople(people, questions) {
+    if (!Array.isArray(people) || !people.length) return { ok: false, error: '請至少填寫一位。' };
+    if (people.length > 10) return { ok: false, error: '一次最多報名 10 位，請分兩次送出。' };
+    var out = [], names = {}, err = '';
+    people.forEach(function (p, i) {
+      if (err) return;
+      var no = '第 ' + (i + 1) + ' 位', name = clean(p && p.name), identity = clean(p && p.identity);
+      if (!name || name.length > 30) { err = no + '：請填寫姓名。'; return; }
+      if (EVENT_IDENTITIES.indexOf(identity) < 0) { err = no + '（' + name + '）：請選擇身分別。'; return; }
+      if (names[name]) { err = '「' + name + '」重複了。'; return; }
+      names[name] = true;
+      var ans = {}, src = (p && p.answers) || {};
+      (questions || []).forEach(function (q) {
+        if (err) return;
+        var v = clean(src[q.id]).slice(0, 100);
+        if (!v) { if (q.required) err = no + '（' + name + '）：請回答「' + q.label + '」。'; return; }
+        if (q.type === 'choice' && q.options.indexOf(v) < 0) { err = no + '（' + name + '）：「' + q.label + '」請從選項中選擇。'; return; }
+        ans[q.id] = v;
+      });
+      if (!err) out.push({ name: name, identity: identity, answers: ans });
+    });
+    return err ? { ok: false, error: err } : { ok: true, people: out };
+  }
+
+  /** 章的圖片：前端縮小後的 data URL（png／jpeg／webp），放得進試算表一格 */
+  function isUnitImage(s) { return typeof s === 'string' && s.length <= 45000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/]+=*$/.test(s); }
+
   /**
    * 體驗者的進度：只算「一般」團集會的出席（大活動、請假不算）。
    * @param {Array<{date, status, type}>} records
@@ -848,6 +922,7 @@ var Logic = (function () {
     manageAccounts: [ROLE.LEADER],
     manageItems: [ROLE.LEADER],
     manageSettings: [ROLE.LEADER],
+    manageEvents: [ROLE.LEADER],
     privacy: [ROLE.LEADER],
     backup: [ROLE.LEADER],
     reviewRequests: [ROLE.LEADER],
@@ -1076,7 +1151,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,

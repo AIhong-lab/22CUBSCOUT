@@ -284,7 +284,7 @@ function apiSiteInfo_() {
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
     .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note }; });
-  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings };
+  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_() };
 }
 PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
 

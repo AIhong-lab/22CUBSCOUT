@@ -987,3 +987,83 @@ test('網站內容（附錄第 49 點）：公開的活動時間與了解幼童�
   assert.equal(pub().about, '改過了');
   assert.equal(pub().fb, '');
 });
+
+test('活動報名與繳費紀錄（附錄第 50 點）：團長設定、登入後報名、取消、登記繳費、公開月曆只有活動資訊', () => {
+  const { env, call, L, A, P } = world(); // 模擬時間 2026-11-14 10:00
+  const base = { title: '冬季露營', desc: '兩天一夜', date: '2026-12-12', endDate: '2026-12-13', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59', fee: 1200,
+    questions: [{ label: '飲食', type: 'choice', options: ['葷', '素'], required: true }, { label: '想說的話', type: 'text' }] };
+  // 權限與檢查
+  assert.equal(call(A, 'eventSave', base).code, 'FORBIDDEN', '服務員不能設定活動');
+  assert.equal(call(P, 'eventAdminList').code, 'FORBIDDEN');
+  assert.match(call(L, 'eventSave', { ...base, regEnd: '2026-11-01T00:00' }).message, /結束報名時間要晚於/);
+  assert.match(call(L, 'eventSave', { ...base, questions: [{ label: '家長手機號碼', type: 'text' }] }).message, /不收集「手機」/);
+  assert.match(call(L, 'eventSave', { ...base, questions: [{ label: '交通', type: 'choice', options: ['自行前往'] }] }).message, /2～10 個選項/);
+  const id = call(L, 'eventSave', base).id;
+  assert.ok(id);
+  // 公開資料：有起訖時間與費用，沒有題目和報名名單
+  const pub = env.api({ action: 'siteInfo' }).events;
+  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'title']);
+  assert.equal(pub[0].state, '報名中');
+  // 報名要登入
+  assert.equal(env.api({ action: 'eventList' }).ok, false);
+  const ev = call(P, 'eventList').events[0];
+  assert.deepEqual(call(P, 'eventList').identities, ['小狼', '稚齡', '童軍', '家長', '服務員']);
+  const q1 = ev.questions[0].id, q2 = ev.questions[1].id;
+  assert.match(call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '幼童軍', answers: { [q1]: '葷' } }] }).message, /請選擇身分別/);
+  assert.match(call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: {} }] }).message, /請回答「飲食」/);
+  assert.match(call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: { [q1]: '生酮' } }] }).message, /請從選項中選擇/);
+  assert.equal(call(P, 'eventRegister', { eventId: id, people: [
+    { name: '測試小狼甲', identity: '小狼', answers: { [q1]: '葷', [q2]: '期待' } }, { name: '測試小狼甲媽媽', identity: '家長', answers: { [q1]: '素' } }] }).added, 2);
+  assert.match(call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: { [q1]: '葷' } }] }).message, /已經報名過了/);
+  assert.equal(call(A, 'eventRegister', { eventId: id, people: [{ name: '陳服務員', identity: '服務員', answers: { [q1]: '葷' } }] }).added, 1, '服務員也能報名');
+  const mine = call(P, 'eventList').events[0].mine;
+  assert.equal(mine.length, 2);
+  assert.equal(mine[0].amount, 1200, '應繳金額預設帶活動費用');
+  assert.equal(call(A, 'eventList').events[0].mine.length, 1, '只看得到自己送出的報名');
+  // 團長看名單、登記繳費
+  const regs = call(L, 'eventRegs', { eventId: id }).regs;
+  assert.equal(regs.length, 3);
+  assert.equal(regs[0].by, '測試小狼甲媽媽');
+  assert.equal(regs[0].accountId, undefined, '不回傳帳號ID');
+  assert.match(call(L, 'eventPay', { updates: [{ regId: regs[0].regId, amount: -5, paid: true }] }).message, /金額/);
+  assert.equal(call(L, 'eventPay', { updates: [{ regId: regs[0].regId, amount: 1200, paid: true }, { regId: regs[1].regId, amount: 600, paid: false }] }).changed, 2);
+  const after = call(L, 'eventRegs', { eventId: id }).regs;
+  assert.deepEqual(after.map((r) => [r.amount, r.paid]), [[1200, true], [600, false], [1200, false]]);
+  assert.equal(call(L, 'eventAdminList').events[0].paidCount, 1);
+  assert.equal(call(A, 'eventPay', { updates: [{ regId: regs[2].regId, amount: 0, paid: true }] }).code, 'FORBIDDEN');
+  // 取消：已繳的不能自己取消；沒繳的可以；別人的不行
+  assert.match(call(P, 'eventCancel', { regId: mine[0].regId }).message, /已經登記繳費/);
+  assert.equal(call(A, 'eventCancel', { regId: mine[1].regId }).code, 'NOT_FOUND');
+  assert.equal(call(P, 'eventCancel', { regId: mine[1].regId }).ok, true);
+  assert.equal(call(L, 'eventRegs', { eventId: id }).regs.length, 2);
+  // 截止後不能報名；關閉後公開頁面不顯示
+  env.setNow(Date.parse('2026-12-01T02:00:00Z'));
+  const P2 = env.api({ action: 'login', username: 'parent01', password: 'parentpass1' }).token; // 時間快轉後原本的登入已過期
+  const L2 = env.api({ action: 'login', username: 'leader01', password: 'leaderpass1' }).token;
+  assert.match(call(P2, 'eventRegister', { eventId: id, people: [{ name: '測試小狼乙', identity: '小狼', answers: { [q1]: '葷' } }] }).message, /已經截止報名/);
+  assert.equal(env.api({ action: 'siteInfo' }).events[0].state, '已截止');
+  assert.equal(call(L2, 'eventSave', { ...base, id, enabled: false }).id, id);
+  assert.equal(env.api({ action: 'siteInfo' }).events.length, 0);
+  // 刪除帳號時報名一併刪除
+  const pid = env.rows('帳號').find((r) => r[1] === 'parent01')[0];
+  assert.equal(call(L2, 'accountDelete', { accountId: pid, confirmUsername: 'parent01' }).ok, true);
+  assert.ok(!env.rows('活動報名').some((r) => r[2] === pid));
+});
+
+test('章的圖片（附錄第 50 點）：團長上傳、公開讀取、格式與大小檢查、可移除', () => {
+  const { env, call, L, A } = world();
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  assert.deepEqual(env.api({ action: 'unitImages' }).images, {});
+  assert.equal(call(A, 'unitImageSave', { category: '進程', unit: '狼', image: png }).code, 'FORBIDDEN');
+  assert.match(call(L, 'unitImageSave', { category: '進程', unit: '狼', image: 'https://example.com/a.png' }).message, /圖片格式不正確/);
+  assert.match(call(L, 'unitImageSave', { category: '進程', unit: '狼', image: 'data:image/svg+xml;base64,PHN2Zz4=' }).message, /圖片格式不正確/, '不收 SVG');
+  assert.match(call(L, 'unitImageSave', { category: '進程', unit: '狼', image: 'data:image/png;base64,' + 'A'.repeat(50000) }).message, /太大/);
+  assert.equal(call(L, 'unitImageSave', { category: '進程', unit: '不存在', image: png }).code, 'NOT_FOUND');
+  assert.equal(call(L, 'unitImageSave', { category: '進程', unit: '狼', image: png }).ok, true);
+  assert.equal(call(L, 'unitImageSave', { category: '技能章', unit: '嚮導', image: png }).ok, true);
+  assert.deepEqual(Object.keys(env.api({ action: 'unitImages' }).images).sort(), ['技能章|嚮導', '進程|狼']);
+  call(L, 'unitImageSave', { category: '進程', unit: '狼', image: png });
+  assert.equal(env.rows('章圖').length, 2, '重傳是更新同一列');
+  call(L, 'unitImageSave', { category: '進程', unit: '狼', image: '' });
+  assert.deepEqual(Object.keys(env.api({ action: 'unitImages' }).images), ['技能章|嚮導']);
+});

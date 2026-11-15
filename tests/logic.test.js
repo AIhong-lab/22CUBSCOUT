@@ -328,7 +328,7 @@ test('同意版本過期判定', () => {
 // ───── 權限 ─────
 
 test('角色權限矩陣', () => {
-  const leaderOnly = ['manageCubs', 'manageCalendar', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'privacy', 'backup', 'revokeAnySignoff', 'reviewRequests', 'manageSquadStaff', 'manageRoles'];
+  const leaderOnly = ['manageCubs', 'manageCalendar', 'manageBindCodes', 'award', 'backfill', 'manageAdmins', 'manageInvites', 'manageAccounts', 'manageItems', 'manageSettings', 'manageEvents', 'privacy', 'backup', 'revokeAnySignoff', 'reviewRequests', 'manageSquadStaff', 'manageRoles'];
   const both = ['signoff', 'attendance', 'revokeOwnSignoff', 'viewRoster', 'viewOverview', 'printSheet', 'linkLine', 'postNotice'];
   for (const a of leaderOnly) {
     assert.equal(L.can('團長', a), true, a);
