@@ -57,7 +57,7 @@ function progressOf_(ctx, cubId) {
     cubId: cubId, items: ctx.items, completions: ctx.completions, awards: ctx.awards,
     intervalMonths: ctx.settings['晉級間隔月數'], today: ctx.today, attendance: ctx.attByCub[cubId] || [],
     autoItemId: ctx.settings['出席自動完成項目ID'], autoCount: ctx.settings['自動完成所需出席次數'],
-    levelAttendCount: ctx.settings['晉級所需出席次數']
+    levelAttendCount: ctx.settings['晉級所需出席次數'], newbieAttendCount: ctx.settings['剛入團所需出席次數']
   });
 }
 
@@ -351,7 +351,7 @@ registerAdmin_('award', 'award', function (req, who) {
       if (u.status !== Logic.STATUS.DONE_PENDING) { errors.push(label + '：項目還沒全部完成（已完成 ' + u.done + '／' + u.total + '）；上線前已有的章請用「補登」'); return; }
       if (u.category === Logic.CATEGORY.PROGRESS && u.unit !== Logic.LEVELS[0]) {
         var prev = Logic.LEVELS[Logic.LEVELS.indexOf(u.unit) - 1];
-        if (!ctx.awards.some(function (a) { return a.cubId === cub.cubId && a.unit === prev; })) { errors.push(label + '：' + prev + '級還沒有頒發紀錄，請先頒發或補登'); return; }
+        if (!ctx.awards.some(function (a) { return a.cubId === cub.cubId && a.unit === prev; })) { errors.push(label + '：' + prev + (prev === Logic.NEWBIE ? '' : '級') + '還沒有頒發紀錄，請先頒發或補登'); return; }
       }
       var v = Logic.validateAwardDate(date, u.lastCompletionDate, ctx.today);
       if (!v.ok) { errors.push(label + '：' + v.error); return; }
@@ -430,9 +430,10 @@ registerAdmin_('backfill', 'backfill', function (req, who) {
     if (plan.missingLowerLevels.length && req.includeLower === undefined) return { needConfirm: true, missingLowerLevels: plan.missingLowerLevels };
     var plans = [plan];
     if (req.includeLower === true) {
-      plan.missingLowerLevels.forEach(function (lv) {
-        plans.unshift(Logic.planBackfill({ cubId: cub.cubId, category: Logic.CATEGORY.PROGRESS, unit: lv, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() }));
-      });
+      // 較低級別依級別順序（由低到高）排在前面
+      plans = plan.missingLowerLevels.map(function (lv) {
+        return Logic.planBackfill({ cubId: cub.cubId, category: Logic.CATEGORY.PROGRESS, unit: lv, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() });
+      }).concat(plans);
     }
     var comps = [], awards = [], now = new Date();
     plans.forEach(function (p) {

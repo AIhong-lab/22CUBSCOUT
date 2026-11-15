@@ -88,9 +88,10 @@ function seed(env) {
   await tab('progress');
   await page.locator('.stage').first().waitFor();
   assert.equal(new URL(page.url()).hash, '#progress', '進程查詢有自己的網址');
-  assert.equal(await page.locator('.stage').count(), 4);
+  assert.equal(await page.locator('.stage').count(), 5, '剛入團＋四級');
+  assert.equal(await page.locator('.stage').first().getAttribute('data-unit'), '剛入團');
   assert.equal(await page.locator('.badge').count(), 0, '進程頁不混入技能章');
-  assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務（10 項）[\s\S]*能背誦並說明幼童軍諾言/);
+  assert.match(await page.locator('#lvPanel').innerText(), /剛入團任務（5 項）[\s\S]*背誦與了解諾言規律/);
   // 本團細項：收合在官方項目下面，點開才看到細項與通過標準
   const sub = page.locator('#lvPanel details.sub').first();
   assert.match(await sub.locator('summary').innerText(), /本團細項 4 條/);
@@ -177,7 +178,15 @@ function seed(env) {
   // 闖關地圖
   await tab('progress');
   await page.locator('.stage').first().waitFor();
-  assert.equal(await page.locator('.stage').count(), 4);
+  assert.equal(await page.locator('.stage').count(), 5);
+  assert.match(await page.locator('.stage[data-unit=剛入團]').getAttribute('class'), /done/, '已拿到羚羊，視為通過剛入團');
+  assert.match(await page.locator('.stage[data-unit=剛入團]').innerText(), /已晉級/, '沒有頒發日期時不顯示空白日期');
+  // 手機版：導覽列在標題下方另一排，五個分頁都看得到（修正：放大 header 後擠到同一排、最後一個被切掉）
+  const tb = await page.locator('#title').boundingBox();
+  const nb = await page.locator('nav.tabs').boundingBox();
+  assert.ok(nb.y >= tb.y + tb.height - 2, '導覽列在標題下方：' + JSON.stringify([tb, nb]));
+  const last = await page.locator('nav.tabs button').last().boundingBox();
+  assert.ok(last.x + last.width <= 391, '最後一個分頁沒有被切掉：' + JSON.stringify(last));
   assert.match(await page.locator('.stage[data-unit=羚羊]').getAttribute('class'), /done/);
   assert.match(await page.locator('.stage[data-unit=狼]').getAttribute('class'), /active/);
   assert.match(await page.locator('.stage[data-unit=鹿]').getAttribute('class'), /locked/);

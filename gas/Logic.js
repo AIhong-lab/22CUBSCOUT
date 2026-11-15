@@ -16,7 +16,17 @@ var Logic = (function () {
   // ───────────── 常數 ─────────────
 
   /** 進程級別，依序 */
-  var LEVELS = ['羚羊', '狼', '鹿', '豹'];
+  // 進程級別順序。「剛入團」是本團在羚羊前加的一級（頒黃領巾，準備闖羚羊級；SPEC 附錄第 37 點）
+  var NEWBIE = '剛入團';
+  var LEVELS = [NEWBIE, '羚羊', '狼', '鹿', '豹'];
+  /** 晉級間隔月數只套用在這些級別（狼、鹿、豹：距上一級頒發滿 N 個月） */
+  var INTERVAL_LEVELS = ['狼', '鹿', '豹'];
+  /** 剛入團的種子項目（團自訂，setup 在項目總表沒有剛入團時補上；ID 固定為 P-剛入團-1～5） */
+  var NEWBIE_SEED = {
+    items: ['背誦與了解諾言規律', '知道團長、副團長、服務員姓名', '知道舉手禮與握手禮及意義', '知道同隊幼童軍姓名', '能向大家自我介紹'],
+    desc: '入團第一關，準備闖羚羊級：認得人、認得地方、敢開口。',
+    rule: '入團後參加團集會 4 次以上，完成剛入團各項，經團長評核頒發黃領巾，開始挑戰羚羊級。'
+  };
   var CATEGORY = { PROGRESS: '進程', BADGE: '技能章' };
   var BADGE_GROUPS = ['服務類', '健身類', '技巧類'];
   var NO_SECTION = '－';
@@ -126,7 +136,8 @@ var Logic = (function () {
     { key: '臨時碼有效小時數', type: 'int', def: 24, min: 1, max: 168, desc: '重設密碼用的臨時碼有效時間' },
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
-    { key: '晉級所需出席次數', type: 'int', def: 0, min: 0, max: 100, desc: '狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
+    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
+    { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
     { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
     { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算）' },
@@ -251,7 +262,7 @@ var Logic = (function () {
       else if (seen[id]) reason = '項目ID 重複（與第 ' + seen[id] + ' 列相同）';
       else if (cat !== CATEGORY.PROGRESS && cat !== CATEGORY.BADGE) reason = '類別只能是「進程」或「技能章」';
       else if (!unit) reason = '缺少級別或章名';
-      else if (cat === CATEGORY.PROGRESS && LEVELS.indexOf(unit) < 0) reason = '進程級別只能是羚羊、狼、鹿、豹';
+      else if (cat === CATEGORY.PROGRESS && LEVELS.indexOf(unit) < 0) reason = '進程級別只能是' + LEVELS.join('、');
       else if (!text) reason = '缺少項目內容';
       else if (enabled !== '是' && enabled !== '否') reason = '啟用欄只能是「是」或「否」';
       if (reason) { errors.push({ row: rowNo, id: id, reason: reason }); return; }
@@ -422,6 +433,10 @@ var Logic = (function () {
     }
     var awarded = {};
     (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
+    // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）
+    if (!awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
+      awarded[NEWBIE] = { cubId: cubId, unit: NEWBIE, date: null, occasion: '已晉級（視為通過）', implicit: true };
+    }
 
     var currentLevel = null;
     LEVELS.forEach(function (lv) { if (awarded[lv]) currentLevel = lv; });
@@ -465,7 +480,7 @@ var Logic = (function () {
         eligible: false, eligibleDate: null
       };
       if (!award) {
-        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today, attended, p.levelAttendCount || 0);
+        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today, attended, g.unit === NEWBIE ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0));
         u.eligible = e.eligible; u.eligibleDate = e.date; u.waitingUntil = e.waitingUntil || null;
         if (e.attendRequired) { u.attendRequired = e.attendRequired; u.attendSinceLast = e.attendSinceLast; }
       }
@@ -476,19 +491,25 @@ var Logic = (function () {
 
   /**
    * 達標（可頒章）判定：
-   *  - 羚羊、技能章：啟用項目全部完成。
-   *  - 狼、鹿、豹：全部完成，且上一級已頒發，且今天 ≥ 上一級頒發日期 + 間隔月數，
-   *    且上一級頒發日「之後」（不含當天）出席次數 ≥ 晉級所需出席次數（0 表示不要求；請假不算）。
+   *  - 技能章：啟用項目全部完成。
+   *  - 剛入團：全部完成，且入團後出席次數 ≥ 剛入團所需出席次數。
+   *  - 羚羊、狼、鹿、豹：全部完成，且上一級已頒發，且上一級頒發日「之後」（不含當天）出席次數 ≥ 晉級所需出席次數
+   *    （0 表示不要求；請假不算）；狼、鹿、豹另需今天 ≥ 上一級頒發日期 + 間隔月數。
    * 回傳的 date 是「達標日期」= 以上各條件都滿足的最早日期。
    */
   function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed) {
     if (!allDone) return { eligible: false, date: null };
-    if (category === CATEGORY.BADGE || unit === LEVELS[0]) return { eligible: true, date: lastDate };
-    var prev = LEVELS[LEVELS.indexOf(unit) - 1];
-    if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
-    var prevDate = awarded[prev].date;
-    var ready = addMonths(prevDate, intervalMonths || 0);
-    var date = ready > lastDate ? ready : lastDate;
+    if (category === CATEGORY.BADGE) return { eligible: true, date: lastDate };
+    var prevDate = '', date = lastDate;
+    if (unit !== LEVELS[0]) {
+      var prev = LEVELS[LEVELS.indexOf(unit) - 1];
+      if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
+      prevDate = awarded[prev].date || '';
+      if (INTERVAL_LEVELS.indexOf(unit) >= 0) {
+        var ready = addMonths(prevDate, intervalMonths || 0);
+        if (ready > date) date = ready;
+      }
+    }
     var out = {};
     if (attendNeed > 0) {
       var after = (attended || []).filter(function (d) { return d > prevDate; });
@@ -972,7 +993,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,

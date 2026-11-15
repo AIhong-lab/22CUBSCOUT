@@ -51,7 +51,8 @@
     header.top .row { padding: 0 12px; gap: 8px; min-height: 52px; }
     header.top h1 { font-size: 20px; padding: 12px 0 0; }
     #headerRight { padding-top: 10px; }
-    nav.tabs { order: 3; width: calc(100% + 24px); margin: 0 -12px; overflow-x: auto; scrollbar-width: none; }
+    nav.tabs { order: 3; flex: 0 0 calc(100% + 24px); width: calc(100% + 24px); margin: 0 -12px; overflow-x: auto; scrollbar-width: none; }
+    #headerRight { margin-left: auto; }
     nav.tabs::-webkit-scrollbar { display: none; }
     nav.tabs .inner { width: 100%; }
     nav.tabs button { flex: 1; padding: 8px 10px 9px; font-size: 15px; }
@@ -177,7 +178,7 @@
   .section-title { margin: 14px 0 0; font-weight: 900; color: var(--blue-dark); display: inline-block; background: var(--blue-soft); padding: 2px 12px; border-radius: 999px; font-size: 16px; }
 
   /* ───── 闖關地圖 ───── */
-  .map { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 4px 0; }
+  .map { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 4px 0; }
   .stage { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 14px 8px 12px; border: 2px solid var(--gray-line); border-radius: 14px; background: #fff; cursor: pointer; transition: border-color .15s, background .15s; }
   .stage:hover { border-color: #9fbcec; }
   .stage.sel { border-color: var(--blue); background: var(--blue-soft); }
@@ -327,11 +328,13 @@ const fmtDate = (d) => (d ? String(d).replace(/^(\d{4})-(\d{2})-(\d{2})$/, (m, y
 const shortDate = (d) => (d ? String(d).replace(/^\d{4}-(\d{2})-(\d{2})$/, (m, mo, da) => `${+mo}/${+da}`) : '');
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('zh-TW', { hour12: false }) : '－');
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const LEVELS = ['羚羊', '狼', '鹿', '豹'];
-const LEVEL_ICON = { '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
+const LEVELS = ['剛入團', '羚羊', '狼', '鹿', '豹']; // 剛入團：本團在羚羊前加的一級（頒黃領巾，SPEC 附錄第 37 點）
+/** 級別名稱：剛入團不加「級」 */
+const lvName = (l) => (l === '剛入團' ? l : l + '級');
+const LEVEL_ICON = { '剛入團': '🌱', '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
 const BADGE_ICON = { 嚮導: '🧭', 環保: '♻️', 交通安全: '🚦', 表演: '🎭', 種植: '🌱', 飼養: '🐹', 勞作: '🔨', 義工: '🤝', 球類運動: '⚽', 體適能運動: '💪', 民俗體育運動: '🪀', 游泳: '🏊', 自行車: '🚲', 旅行: '🎒', 休閒活動: '🎲', 舞蹈: '💃', 體操: '🤸', 繪畫: '🎨', 音樂: '🎵', 模型: '🏠', 口技: '🗣️', 書法: '🖌️', 歌詠: '🎤', 收集: '📦', 資訊: '💻', 語文: '📖' };
 const iconOf = (u) => (u.category === '進程' ? LEVEL_ICON[u.unit] : BADGE_ICON[u.unit]) || '🎖️';
-const unitLabel = (u) => (u.category === '進程' ? u.unit + '級' : u.unit);
+const unitLabel = (u) => (u.category === '進程' ? lvName(u.unit) : u.unit);
 const STATUS_ORDER = { '已完成待頒發': 0, '進行中': 1, '已頒發': 2, '未開始': 3 };
 const webRoot = () => location.origin + location.pathname.replace(/web\/?[^/]*$/, '');
 
@@ -916,16 +919,16 @@ function viewHome(d) {
   if (n.type === 'allDone') next = `<div class="banner"><p class="congrats">🎉 ${esc(n.message)}</p></div>`;
   else if (n.type === 'pending') next = `<div class="banner"><p class="congrats">${esc(n.message)}</p></div>`;
   else next = `${n.message ? `<div class="banner"><p class="congrats">🎉 ${esc(n.message)}</p></div>` : ''}
-    <p class="muted">${esc(LEVEL_ICON[n.level] || '')} ${esc(n.level)}級的下一關任務：</p>
+    <p class="muted">${esc(LEVEL_ICON[n.level] || '')} ${esc(lvName(n.level))}的下一關任務：</p>
     ${n.items.map((i, k) => `<div class="mission"><span class="no">${k + 1}</span><span class="txt">${esc(i.text)}</span></div>`).join('')}
-    <button class="btn ghost small" id="toMap" data-lv="${esc(n.level)}">🗺️ 看${esc(n.level)}級全部任務 →</button>`;
+    <button class="btn ghost small" id="toMap" data-lv="${esc(n.level)}">🗺️ 看${esc(lvName(n.level))}全部任務 →</button>`;
   $app.innerHTML = `
     <section class="card hero">
       <div class="top"><div class="avatar">${av}</div>
         <div class="grow"><div class="name">${esc(c.name)}</div>
           <div class="sub">${esc(c.squad || '')}${c.squad ? '・' : ''}入團 ${fmtDate(c.joinDate)}</div>
           <div class="sub">在團時間 ${esc(c.tenure)}</div>
-          <span class="levelchip">${c.currentLevel ? '目前級別：' + esc(c.currentLevel) + '級' : '準備挑戰羚羊級'}</span></div></div>
+          <span class="levelchip">${c.currentLevel ? '目前級別：' + esc(lvName(c.currentLevel)) : '新入團：先挑戰剛入團'}</span></div></div>
       <div class="stats3"><div><b>⭐ ${stars}</b>收集的星星</div><div><b>🏅 ${got.length}</b>拿到的章</div><div><b>🐾 ${d.attendance.counts.attended}</b>出席次數</div></div>
     </section>
     <section class="card"><h2>🎯 下一步挑戰</h2>${next}</section>
@@ -939,7 +942,7 @@ function viewHome(d) {
   if (tm) tm.onclick = () => { state.mapSel = tm.dataset.lv; state.view = 'progress'; renderParent(true); };
 }
 
-/** 闖關地圖：羚羊 → 狼 → 鹿 → 豹 */
+/** 闖關地圖：剛入團 → 羚羊 → 狼 → 鹿 → 豹 */
 function viewMap(d) {
   const units = LEVELS.map((l) => d.units.find((u) => u.category === '進程' && u.unit === l)).filter(Boolean);
   if (!state.mapSel) state.mapSel = (units.find((u) => u.status === '進行中' || u.status === '已完成待頒發') || units[units.length - 1]).unit;
@@ -952,14 +955,14 @@ function viewMap(d) {
         const pct = u.total ? Math.round((u.done / u.total) * 100) : 0;
         return `<div class="stage ${cls(u)} ${u.unit === state.mapSel ? 'sel' : ''}" data-unit="${esc(u.unit)}" role="button" tabindex="0">
           <div class="node" style="--p:${pct}"><div class="in">${LEVEL_ICON[u.unit]}</div></div>
-          <div><div class="lv">${esc(u.unit)}級</div><div class="st">${statusLabel(u)}</div>
-            <div class="cnt">${u.status === '已頒發' ? fmtDate(u.awardDate) + ' 頒發' : '⭐ ' + u.done + '／' + u.total}</div></div></div>`;
+          <div><div class="lv">${esc(lvName(u.unit))}</div><div class="st">${statusLabel(u)}</div>
+            <div class="cnt">${u.status === '已頒發' ? (u.awardDate ? fmtDate(u.awardDate) + ' 頒發' : '已晉級，視為通過') : '⭐ ' + u.done + '／' + u.total}</div></div></div>`;
       }).join('')}</div>
       <div class="finish">🏁 終點：完成豹級，成為全能小狼！</div>
     </section>
-    ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(sel.unit)}級任務 <span class="pill st-${esc(sel.status)}">${statusLabel(sel)}</span></h2>
+    ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(lvName(sel.unit))}任務 <span class="pill st-${esc(sel.status)}">${statusLabel(sel)}</span></h2>
       ${sel.status === '已完成待頒發' ? `<div class="msg info">${esc(sel.statusText)}</div>` : ''}
-      ${sel.status === '已頒發' ? `<div class="msg ok">🏅 ${fmtDate(sel.awardDate)} 頒發${sel.awardOccasion ? '・' + esc(sel.awardOccasion) : ''}</div>` : ''}
+      ${sel.status === '已頒發' ? `<div class="msg ok">🏅 ${sel.awardDate ? fmtDate(sel.awardDate) + ' 頒發' + (sel.awardOccasion ? '・' + esc(sel.awardOccasion) : '') : '已經晉級到更高的級別，視為通過'}</div>` : ''}
       ${sel.rule ? `<p class="small"><b>晉級條件：</b>${esc(sel.rule)}</p>` : ''}
       ${sel.attendRequired ? `<p class="small">🐾 晉級出席要求：上一級頒發後已出席 ${sel.attendSinceLast}／${sel.attendRequired} 次</p>` : ''}
       <div class="bar ${sel.done === sel.total ? 'full' : ''}"><span style="width:${sel.total ? Math.round(sel.done / sel.total * 100) : 0}%"></span></div>
@@ -1179,10 +1182,11 @@ function renderHome() {
       <p class="muted">看看小狼們要闖哪些關卡、可以收集哪些徽章！</p></section>
     <section class="card">
       <h2>🗺️ 什麼是「進程」？</h2>
-      <div class="row-flex" style="justify-content:space-around;font-size:40px;margin:4px 0 8px">${LEVELS.map((l) => `<span class="center" style="font-size:40px">${LEVEL_ICON[l]}<br><span class="small" style="font-size:15px;font-weight:900">${l}級</span></span>`).join('')}</div>
-      <p>幼童軍以<b>羚羊、狼、鹿、豹</b>四級獸章作為晉級章，就像闖關一樣一級一級往上挑戰。每一級都要完成該級的任務，並由團長、副團長及家長評核，合格後才頒授。</p>
+      <div class="row-flex" style="justify-content:space-around;font-size:40px;margin:4px 0 8px">${LEVELS.map((l) => `<span class="center" style="font-size:40px">${LEVEL_ICON[l]}<br><span class="small" style="font-size:15px;font-weight:900">${lvName(l)}</span></span>`).join('')}</div>
+      <p>新團員先完成<b>剛入團</b>（頒黃領巾），再以<b>羚羊、狼、鹿、豹</b>四級獸章作為晉級章，就像闖關一樣一級一級往上挑戰。每一級都要完成該級的任務，並由團長、副團長及家長評核，合格後才頒授。</p>
       <ul class="small">
-        <li><b>羚羊級</b>：參加團集會 4 次以上並完成羚羊級進程，宣誓入團後頒授。</li>
+        <li><b>剛入團</b>：入團後參加團集會 4 次以上，完成剛入團各項，頒發黃領巾，準備闖羚羊級。</li>
+        <li><b>羚羊級</b>：拿到黃領巾後完成羚羊級進程，宣誓入團後頒授。</li>
         <li><b>狼、鹿、豹級</b>：參與上一級 6 個月以上，完成該級進程並經評核，於晉級儀式頒授。</li>
       </ul>
       <button class="btn" data-go="progress">🗺️ 進程查詢</button>
@@ -1241,13 +1245,13 @@ async function renderCatalog(view, opt = {}) {
     const sel = levels.find((u) => u.unit === opt.sel) || levels[0];
     $app.innerHTML = `
       <section class="card"><h2>🗺️ 幼童軍進程</h2>
-        <p class="muted small">幼童軍以<b>羚羊 → 狼 → 鹿 → 豹</b>四級晉級，完成該級任務並經評核後頒授。點一級看任務；任務下方的「📋 本團細項」可以展開看細節。</p>
+        <p class="muted small">從<b>剛入團</b>（黃領巾）開始，依序挑戰<b>羚羊 → 狼 → 鹿 → 豹</b>，完成該級任務並經評核後頒授。點一級看任務；任務下方的「📋 本團細項」可以展開看細節。</p>
         ${searchBox('搜尋進程任務，例如：結繩、國旗')}
         <div class="map">${levels.map((u) => `<div class="stage open ${u === sel ? 'sel' : ''}" data-unit="${esc(u.unit)}" role="button" tabindex="0">
           <div class="node"><div class="in">${LEVEL_ICON[u.unit]}</div></div>
-          <div><div class="lv">${esc(u.unit)}級</div><div class="cnt">${u.items.length} 項任務</div></div></div>`).join('')}</div>
+          <div><div class="lv">${esc(lvName(u.unit))}</div><div class="cnt">${u.items.length} 項任務</div></div></div>`).join('')}</div>
 </section>
-      ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(sel.unit)}級任務（${sel.items.length} 項）</h2>
+      ${sel ? `<section class="card" id="lvPanel"><h2>${LEVEL_ICON[sel.unit]} ${esc(lvName(sel.unit))}任務（${sel.items.length} 項）</h2>
         ${sel.desc ? `<p>${esc(sel.desc)}</p>` : ''}${sel.rule ? `<div class="msg info small"><b>晉級條件：</b>${esc(sel.rule)}</div>` : ''}
         ${catalogItemsHtml(sel)}</section>` : ''}
       <p class="muted small center">內容依據中華民國童軍總會〈幼童軍活動進程〉；「本團細項」由本團自訂。　<button class="linkbtn" id="other">看技能章 →</button></p>`;
@@ -1283,7 +1287,7 @@ async function renderCatalog(view, opt = {}) {
 function printSheets(unit, sheets, rule) {
   document.getElementById('print').innerHTML = sheets.map((s) => `
     <div class="page">
-      <h1>22團幼童軍　${esc(unit)}級進程簽核單</h1>
+      <h1>22團幼童軍　${esc(lvName(unit))}進程簽核單</h1>
       <div class="meta">姓名：${esc(s.cub.name)}　　小隊：${esc(s.cub.squad || '　　　　')}　　入團日：${fmtDate(s.cub.joinDate)}　　列印日期：${fmtDate(todayStr())}</div>
       <table><thead><tr><th>#</th><th>大項</th><th>項目</th><th>完成日期</th><th>簽核人</th></tr></thead><tbody>
       ${s.items.map((it, i) => `<tr><td style="width:6%">${i + 1}</td><td style="width:12%">${esc(it.section === '－' ? '' : it.section)}</td><td>${esc(it.text)}</td>
@@ -1502,7 +1506,7 @@ const ADMIN_PAGES = {
       <section class="card"><h2>✅ 簽核</h2>
         <h3>① 選小隊</h3>${squadChips(d.squads, st.squad)}
         <h3>② 選項目</h3>
-        <select class="full" id="flt"><option value="recent">⭐ 最近簽過的項目</option>${unitsList.map((k) => { const [c, u] = k.split('|'); return `<option value="${esc(k)}">${c === '進程' ? '進程・' + esc(u) + '級' : '技能章・' + esc(u)}</option>`; }).join('')}</select>
+        <select class="full" id="flt"><option value="recent">⭐ 最近簽過的項目</option>${unitsList.map((k) => { const [c, u] = k.split('|'); return `<option value="${esc(k)}">${c === '進程' ? '進程・' + esc(lvName(u)) : '技能章・' + esc(u)}</option>`; }).join('')}</select>
         <div id="secs" class="chips"></div><div id="items"></div>
         <h3>③ 選小狼與日期</h3><div id="cubs"></div>
         <label>完成日期</label><input type="date" id="date" value="${esc(d.today)}" max="${esc(d.today)}">
@@ -1569,7 +1573,7 @@ const ADMIN_PAGES = {
       const list = d.cubs.filter((c) => (st.squad === '全團' || c.squad === st.squad) && (st.status === '全部' || c.status === st.status));
       list.sort((a, b) => st.sort === 'join' ? (a.joinDate < b.joinDate ? -1 : 1) : st.sort === 'name' ? a.name.localeCompare(b.name, 'zh-Hant') : (a.squad || '').localeCompare(b.squad || '', 'zh-Hant') || a.name.localeCompare(b.name, 'zh-Hant'));
       $('#list').innerHTML = list.length ? list.map((c) => `<div class="list-row tap" data-id="${esc(c.cubId)}"><span style="font-size:28px">${c.level ? LEVEL_ICON[c.level] : '🌱'}</span>
-        <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">入團 ${fmtDate(c.joinDate)}${c.level ? '・' + esc(c.level) + '級' : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
+        <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">入團 ${fmtDate(c.joinDate)}${c.level ? '・' + esc(lvName(c.level)) : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
       $$('#list .list-row').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.id }); });
     };
     $('#sort').value = st.sort;
@@ -1640,7 +1644,7 @@ const ADMIN_PAGES = {
     $app.innerHTML = `${backBtn('小狼名單')}
       <section class="card hero"><div class="top"><div class="avatar">${c.currentLevel ? LEVEL_ICON[c.currentLevel] : '🌱'}</div>
         <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">${esc(c.squad || '')}・入團 ${fmtDate(c.joinDate)}（${esc(c.tenure)}）</div>
-        <span class="levelchip">${c.currentLevel ? esc(c.currentLevel) + '級' : '尚未頒發羚羊級'}・${esc(c.status)}</span></div></div>
+        <span class="levelchip">${c.currentLevel ? esc(lvName(c.currentLevel)) : '尚未頒發剛入團'}・${esc(c.status)}</span></div></div>
         <div class="stats3"><div><b>🐾 ${att.counts.attended}</b>出席</div><div><b>🌙 ${att.counts.leave}</b>請假</div><div><b>${att.rate ? esc(att.rate.text) : '－'}</b>出席率</div></div></section>
       <section class="card"><div class="row-flex">${L ? '<button class="btn ghost small" id="edit">✏️ 編輯</button><button class="btn ghost small" id="bf">📥 補登頒章</button>' : ''}<button class="btn ghost small" id="pr">🖨️ 列印簽核單</button>
         ${L && c.status === '在團' ? '<button class="btn danger small" id="leave">標記離團</button>' : ''}${L && c.status !== '已匿名' ? '<button class="btn danger small" id="priv">個資處理</button>' : ''}</div></section>
@@ -1866,7 +1870,7 @@ const ADMIN_PAGES = {
     const cubs = cl.cubs.filter((c) => c.status === '在團' || pre.has(c.cubId));
     let squad = '全團', lv = '狼';
     $app.innerHTML = `${backBtn()}<section class="card"><h2>🖨️ 列印簽核單（A4）</h2>
-      <label>級別</label><div class="chips" id="lv">${LEVELS.map((l) => `<button class="chip ${l === lv ? 'on' : ''}" data-l="${l}">${LEVEL_ICON[l]} ${l}級</button>`).join('')}</div>
+      <label>級別</label><div class="chips" id="lv">${LEVELS.map((l) => `<button class="chip ${l === lv ? 'on' : ''}" data-l="${l}">${LEVEL_ICON[l]} ${lvName(l)}</button>`).join('')}</div>
       <label>小狼</label>${squadChips(cl.squads, squad)}<div id="list"></div>
       <button class="btn" id="go">🖨️ 列印</button></section>`;
     wireBack(pre.size === 1 ? { name: 'cub', params: { cubId: [...pre][0] } } : null);

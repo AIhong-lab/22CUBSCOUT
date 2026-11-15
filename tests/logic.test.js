@@ -13,6 +13,8 @@ const TODAY = '2026-11-14';
 const HEADER = ['項目ID', '類別', '級別或章名', '大項', '項目內容', '排序', '啟用'];
 function itemsTable(extraRows = []) {
   return [HEADER,
+    ['P-剛入團-1', '進程', '剛入團', '－', '剛入團一', 1, '是'],
+    ['P-剛入團-2', '進程', '剛入團', '－', '剛入團二', 2, '是'],
     ['P-羚羊-1', '進程', '羚羊', '－', '羚羊一', 10, '是'],
     ['P-羚羊-2', '進程', '羚羊', '－', '羚羊二', 20, '是'],
     ['P-狼-國旗-1', '進程', '狼', '國旗', '狼一', 30, '是'],
@@ -28,7 +30,8 @@ const items = () => L.parseItems(itemsTable()).items;
 const done = (cubId, itemId, date = '2026-01-10', extra = {}) => ({ cubId, itemId, date, signer: 'A1', note: '', reporter: '', reportStatus: '', ...extra });
 const award = (cubId, unit, date) => ({ cubId, unit, date, occasion: '', note: '', signer: 'A1' });
 function progress(completions, awards, opts = {}) {
-  return L.computeCubProgress({ cubId: 'C1', items: opts.items || items(), completions, awards, intervalMonths: opts.interval ?? 6, today: opts.today || TODAY });
+  return L.computeCubProgress({ cubId: 'C1', items: opts.items || items(), completions, awards, intervalMonths: opts.interval ?? 6, today: opts.today || TODAY,
+    attendance: opts.attendance, levelAttendCount: opts.levelAttend || 0, newbieAttendCount: opts.newbieAttend || 0 });
 }
 const unit = (p, name) => p.units.find((u) => u.unit === name);
 
@@ -46,8 +49,11 @@ test('四種狀態判定', () => {
 test('目前級別的下一級即使 0 項完成也視為進行中', () => {
   const p0 = progress([], []);
   assert.equal(p0.currentLevel, null);
-  assert.equal(unit(p0, '羚羊').status, S.IN_PROGRESS, '剛入團：羚羊為下一級');
-  assert.equal(unit(p0, '狼').status, S.NOT_STARTED);
+  assert.equal(unit(p0, '剛入團').status, S.IN_PROGRESS, '新入團：剛入團為下一級');
+  assert.equal(unit(p0, '羚羊').status, S.NOT_STARTED);
+  const pn = progress([], [award('C1', '剛入團', '2025-10-01')]);
+  assert.equal(pn.currentLevel, '剛入團');
+  assert.equal(unit(pn, '羚羊').status, S.IN_PROGRESS, '拿到黃領巾後挑戰羚羊');
   const p1 = progress([], [award('C1', '羚羊', '2026-02-01')]);
   assert.equal(p1.currentLevel, '羚羊');
   assert.equal(unit(p1, '狼').status, S.IN_PROGRESS);
@@ -94,10 +100,44 @@ test('第二期預留：回報狀態為待確認的紀錄不算完成', () => {
 
 // ───── 達標判定 ─────
 
-test('羚羊與技能章：項目全部完成即達標', () => {
-  const p = progress([done('C1', 'P-羚羊-1'), done('C1', 'P-羚羊-2', '2026-03-05')], []);
+test('羚羊：全部完成且剛入團已頒發即達標（不套用晉級間隔月數）', () => {
+  const comps = [done('C1', 'P-羚羊-1'), done('C1', 'P-羚羊-2', '2026-03-05')];
+  assert.equal(unit(progress(comps, []), '羚羊').eligible, false, '剛入團還沒頒發');
+  const p = progress(comps, [award('C1', '剛入團', '2026-03-01')]);
   assert.equal(unit(p, '羚羊').eligible, true);
-  assert.equal(unit(p, '羚羊').eligibleDate, '2026-03-05');
+  assert.equal(unit(p, '羚羊').eligibleDate, '2026-03-05', '不用等 6 個月');
+});
+
+test('剛入團：全部完成＋入團後出席滿 4 次；羚羊：剛入團頒發後再出席 8 次', () => {
+  const comps = [done('C1', 'P-剛入團-1', '2025-09-10'), done('C1', 'P-剛入團-2', '2025-09-20')];
+  const days = ['2025-09-06', '2025-09-13', '2025-09-20', '2025-09-27', '2025-09-30'];
+  const three = progress(comps, [], { newbieAttend: 4, attendance: days.slice(0, 3).map((d) => att(d)) });
+  assert.equal(unit(three, '剛入團').eligible, false);
+  assert.deepEqual([unit(three, '剛入團').attendSinceLast, unit(three, '剛入團').attendRequired], [3, 4]);
+  const four = unit(progress(comps, [], { newbieAttend: 4, attendance: days.slice(0, 4).map((d) => att(d)) }), '剛入團');
+  assert.equal(four.eligible, true);
+  assert.equal(four.eligibleDate, '2025-09-27', '第 4 次出席日');
+  // 羚羊：剛入團 2025-10-01 頒發後要再出席 8 次
+  const lion = [done('C1', 'P-羚羊-1', '2025-10-05'), done('C1', 'P-羚羊-2', '2025-10-05')];
+  const after = ['2025-10-04', '2025-10-11', '2025-10-18', '2025-10-25', '2025-11-01', '2025-11-08', '2025-11-15', '2025-11-22'];
+  const seven = unit(progress(lion, [award('C1', '剛入團', '2025-10-01')], { levelAttend: 8, attendance: [...days, ...after.slice(0, 7)].map((d) => att(d)) }), '羚羊');
+  assert.deepEqual([seven.eligible, seven.attendSinceLast], [false, 7], '剛入團頒發前的出席不算');
+  const eight = unit(progress(lion, [award('C1', '剛入團', '2025-10-01')], { levelAttend: 8, attendance: [...days, ...after].map((d) => att(d)) }), '羚羊');
+  assert.deepEqual([eight.eligible, eight.eligibleDate], [true, '2025-11-22']);
+});
+
+test('已經拿到羚羊以上的小狼，視為已通過剛入團（不需要補頒黃領巾）', () => {
+  const p = progress([], [award('C1', '羚羊', '2025-06-01')]);
+  assert.equal(unit(p, '剛入團').status, S.AWARDED);
+  assert.equal(unit(p, '剛入團').awardDate, null);
+  assert.equal(p.currentLevel, '羚羊');
+  assert.equal(unit(p, '狼').status, S.IN_PROGRESS);
+});
+
+test('技能章：項目全部完成即達標', () => {
+  const p = progress([done('C1', 'B-環保-1', '2026-03-05')], []);
+  assert.equal(unit(p, '環保').eligible, true);
+  assert.equal(unit(p, '環保').eligibleDate, '2026-03-05');
 });
 
 test('晉級間隔以上一級「頒發日期」起算，不是登錄時間', () => {
@@ -147,7 +187,7 @@ test('頒發日期不可早於最後完成日，未來日期需確認', () => {
 test('補登後狀態正確，且不發通知、提示較低級別', () => {
   const plan = L.planBackfill({ cubId: 'C1', category: '進程', unit: '狼', date: '2025-06-01', signer: 'A1', items: items(), completions: [done('C1', 'P-狼-國旗-1', '2025-01-01')], awards: [] });
   assert.equal(plan.notify, false);
-  assert.deepEqual(plan.missingLowerLevels, ['羚羊']);
+  assert.deepEqual(plan.missingLowerLevels, ['剛入團', '羚羊']);
   assert.deepEqual(plan.newCompletions.map((c) => c.itemId), ['P-狼-國旗-2'], '已完成的不重複寫');
   assert.equal(plan.newCompletions[0].note, '上線補登');
   assert.equal(plan.newCompletions[0].date, '2025-06-01');
@@ -407,12 +447,12 @@ test('項目總表格式錯誤的容錯：略過壞列並回報列號', () => {
     ['  B-繪畫-1 ', ' 技能章 ', ' 繪畫 ', '', ' 會素描 ', '', ' 是 '], // 前後空白：要能讀
   ]);
   const r = L.parseItems(rows);
-  assert.deepEqual(r.errors.map((e) => e.row), [12, 13, 14]);
+  assert.deepEqual(r.errors.map((e) => e.row), [14, 15, 16]);
   const paint = r.items.find((i) => i.id === 'B-繪畫-1');
   assert.ok(paint);
   assert.equal(paint.text, '會素描');
   assert.equal(paint.section, '－');
-  assert.equal(r.items.length, 10);
+  assert.equal(r.items.length, 12);
 });
 
 test('設定值超出範圍或格式錯誤退回預設', () => {
@@ -468,7 +508,8 @@ test('入團至今多久', () => {
 test('下一步挑戰：剛入團、晉級後、等待頒發', () => {
   const start = L.nextChallenge(progress([], []));
   assert.equal(start.type, 'start');
-  assert.equal(start.items.length, 2);
+  assert.equal(start.level, '剛入團');
+  assert.deepEqual(start.items.map((i) => i.id), ['P-剛入團-1', 'P-剛入團-2']);
   const next = L.nextChallenge(progress([done('C1', 'P-狼-國旗-1')], [award('C1', '羚羊', '2026-01-01')]));
   assert.equal(next.type, 'next');
   assert.match(next.message, /恭喜你完成羚羊進程/);
@@ -563,7 +604,8 @@ test('出席相關設定的預設與格式檢查', () => {
   const d = L.parseSettings(L.defaultSettingsRows()).values;
   assert.equal(d['出席自動完成項目ID'], 'P-羚羊-7');
   assert.equal(d['自動完成所需出席次數'], 4);
-  assert.equal(d['晉級所需出席次數'], 0);
+  assert.equal(d['晉級所需出席次數'], 8);
+  assert.equal(d['剛入團所需出席次數'], 4);
   const bad = L.parseSettings([['鍵', '值'], ['出席自動完成項目ID', '羚羊第七項']]);
   assert.equal(bad.values['出席自動完成項目ID'], 'P-羚羊-7');
   assert.ok(bad.errors.some((e) => e.key === '出席自動完成項目ID'));

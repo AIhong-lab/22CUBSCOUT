@@ -468,7 +468,7 @@ function buildCubView_(cub, today) {
     cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
     intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
     autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
-    levelAttendCount: settings['晉級所需出席次數']
+    levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數']
   });
 
   // 簽核人帳號ID → 管理員姓名

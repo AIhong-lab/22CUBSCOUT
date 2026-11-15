@@ -20,6 +20,8 @@ function setup() {
     var seed = Logic.buildSeed(SEED.itemsCsv, SEED.progressRules);
     if (dataRowCount_(SHEET.ITEMS) === 0) { appendRows_(SHEET.ITEMS, seed.itemRows); report.seeded.push(SHEET.ITEMS + ' ' + seed.itemRows.length + ' 列'); }
     if (dataRowCount_(SHEET.UNITS) === 0) { appendRows_(SHEET.UNITS, seed.unitRows); report.seeded.push(SHEET.UNITS + ' ' + seed.unitRows.length + ' 列'); }
+    var newbie = ensureNewbieLevel_();
+    if (newbie) report.seeded.push(newbie);
     if (dataRowCount_(SHEET.DETAILS) === 0) {
       var details = Logic.buildDetailSeed(SEED.detailsCsv);
       if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
@@ -88,6 +90,39 @@ function ensureFirstLeaderInvite_() {
   var exp = new Date(now + FIRST_LEADER_INVITE_HOURS * 3600000);
   appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '']]);
   return { code: code, expiresAt: exp.getTime(), reused: false };
+}
+
+/**
+ * 補上「剛入團」級（SPEC 附錄第 37 點）：項目總表沒有剛入團項目時，新增 P-剛入團-1～5；
+ * 級別與章說明沒有剛入團時新增一列；進程細項裡原本掛在羚羊項目下、屬於剛入團的細項改掛到新項目。
+ * 只新增列與修改這些細項的項目ID，不動其他資料；已補過就不再執行。
+ * @return {string} 報告文字（沒有做事時為空字串）
+ */
+function ensureNewbieLevel_() {
+  var NB = Logic.NEWBIE, seed = Logic.NEWBIE_SEED, done = [];
+  var items = loadItems_().items;
+  if (!items.some(function (it) { return it.category === Logic.CATEGORY.PROGRESS && it.unit === NB; })) {
+    appendRows_(SHEET.ITEMS, seed.items.map(function (t, i) { return ['P-' + NB + '-' + (i + 1), Logic.CATEGORY.PROGRESS, NB, Logic.NO_SECTION, t, i + 1, '是']; }));
+    done.push(SHEET.ITEMS + ' 新增剛入團 ' + seed.items.length + ' 項');
+    // 細項：分組名稱等於剛入團大項、且目前掛在羚羊項目下的，改掛到剛入團
+    if (ss_().getSheetByName(SHEET.DETAILS)) {
+      var ups = [];
+      readRows_(SHEET.DETAILS).forEach(function (r) {
+        var idx = seed.items.indexOf(Logic.clean(r[1]));
+        if (idx >= 0 && /^P-羚羊-/.test(Logic.clean(r[0]))) {
+          var v = HEADERS[SHEET.DETAILS].map(function (h, j) { return r[j]; });
+          v[0] = 'P-' + NB + '-' + (idx + 1);
+          ups.push({ row: r._row, values: v });
+        }
+      });
+      if (ups.length) { updateRows_(SHEET.DETAILS, ups); done.push(SHEET.DETAILS + ' ' + ups.length + ' 條改掛到剛入團'); }
+    }
+  }
+  if (!loadUnits_()[Logic.CATEGORY.PROGRESS + '|' + NB]) {
+    appendRows_(SHEET.UNITS, [[NB, Logic.CATEGORY.PROGRESS, '', seed.desc, seed.rule, 5]]);
+    done.push(SHEET.UNITS + ' 新增剛入團');
+  }
+  return done.join('、');
 }
 
 /**

@@ -42,12 +42,13 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
     assert.equal(env.sheet(n).frozen, 1);
     assert.equal(env.sheet(n).protections.length, 1, '標題列保護');
   }
-  assert.equal(env.rows('項目總表').length, 163);
-  assert.equal(env.rows('級別與章說明').length, 30);
+  assert.equal(env.rows('項目總表').length, 168, '官方 163 項＋剛入團 5 項');
+  assert.equal(env.rows('級別與章說明').length, 31);
+  assert.deepEqual(env.rows('項目總表').filter((x) => x[2] === '剛入團').map((x) => x[0]), ['P-剛入團-1', 'P-剛入團-2', 'P-剛入團-3', 'P-剛入團-4', 'P-剛入團-5']);
   assert.equal(env.rows('進程細項').length, 375, '團自訂細項只匯入一次');
   assert.equal(env.rows('告知同意內容').length, 1);
   assert.match(env.rows('告知同意內容')[0][1], /我們會記錄哪些資料/);
-  assert.equal(env.rows('設定').length, 21);
+  assert.equal(env.rows('設定').length, 22);
   assert.match(r.firstLeaderInvite.code, /^[A-Z2-9]{8}$/);
   assert.ok(env.logs.some(([, m]) => String(m).includes(r.firstLeaderInvite.code)), '邀請碼印在執行紀錄');
   assert.ok(env.props.SPREADSHEET_ID && env.props.WEBHOOK_KEY);
@@ -61,7 +62,7 @@ test('setup 可重複執行，已有資料一律不覆蓋、不重新匯入', ()
   env.sheet('項目總表').getRange(2, 5, 1, 1).setValues([['團長改過的文字']]);
   env.sheet('設定').getRange(2, 2, 1, 1).setValues([['8']]);
   const second = env.ctx.setup();
-  assert.equal(env.rows('項目總表').length, 163);
+  assert.equal(env.rows('項目總表').length, 168);
   assert.equal(env.rows('項目總表')[0][4], '團長改過的文字');
   assert.equal(String(env.rows('設定')[0][1]), '8');
   assert.equal(env.rows('告知同意內容').length, 1);
@@ -192,9 +193,10 @@ test('查詢：只能看自己綁定的小狼；回傳欄位採白名單', () =>
   assert.deepEqual(Object.keys(d.nextChallenge.items[0]).sort(), ['section', 'text']);
   const json = JSON.stringify(d);
   assert.ok(!/eligible|U[A-Z2-9]{8}|passwordHash|salt/.test(json), '不含達標判定與帳號ID 等內部欄位');
-  assert.equal(d.units.filter((u) => u.category === '進程').length, 4);
+  assert.equal(d.units.filter((u) => u.category === '進程').length, 5);
   assert.equal(d.units.filter((u) => u.category === '技能章').length, 26);
-  assert.equal(d.units.find((u) => u.unit === '羚羊').status, '進行中');
+  assert.equal(d.units.find((u) => u.unit === '剛入團').status, '進行中', '新入團先挑戰剛入團');
+  assert.equal(d.units.find((u) => u.unit === '羚羊').status, '未開始');
 });
 
 test('查詢：簽核人顯示管理員姓名；已完成待頒發用固定文字；出席滿 4 次自動完成', () => {
@@ -294,7 +296,7 @@ test('合併檔 dist/Code.gs 可獨立運作', () => {
   const env = loadGas({ bundle: true });
   env.ctx.setup();
   assert.equal(env.api({ action: 'ping' }).ok, true);
-  assert.equal(env.rows('項目總表').length, 163);
+  assert.equal(env.rows('項目總表').length, 168);
 });
 
 test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄第 33 點）', () => {
@@ -326,10 +328,11 @@ test('公開標準查詢：不用登入、只有項目與說明、停用項目�
   registerParent(env);
   const r = env.api({ action: 'catalog' });
   assert.equal(r.ok, true);
-  assert.equal(r.units.filter((u) => u.category === '進程').length, 4);
+  assert.equal(r.units.filter((u) => u.category === '進程').length, 5);
   assert.equal(r.units.filter((u) => u.category === '技能章').length, 26);
-  assert.equal(r.units.reduce((s, u) => s + u.items.length, 0), 163);
-  assert.equal(r.units[0].unit, '羚羊', '依排序');
+  assert.equal(r.units.reduce((s, u) => s + u.items.length, 0), 168);
+  assert.equal(r.units[0].unit, '剛入團', '依排序：剛入團在羚羊前面');
+  assert.equal(r.units[1].unit, '羚羊');
   assert.match(r.units.find((u) => u.unit === '狼').rule, /參與羚羊級/);
   assert.equal(r.units.find((u) => u.unit === '嚮導').group, '服務類');
   const json = JSON.stringify(r);
@@ -348,7 +351,9 @@ test('進程細項：公開查詢、家長畫面、後台小狼頁都帶細項�
   const reg = registerParent(env);
   const r = env.api({ action: 'catalog' });
   const lion = r.units.find((u) => u.unit === '羚羊');
-  const vow = lion.items[0];
+  const vow = r.units.find((u) => u.unit === '剛入團').items[0];
+  assert.equal(vow.text, '背誦與了解諾言規律');
+  assert.equal(lion.items[0].details.length, 0, '剛入團的細項已從羚羊移出');
   assert.equal(vow.details.length, 1);
   assert.deepEqual(Object.keys(vow.details[0]).sort(), ['group', 'life', 'standard', 'subs']);
   assert.equal(vow.details[0].group, '背誦與了解諾言規律');
@@ -361,16 +366,16 @@ test('進程細項：公開查詢、家長畫面、後台小狼頁都帶細項�
 
   const view = env.api({ action: 'cubDetail', token: reg.token, cubId: 'C1' });
   assert.equal(view.ok, true, JSON.stringify(view));
-  assert.equal(view.units.find((u) => u.unit === '羚羊').items[0].details[0].subs[0], '能完整背出諾言');
+  assert.equal(view.units.find((u) => u.unit === '剛入團').items[0].details[0].subs[0], '能完整背出諾言');
   const adm = env.api({ action: 'cubAdminDetail', token: leaderToken, cubId: 'C1' });
-  assert.equal(adm.units.find((u) => u.unit === '羚羊').items[0].details[0].group, '背誦與了解諾言規律');
+  assert.equal(adm.units.find((u) => u.unit === '剛入團').items[0].details[0].group, '背誦與了解諾言規律');
 
   // 團長在試算表停用一條、寫錯一個項目ID：停用的不顯示，錯誤列略過
   const sh = env.sheet('進程細項');
   sh.getRange(2, 7).setValues([['否']]);
   sh.getRange(3, 1).setValues([['P-不存在-1']]);
   env.advance(301000);
-  const after = env.api({ action: 'catalog' }).units.find((u) => u.unit === '羚羊').items[0].details[0];
+  const after = env.api({ action: 'catalog' }).units.find((u) => u.unit === '剛入團').items[0].details[0];
   assert.equal(after.subs.length, 2);
   assert.equal(after.standard, '', '通過標準寫在被停用的第一列時，這組就不顯示通過標準');
 });
@@ -434,4 +439,28 @@ test('試算表選單「把帳號設為團長」：自己註冊的帳號直接�
   env.ctx.menuSetLeader();
   assert.match(env.ui.alerts.at(-1), /已經是團長/);
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '設為團長'));
+});
+
+test('剛入團：已上線的系統重跑 setup 會補上剛入團，並把細項從羚羊改掛過來；只做一次', () => {
+  const env = loadGas();
+  env.ctx.setup();
+  // 模擬舊版：刪掉剛入團的項目與說明，把細項改回掛在羚羊（舊的對照）
+  const items = env.sheet('項目總表');
+  const keep = env.rows('項目總表').filter((x) => x[2] !== '剛入團');
+  items.data.splice(1); keep.forEach((r) => items.data.push([...r]));
+  const units = env.sheet('級別與章說明');
+  const keepU = env.rows('級別與章說明').filter((x) => x[0] !== '剛入團');
+  units.data.splice(1); keepU.forEach((r) => units.data.push([...r]));
+  const det = env.sheet('進程細項');
+  const old = { 1: 'P-羚羊-1', 2: 'P-羚羊-5', 3: 'P-羚羊-6', 4: 'P-羚羊-3', 5: 'P-羚羊-3' };
+  det.data.forEach((r, i) => { if (i > 0 && /^P-剛入團-/.test(r[0])) r[0] = old[r[0].split('-')[2]]; });
+  env.ctx.DB_CACHE_ = {};
+  const r = env.ctx.setup();
+  assert.ok(r.seeded.some((x) => /新增剛入團 5 項/.test(x)));
+  assert.ok(r.seeded.some((x) => /20 條改掛到剛入團/.test(x)));
+  assert.equal(env.rows('進程細項').filter((x) => x[0].startsWith('P-剛入團-')).length, 20);
+  assert.equal(env.rows('項目總表').filter((x) => x[2] === '剛入團').length, 5);
+  assert.ok(env.rows('級別與章說明').some((x) => x[0] === '剛入團'));
+  const again = env.ctx.setup();
+  assert.ok(!again.seeded.some((x) => /剛入團/.test(x)), '已補過就不再執行');
 });

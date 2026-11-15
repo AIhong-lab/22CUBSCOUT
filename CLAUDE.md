@@ -80,7 +80,7 @@
 
 - 試算表只顯示 `EDITABLE_SHEETS`（Config.js）的 5 個分頁，其他系統分頁由 setup() 隱藏（SPEC 附錄第 30 點）；新增分頁時要決定它屬於哪一種。
 - 完成紀錄的「回報人、回報狀態」是第二期預留欄，第一期留空；判定邏輯只把「回報狀態為空或『已確認』」視為完成。
-- 進程級別順序：羚羊 → 狼 → 鹿 → 豹。豹級頒發後進程全部完成，沒有下一級。
+- 進程級別順序：剛入團 → 羚羊 → 狼 → 鹿 → 豹（`Logic.LEVELS`；剛入團為本團自訂，頒黃領巾，SPEC 附錄第 37 點）。豹級頒發後進程全部完成，沒有下一級。已有羚羊以上頒章者，剛入團在計算時視為已通過（`implicit`，不寫入頒章紀錄）。晉級間隔只套用 `INTERVAL_LEVELS`（狼鹿豹）；出席：剛入團用「剛入團所需出席次數」、其餘用「晉級所需出席次數」。前端級別名稱一律用 `lvName()`（剛入團不加「級」）。
 
 ## 種子資料 `data/items.csv`
 - 依中華民國童軍總會官方原文（進程 110.02.21、技能章 106.11.11）轉出，與 SPEC.md 第十二節一致；欄位：`類別,級別或章名,大項或分類,項目內容`。進程 97 項、技能章 26 章 66 項。
@@ -106,7 +106,7 @@
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`（編輯器手動執行一次） |
 | `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
-| `Setup.js` | `setup()`、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
+| `Setup.js` | `setup()`、`ensureNewbieLevel_()`（補上剛入團，只做一次）、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。
 - 測試：`tests/logic.test.js`（純邏輯）、`tests/backend.test.js`（用 `tests/gas-mock.js` 模擬試算表跑完整 API 流程，也測合併檔）。

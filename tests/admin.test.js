@@ -83,23 +83,33 @@ test('頒章：未完成不可頒、完成可頒並更新級別、未來日期�
   const { env, call, L, cubId } = world();
   assert.match(call(L, 'award', { date: '2026-11-10', entries: [{ cubId, unit: '羚羊' }] }).message, /還沒全部完成/);
   call(L, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '羚羊'), date: '2026-10-01' });
+  assert.match(call(L, 'award', { date: '2026-10-05', entries: [{ cubId, unit: '羚羊' }] }).message, /剛入團還沒有頒發紀錄/, '要先頒剛入團（黃領巾）');
+  // 剛入團：項目完成但出席未滿 4 次 → 需確認後才頒
+  call(L, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '剛入團'), date: '2026-09-01' });
+  const nb = call(L, 'award', { date: '2026-09-02', entries: [{ cubId, unit: '剛入團' }] });
+  assert.equal(nb.needConfirm, true);
+  assert.match(nb.warnings[0], /出席 0／4 次/);
+  assert.equal(call(L, 'award', { date: '2026-09-02', occasion: '黃領巾', entries: [{ cubId, unit: '剛入團' }], confirm: true }).added, 1);
+  assert.equal(env.rows('小狼名單')[0][4], '剛入團');
   assert.match(call(L, 'award', { date: '2026-09-30', entries: [{ cubId, unit: '羚羊' }] }).message, /不可早於最後一個項目的完成日期/);
   const fut = call(L, 'award', { date: '2026-12-01', entries: [{ cubId, unit: '羚羊' }] });
   assert.equal(fut.needConfirm, true);
-  assert.equal(env.rows('頒章紀錄').length, 0, '未確認前不寫入');
-  assert.equal(call(L, 'award', { date: '2026-10-05', occasion: '10 月團集會', entries: [{ cubId, unit: '羚羊' }] }).added, 1);
+  assert.equal(env.rows('頒章紀錄').length, 1, '未確認前不寫入');
+  const lw = call(L, 'award', { date: '2026-10-05', occasion: '10 月團集會', entries: [{ cubId, unit: '羚羊' }] });
+  assert.match(lw.warnings[0], /出席 0／8 次/, '羚羊：剛入團頒發後要再出席 8 次');
+  assert.equal(call(L, 'award', { date: '2026-10-05', occasion: '10 月團集會', entries: [{ cubId, unit: '羚羊' }], confirm: true }).added, 1);
   assert.equal(env.rows('小狼名單')[0][4], '羚羊', '目前級別更新');
   assert.match(call(L, 'award', { date: '2026-10-05', entries: [{ cubId, unit: '羚羊' }] }).message, /已經頒發過了/);
   // 狼級：項目完成但未滿 6 個月 → 需確認
   call(L, 'signoff', { cubIds: [cubId], itemIds: itemsOf(env, '狼'), date: '2026-11-01' });
   const w = call(L, 'award', { date: '2026-11-10', entries: [{ cubId, unit: '狼' }] });
   assert.equal(w.needConfirm, true);
-  assert.match(w.warnings[0], /晉級間隔要到 2027-04-05 才滿/);
+  assert.match(w.warnings[0], /出席 0／8 次/, '狼：羚羊頒發後出席未滿 8 次（晉級間隔另見純邏輯測試）');
   assert.equal(call(L, 'award', { date: '2026-11-10', entries: [{ cubId, unit: '狼' }], confirm: true }).added, 1);
   assert.equal(env.rows('小狼名單')[0][4], '狼');
   // 修改頒發日期
   assert.equal(call(L, 'awardEdit', { cubId, unit: '羚羊', date: '2026-10-06', occasion: '補辦', note: '' }).ok, true);
-  assert.equal(env.rows('頒章紀錄')[0][2], '2026-10-06');
+  assert.equal(env.rows('頒章紀錄').find((r) => r[1] === '羚羊')[2], '2026-10-06');
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '修改頒章' && String(r[4]).includes('2026-10-05')), '保留修改前的值');
   // 撤銷進程頒章 → 級別退回
   assert.equal(call(L, 'awardRevoke', { cubId, unit: '狼' }).ok, true);
@@ -109,11 +119,11 @@ test('頒章：未完成不可頒、完成可頒並更新級別、未來日期�
 test('補登：較低級別沒有紀錄先提示，一併補登後狀態正確且不發推播', () => {
   const { env, call, L, cubId } = world();
   const ask = call(L, 'backfill', { cubId, unit: '狼', date: '2025-12-01' });
-  assert.deepEqual([...ask.missingLowerLevels], ['羚羊']);
+  assert.deepEqual([...ask.missingLowerLevels], ['剛入團', '羚羊']);
   assert.equal(env.rows('頒章紀錄').length, 0);
   const r = call(L, 'backfill', { cubId, unit: '狼', date: '2025-12-01', includeLower: true });
-  assert.deepEqual([...r.awarded], ['羚羊', '狼']);
-  assert.equal(r.completions, 10 + 32);
+  assert.deepEqual([...r.awarded], ['剛入團', '羚羊', '狼']);
+  assert.equal(r.completions, 5 + 10 + 32);
   assert.ok(env.rows('完成紀錄').every((c) => c[4] === '上線補登' && c[2] === '2025-12-01'));
   assert.equal(env.rows('小狼名單')[0][4], '狼');
   assert.equal(env.sent.length, 0, '補登不推播');
