@@ -23,7 +23,8 @@
 - 2026-11-15 團長同意開始階段 4B：`gas/ItemsAdmin.js`（項目管理 API：`itemsTree`、`itemSave`、`itemToggle`、`itemMove`、`sectionRename`、`unitSave`、`detailSave`、`detailToggle`、`itemsExport`、`itemsReload`；新增／停用／啟用先回 `needConfirm` 影響預覽）、設定頁（`settingsGet`／`settingsSave`／`consentSave`，`Logic.validateSettingValue`）、`ensureBackup_()`（setup 自動建立備份資料夾與每週排程）、試算表選單「團長預設帳號（admin）」（`ensureDefaultAdmin_`，隨機密碼只顯示在視窗）。前端 `ADMIN_PAGES.items`、`ADMIN_PAGES.settings`。
 - 體驗者（SPEC 附錄第 40 點）：狀態「體驗」、`Logic.trialProgress`（只算一般團集會）、`cubsOnDate_(date, type)`（大活動不列體驗者）、`cubJoin`（轉為入團）、`adminHome.trials`、家長端 `trial`；剛入團出席用 `newbieAfter`（入團日之後）。
 - 名單直接編輯（SPEC 附錄第 41 點）：`cubBatchSave`（同一位多筆會合併、有錯整批不寫）、前端 `ADMIN_PAGES.cubs` 的 `edit` 模式。
-- **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
+- 2026-11-15 全面檢查後修正：體驗者的綁定碼可用（`checkBindCode`）、`admin` 為保留帳號（`isReservedUsername_`）且選單重設密碼時清除其登入失敗紀錄、視為通過的剛入團不顯示修改／撤銷頒章、出席總覽列出體驗者。
+- **目前狀態**：階段 4B 已完成（模擬測試）；**階段 5（LINE 主動通知、關鍵字回覆、每日排程）尚未實作**，團長說要做之前不動。設定裡的「未頒章再提醒天數」「每日排程時間（幾點）」目前沒有作用。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
@@ -120,7 +121,7 @@
 
 ## 前端（web/index.html）
 - 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
-- 版面（SPEC 附錄第 29 點）：`#tabs` 導覽列在 `header.top` 內；`setTabs()` 依 `state.mode` 加 `body.admin`，寬螢幕（`isWide()`，≥1000px）後台改左側選單並把 `adminMoreItems()` 直接列出；未登入預設 `renderCatalog('progress')`。e2e 另有一段 1280px 寬螢幕檢查。
+- 版面（SPEC 附錄第 29 點）：`#tabs` 導覽列在 `header.top` 內；`setTabs()` 依 `state.mode` 加 `body.admin`，寬螢幕（`isWide()`，≥1000px）後台改左側選單並把 `adminMoreItems()` 直接列出；未登入預設 `renderHome()`（首頁，附錄第 34 點）。e2e 另有一段 1280px 寬螢幕檢查。
 - 結構：工具函式 → 登入／註冊 → 家長畫面（`viewHome` 冒險、`viewMap` 闖關地圖、`viewBadges` 徽章收藏冊、`viewStamps` 集點卡、`renderMine`）→ `printSheets` → 後台（`ADMIN_PAGES` 物件，每個鍵是一頁；`goAdmin(頁名, 參數)` 切換）。
 - 後台需要確認的操作（頒章、修改頒章）用 `withConfirm()`：後端回 `needConfirm` 時跳確認視窗再帶 `confirm:true` 重送。
 - 登入憑證：勾「記住我」存 localStorage，否則存 sessionStorage（關閉瀏覽器即登出）。
@@ -143,7 +144,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 ```
 
 ## Script Properties（只存在 GAS，不進 repo）
-`SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）；之後階段：`BACKUP_FOLDER_ID`、`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
+`SPREADSHEET_ID`、`WEBHOOK_KEY`（setup 自動產生）、`LINE_MESSAGING_TOKEN`（團長手動填）、`BACKUP_FOLDER_ID`（setup 自動建立）；選用：`WEB_URL`（GitHub Pages 網址，給通知按鈕用）。
 
 ## 維護守則（SPEC 第十四節，必須遵守）
 - 改任何功能前先讀 CLAUDE.md、docs/SPEC.md 與相關檔案；改完同步更新 SPEC.md、CLAUDE.md 與 CHANGELOG.md。
@@ -167,4 +168,4 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 - 逐格讀寫試算表（一律 getValues/setValues 批次），或寫入時不加 LockService。
 - 收集生日、身分證字號、電話、地址、照片。
 - `setup()` 覆蓋任何已有資料的分頁。
-- 在里程碑一期間、團長說「繼續做 4B」之前動後面階段。
+- 團長說要做之前，動階段 5（LINE 主動通知）或第二期（ROADMAP）的功能。

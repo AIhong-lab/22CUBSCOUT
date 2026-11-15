@@ -719,7 +719,7 @@ var Logic = (function () {
   /** 檢查綁定碼可否使用（綁定碼、小孩姓名都要符合，小狼需在團、剩餘次數 > 0） */
   function checkBindCode(cub, inputName) {
     if (!cub) return { ok: false, reason: 'not_found' };
-    if (cub.status !== '在團') return { ok: false, reason: 'not_active' };
+    if (cub.status !== '在團' && cub.status !== '體驗') return { ok: false, reason: 'not_active' };
     if (!(cub.codeUsesLeft > 0)) return { ok: false, reason: 'used_up' };
     if (clean(inputName).replace(/\s+/g, '') !== clean(cub.name).replace(/\s+/g, '')) return { ok: false, reason: 'name_mismatch' };
     return { ok: true };
@@ -1788,6 +1788,9 @@ function requireConsentVersion_(agreedVersion) {
 
 // ───────────── 註冊、登入、密碼 ─────────────
 
+/** 保留的帳號名稱（團長預設帳號）：不開放註冊，訊息與「已有人使用」相同 */
+function isReservedUsername_(username) { return Logic.clean(username).toLowerCase() === DEFAULT_ADMIN_USERNAME; }
+
 function apiRegister_(req) {
   // 沒有代碼：新的註冊方式（送出申請，團長審核）；有代碼：舊方式（第一位團長邀請碼、既有綁定碼仍可用）
   if (!Logic.clean(req.code)) return registerByRequest_(req);
@@ -1797,7 +1800,7 @@ function apiRegister_(req) {
     checkAccountInput_(req.username, req.password, req.nickname, settings);
     // 家長：沒有同意就不建立任何資料
     var version = r.kind === 'parent' ? requireConsentVersion_(req.consentVersion) : null;
-    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
 
     var accounts = loadAccounts_();
     var accountId = newId_('U', accounts.map(function (a) { return a.accountId; }));
@@ -1963,7 +1966,7 @@ function registerByRequest_(req) {
     if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
       throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
     }
-    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
 
     var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
     var salt = randomHex_(32);
@@ -2189,6 +2192,9 @@ function ensureDefaultAdmin_() {
       var ar = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length); ar[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: ar }]);
     }
+    // 解除登入鎖定：有人故意輸錯密碼也不會把團長鎖在外面
+    var fails = readRows_(SHEET.FAILURES).filter(function (r) { return Logic.clean(r[0]) === '登入' && Logic.clean(r[1]).toLowerCase() === DEFAULT_ADMIN_USERNAME; });
+    if (fails.length) deleteRows_(SHEET.FAILURES, fails.map(function (r) { return r._row; }));
     logOp_('試算表選單', created ? '建立團長預設帳號' : '重設團長預設帳號密碼', DEFAULT_ADMIN_USERNAME, '', '團長');
     return { username: DEFAULT_ADMIN_USERNAME, password: password, created: created };
   });
@@ -3247,11 +3253,11 @@ registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
   var period = Logic.periodOf(loadPeriods_(), today);
   var extra = {};
   if (period) loadExtra_().forEach(function (x) { if (x.period === period.name) extra[x.cubId] = (extra[x.cubId] || 0) + x.count; });
-  var rows = loadCubs_().filter(function (c) { return c.status === '在團'; }).map(function (c) {
+  var rows = loadCubs_().filter(function (c) { return c.status === '在團' || c.status === Logic.TRIAL; }).map(function (c) {
     var cells = meetings.map(function (m) { return st[c.cubId + '|' + m.meetingId] || ''; });
     var counts = { attended: cells.filter(function (x) { return x === '出席'; }).length, leave: cells.filter(function (x) { return x === '請假'; }).length };
     var rate = period ? Logic.attendanceRate(allAtt[c.cubId] || [], period, extra[c.cubId] || 0) : null;
-    return { cubId: c.cubId, name: c.name, squad: c.squad, cells: cells, counts: counts, extra: extra[c.cubId] || 0, rate: rate ? rate.text : '' };
+    return { cubId: c.cubId, name: c.name, squad: c.squad, trial: c.status === Logic.TRIAL, cells: cells, counts: counts, extra: extra[c.cubId] || 0, rate: rate ? rate.text : '' };
   });
   return { meetings: meetings.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name }; }), rows: rows, period: period, squads: squadsOf_(loadCubs_()) };
 });

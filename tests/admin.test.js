@@ -634,3 +634,27 @@ test('名單直接編輯：一次改多位的姓名、小隊、入團日；全�
   assert.ok(env.rows('操作日誌').some((x) => x[2] === '編輯小狼' && x[3] === c2 && /測試小狼乙／／2025-09-01/.test(x[4])), '記錄修改前');
   assert.match(call(L, 'cubBatchSave', { changes: [{ cubId, name: ' ' }] }).message, /姓名不可空白/);
 });
+
+// ═════ 2026-11-15 全面檢查發現的問題 ═════
+test('體驗者的綁定碼可以用（修正：後台顯示了綁定碼，家長輸入卻被拒絕）', () => {
+  const { env, call, L } = world();
+  const t = call(L, 'cubSave', { trial: true, name: '測試體驗戊', squad: '', trialStart: '2026-09-01' });
+  const v = env.api({ action: 'consentText' }).version;
+  const r = env.api({ action: 'register', code: t.code, childName: '測試體驗戊', username: 'trialdad', password: 'trialpass1', nickname: '體驗戊爸爸', consentVersion: v });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(call(r.token, 'me').cubs[0].name, '測試體驗戊');
+});
+
+test('admin 是保留帳號：不能用公開註冊搶先註冊；選單重設密碼時一併解除登入鎖定', () => {
+  const { env, call } = world();
+  for (const u of ['admin', 'Admin', 'ADMIN']) {
+    assert.equal(env.api({ action: 'register', identity: '服務員', username: u, password: 'whatever12', nickname: '路人' }).code, 'NAME_TAKEN', u);
+  }
+  env.ctx.menuDefaultAdmin();
+  // 有人故意輸錯密碼把 admin 鎖住
+  for (let i = 0; i < 6; i++) env.api({ action: 'login', username: 'admin', password: 'wrongwrong' });
+  env.ctx.menuDefaultAdmin();
+  const pw = /密碼：(\S+)/.exec(env.ui.alerts.at(-1))[1];
+  const r = env.api({ action: 'login', username: 'admin', password: pw });
+  assert.equal(r.ok, true, '重設後可以馬上登入：' + JSON.stringify(r));
+});

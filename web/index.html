@@ -1860,10 +1860,10 @@ const ADMIN_PAGES = {
         ${i.canRevoke ? `<button class="btn danger small" data-revoke="${esc(i.id)}">撤銷</button>` : ''}</li>`).join('');
       let actions = '';
       if (L && u.status === '已完成待頒發') actions = `<button class="btn alt small" data-award="${esc(u.unit)}">🏅 頒章</button>`;
-      if (L && u.status === '已頒發') actions = `<button class="btn ghost small" data-aedit="${esc(u.unit)}">修改頒章</button> <button class="btn danger small" data-arevoke="${esc(u.unit)}">撤銷頒章</button>`;
+      if (L && u.status === '已頒發' && u.awardDate) actions = `<button class="btn ghost small" data-aedit="${esc(u.unit)}">修改頒章</button> <button class="btn danger small" data-arevoke="${esc(u.unit)}">撤銷頒章</button>`;
       const elig = u.status === '已完成待頒發' ? (u.eligible ? `<div class="msg ok small">✅ 已達標（${fmtDate(u.eligibleDate)}）</div>` : `<div class="msg warn small">⏳ ${u.waitingUntil ? '晉級間隔到 ' + fmtDate(u.waitingUntil) + ' 才滿' : u.attendRequired ? '出席 ' + u.attendSinceLast + '／' + u.attendRequired + ' 次' : '上一級尚未頒發'}</div>`) : '';
       return `<details class="unit bd-${esc(u.status)}"><summary><div class="head"><span class="name">${iconOf(u)} ${esc(unitLabel(u))}</span><span class="pill st-${esc(u.status)}">${esc(u.status)}</span></div>
-        ${u.status === '已頒發' ? `<div class="muted small">🏅 ${fmtDate(u.awardDate)}${u.awardOccasion ? '・' + esc(u.awardOccasion) : ''}</div>` : `<div class="muted small">⭐ ${u.done}／${u.total}</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`}
+        ${u.status === '已頒發' ? `<div class="muted small">🏅 ${u.awardDate ? fmtDate(u.awardDate) + (u.awardOccasion ? '・' + esc(u.awardOccasion) : '') : '已晉級，視為通過'}</div>` : `<div class="muted small">⭐ ${u.done}／${u.total}</div><div class="bar ${pct === 100 ? 'full' : ''}"><span style="width:${pct}%"></span></div>`}
         ${elig}</summary><div class="body">${actions}<ul class="items">${items}</ul>
         ${u.status !== '已頒發' && u.done < u.total && c.status === '在團' ? `<div class="row-flex"><input type="date" class="sdate" value="${todayStr()}" max="${todayStr()}" style="width:auto"><button class="btn green small" data-signunit="${esc(u.unit)}">簽核勾選的項目</button></div>` : ''}</div></details>`;
     };
@@ -2047,7 +2047,7 @@ const ADMIN_PAGES = {
     const draw = () => {
       const rows = d.rows.filter((r) => squad === '全團' || r.squad === squad);
       $('#t').innerHTML = `<table class="tbl"><thead><tr><th>小狼</th><th>出席</th><th>請假</th><th>額外</th><th>出席率</th>${d.meetings.map((m) => `<th title="${esc(m.name)}">${shortDate(m.date)}</th>`).join('')}</tr></thead><tbody>
-        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${r.counts.attended}</td><td>${r.counts.leave}</td><td>${r.extra}</td><td>${esc(r.rate || '－')}</td>${r.cells.map((c) => `<td>${c === '出席' ? '🐾' : c === '請假' ? '🌙' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b>${r.trial ? " 🧪" : ""}</td><td>${r.counts.attended}</td><td>${r.counts.leave}</td><td>${r.extra}</td><td>${esc(r.rate || '－')}</td>${r.cells.map((c) => `<td>${c === '出席' ? '🐾' : c === '請假' ? '🌙' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
     };
     onSquad((s) => { squad = s; draw(); });
     $('#go').onclick = () => goAdmin('attOverview', { from: $('#from').value, to: $('#to').value });

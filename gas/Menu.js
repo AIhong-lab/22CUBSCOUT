@@ -60,6 +60,9 @@ function ensureDefaultAdmin_() {
       var ar = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length); ar[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: ar }]);
     }
+    // 解除登入鎖定：有人故意輸錯密碼也不會把團長鎖在外面
+    var fails = readRows_(SHEET.FAILURES).filter(function (r) { return Logic.clean(r[0]) === '登入' && Logic.clean(r[1]).toLowerCase() === DEFAULT_ADMIN_USERNAME; });
+    if (fails.length) deleteRows_(SHEET.FAILURES, fails.map(function (r) { return r._row; }));
     logOp_('試算表選單', created ? '建立團長預設帳號' : '重設團長預設帳號密碼', DEFAULT_ADMIN_USERNAME, '', '團長');
     return { username: DEFAULT_ADMIN_USERNAME, password: password, created: created };
   });

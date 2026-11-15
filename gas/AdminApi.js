@@ -1007,11 +1007,11 @@ registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
   var period = Logic.periodOf(loadPeriods_(), today);
   var extra = {};
   if (period) loadExtra_().forEach(function (x) { if (x.period === period.name) extra[x.cubId] = (extra[x.cubId] || 0) + x.count; });
-  var rows = loadCubs_().filter(function (c) { return c.status === '在團'; }).map(function (c) {
+  var rows = loadCubs_().filter(function (c) { return c.status === '在團' || c.status === Logic.TRIAL; }).map(function (c) {
     var cells = meetings.map(function (m) { return st[c.cubId + '|' + m.meetingId] || ''; });
     var counts = { attended: cells.filter(function (x) { return x === '出席'; }).length, leave: cells.filter(function (x) { return x === '請假'; }).length };
     var rate = period ? Logic.attendanceRate(allAtt[c.cubId] || [], period, extra[c.cubId] || 0) : null;
-    return { cubId: c.cubId, name: c.name, squad: c.squad, cells: cells, counts: counts, extra: extra[c.cubId] || 0, rate: rate ? rate.text : '' };
+    return { cubId: c.cubId, name: c.name, squad: c.squad, trial: c.status === Logic.TRIAL, cells: cells, counts: counts, extra: extra[c.cubId] || 0, rate: rate ? rate.text : '' };
   });
   return { meetings: meetings.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name }; }), rows: rows, period: period, squads: squadsOf_(loadCubs_()) };
 });

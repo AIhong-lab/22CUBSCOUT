@@ -712,7 +712,7 @@ var Logic = (function () {
   /** 檢查綁定碼可否使用（綁定碼、小孩姓名都要符合，小狼需在團、剩餘次數 > 0） */
   function checkBindCode(cub, inputName) {
     if (!cub) return { ok: false, reason: 'not_found' };
-    if (cub.status !== '在團') return { ok: false, reason: 'not_active' };
+    if (cub.status !== '在團' && cub.status !== '體驗') return { ok: false, reason: 'not_active' };
     if (!(cub.codeUsesLeft > 0)) return { ok: false, reason: 'used_up' };
     if (clean(inputName).replace(/\s+/g, '') !== clean(cub.name).replace(/\s+/g, '')) return { ok: false, reason: 'name_mismatch' };
     return { ok: true };

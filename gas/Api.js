@@ -187,6 +187,9 @@ function requireConsentVersion_(agreedVersion) {
 
 // ───────────── 註冊、登入、密碼 ─────────────
 
+/** 保留的帳號名稱（團長預設帳號）：不開放註冊，訊息與「已有人使用」相同 */
+function isReservedUsername_(username) { return Logic.clean(username).toLowerCase() === DEFAULT_ADMIN_USERNAME; }
+
 function apiRegister_(req) {
   // 沒有代碼：新的註冊方式（送出申請，團長審核）；有代碼：舊方式（第一位團長邀請碼、既有綁定碼仍可用）
   if (!Logic.clean(req.code)) return registerByRequest_(req);
@@ -196,7 +199,7 @@ function apiRegister_(req) {
     checkAccountInput_(req.username, req.password, req.nickname, settings);
     // 家長：沒有同意就不建立任何資料
     var version = r.kind === 'parent' ? requireConsentVersion_(req.consentVersion) : null;
-    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
 
     var accounts = loadAccounts_();
     var accountId = newId_('U', accounts.map(function (a) { return a.accountId; }));
@@ -362,7 +365,7 @@ function registerByRequest_(req) {
     if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
       throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
     }
-    if (findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
 
     var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
     var salt = randomHex_(32);
