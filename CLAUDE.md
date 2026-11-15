@@ -30,6 +30,7 @@
 - 後台選單整理（SPEC 附錄第 47 點）：選單顯示「帳號申請」（頁面鍵仍是 `requests`）、「列印紙本」（`print`）；`PAGE_GROUPS`／`mountPageSeg` 把 overview＋attOverview、calendar＋periods、admins＋accounts 各合併成一個選單項目（頁內切換鈕 `#gseg`）。
 - 後台首頁與刪除權限（SPEC 附錄第 48 點）：`ADMIN_PAGES.home` 上半部用 `homeIntroHtml`（和 `renderHome` 共用），後台區塊從 `#adminZone` 開始、快捷按鈕 `#adminQuick`；`privacyExecute` 的 `delete` 只有 admin（`me.ownerExists`／`me.isOwner`）。
 - LINE 圖文選單與公開頁面（SPEC 附錄第 49 點）：分頁「網站內容」（`SHEET.SITE`，鍵 about／activity／fb）、公開 API `siteInfo`（含本月起的啟用集會，白名單 date/name/type/note）、`siteContentGet`／`siteContentSave`（在 TeamApi.js）；前端 `loadSite`、`drawCalendar`（首頁 `#calCard`）、`renderInfo('notices'|'calendar'|'about')`（`INFO_PAGES`，網址 `#notices`、`#calendar`、`#about`）、首頁 `#homeLinks`、設定頁表單 `#fw`。畫面上稱「公佈欄」。圖文選單圖片 `docs/line-richmenu.jpg`（由 scratch 腳本產生，六格都是「連結」動作）。
+- 活動報名、繳費紀錄與章的圖片（SPEC 附錄第 50 點）：`gas/EventApi.js`——`eventAdminList`／`eventSave`／`eventRegs`／`eventPay`／`eventRegRemove`（權限 `manageEvents`，團長）、登入後 `eventList`／`eventRegister`／`eventCancel`、`publicEvents_`（併入 `siteInfo.events`）、`deleteRegsOfAccount_`；`Logic.validateEvent`（擋機敏題目）／`validateEventPeople`／`EVENT_IDENTITIES`；時間用 `'YYYY-MM-DDTHH:mm'` 字串（`nowStamp_`）。章圖：`unitImages`（公開）／`unitImageSave`、`Logic.isUnitImage`。前端 `ADMIN_PAGES.events`、`renderInfo('events')`、`renderEventForm`、`pendingEvent`、`iconOf` 回傳 `.uic` 容器＋`applyUnitImages`（MutationObserver）、`shrinkImage`。
 - **目前狀態**：階段 0A～5 的程式都已完成並通過模擬測試；**LINE 推播（Flex 訊息格式、multicast）尚未在真實 LINE 環境驗證**，要團長實測。第二期（ROADMAP）未做。團長正在正式環境試用，回報的問題優先處理。
 
 ## 架構
@@ -90,6 +91,9 @@
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
 | 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架） |
 | 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
+| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間 |
+| 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
+| 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間 |
 | 設定 | 鍵、值、說明 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 
@@ -120,6 +124,7 @@
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `TeamApi.js` | 小隊輔、正副小隊長與職務紀錄、公告欄（含公開 API `notices`）、批次匯入名單、家長線上請假（SPEC 附錄第 45 點） |
+| `EventApi.js` | 活動報名與繳費紀錄、章的圖片（SPEC 附錄第 50 點） |
 | `ItemsAdmin.js` | 項目管理 API（SPEC 7.7，4B）：樹狀資料、改文字、新增（自動ID、影響預覽）、停用／啟用、排序、大項改名、技能章新增／改名、說明、本團細項、匯出、重新載入；改完清公開查詢快取 |
 | `Notify.js` | LINE 主動通知（階段 5）：達標推播與去重、再提醒、關鍵字回覆、每日排程 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`、`ensureBackup_`（setup 自動建立資料夾與排程） |

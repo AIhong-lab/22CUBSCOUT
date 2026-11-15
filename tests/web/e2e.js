@@ -660,6 +660,36 @@ function seed(env) {
   await page.getByText('年度出席設定').waitFor();
   await shot('48-merged-menu');
 
+  // ═════ 活動報名與章的圖片（附錄第 50 點，團長） ═════
+  await sideTab('events');
+  await page.locator('#newEv').click();
+  await page.fill('form#fe input[name=title]', '冬季露營');
+  await page.fill('form#fe textarea[name=desc]', '兩天一夜，請帶睡袋。');
+  await page.fill('form#fe input[name=date]', '2026-12-12'); await page.fill('form#fe input[name=endDate]', '2026-12-13');
+  await page.fill('form#fe input[name=regStart]', '2026-11-01T08:00'); await page.fill('form#fe input[name=regEnd]', '2026-12-05T23:59');
+  await page.fill('form#fe input[name=fee]', '1200');
+  await page.locator('#addQ').click();
+  await page.fill('[data-qrow] [data-q=label]', '家長手機');
+  await page.selectOption('[data-qrow] [data-q=type]', 'text');
+  await page.click('form#fe button[type=submit]');
+  await page.getByText('不收集「手機」').waitFor();
+  await page.fill('[data-qrow] [data-q=label]', '飲食');
+  await page.selectOption('[data-qrow] [data-q=type]', 'choice');
+  await page.fill('[data-qrow] [data-q=options]', '葷, 素');
+  await page.check('[data-qrow] [data-q=required]');
+  await shot('52-event-form'); await noHScroll('活動表單');
+  await page.click('form#fe button[type=submit]');
+  await page.getByText('還沒有人報名。').waitFor();
+  assert.equal(env.rows('活動').length, 1);
+  // 上傳章的圖片：項目管理 → 進程 → 第一個級別
+  await sideTab('items');
+  await page.locator('#uimg').setInputFiles({ name: 'badge.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP8z8Dwn4GBgYGJAQoAHxcCAr7kO9IAAAAASUVORK5CYII=', 'base64') });
+  await page.getByText('圖片已更新').waitFor();
+  await page.locator('#uimgDel').waitFor();
+  assert.equal(env.rows('章圖').length, 1);
+  assert.ok(await page.locator('.uic.has img').count() >= 1, '上傳後圖示換成圖片');
+  await shot('53-unit-image');
+
   // 最高權限鎖在 admin：一般團長看得到提示，admin 那一列沒有「管理」按鈕，指定時只能選服務員
   env.ctx.ensureDefaultAdmin_();
   await sideTab('admins');
@@ -697,6 +727,27 @@ function seed(env) {
   await page.getByText('已取消請假').waitFor();
   assert.equal(env.rows('出席紀錄').filter((r) => r[1] === kid && r[2] === '請假').length, 0, '取消後沒有請假紀錄');
 
+  // 家長報名活動：從首頁的「活動報名」進去，一次報兩位
+  await page.locator('#title').click();
+  await page.locator('nav.tabs button[data-v=home]').click().catch(() => {});
+  await page.evaluate(() => renderInfo('events'));
+  await page.locator('[data-reg]').first().click();
+  await page.locator('form#fev').waitFor();
+  await page.fill('[data-person] [data-f=name]', '測試小狼戊');
+  await page.selectOption('[data-person] [data-f=identity]', '小狼');
+  await page.selectOption('[data-person] select[data-q]', '葷');
+  await page.locator('#addP').click();
+  await page.locator('[data-person]').nth(1).locator('[data-f=name]').fill('測試小狼戊媽媽');
+  await page.locator('[data-person]').nth(1).locator('[data-f=identity]').selectOption('家長');
+  await page.locator('[data-person]').nth(1).locator('select[data-q]').selectOption('素');
+  await shot('54-event-register'); await noHScroll('報名表');
+  await page.click('form#fev button[type=submit]');
+  await page.getByText('我已經報名的（2 位）').waitFor();
+  assert.match(await text(), /應繳 1200 元・尚未繳費/);
+  assert.equal(env.rows('活動報名').filter((r) => r[9] === '有效').length, 2);
+  await page.locator('[data-cancel]').nth(1).click();
+  await page.getByText('我已經報名的（1 位）').waitFor();
+
   // LINE 圖文選單連到的三個公開頁面與首頁月曆（附錄第 49 點）
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#calCard .cal-grid').waitFor();
@@ -704,10 +755,23 @@ function seed(env) {
   assert.ok(await page.locator('#calCard .d.today').count() === 1, '月曆標出今天');
   for (let i = 0; i < 3 && !(await page.locator('#calCard').innerText()).includes('12/6 團集會'); i++) await page.locator('#calCard [data-cal]').last().click();
   assert.match(await page.locator('#calCard').innerText(), /12\/6（日）[\s\S]*12\/6 團集會/, '月曆下方列出當月集會');
+  assert.match(await page.locator('#calCard').innerText(), /🔴 報名截止：冬季露營[\s\S]*🎪 冬季露營（12\/12～12\/13）/, '月曆列出活動與報名截止');
+  assert.ok(await page.locator('#calCard .d.ev').count() === 2 && await page.locator('#calCard .d.regend').count() === 1, '月曆標出活動日與截止日');
+  assert.ok(await page.locator('#homeLinks [data-info=events]').count() === 1);
   await shot('50-home-calendar'); await noHScroll('首頁月曆');
   await page.locator('#homeLinks [data-info=about]').click();
   await page.getByText('這是範本').waitFor();
   assert.equal(new URL(page.url()).hash, '#about');
+  // 沒登入按「我要報名」→ 先登入 → 直接開報名表
+  await page.goto('about:blank'); await page.goto(PAGE + '#events'); await page.locator('[data-reg]').first().waitFor();
+  assert.match(await text(), /冬季露營[\s\S]*報名中[\s\S]*1200 元/);
+  await shot('55-events-public');
+  await page.locator('[data-reg]').first().click();
+  await page.getByText('登入後會直接打開報名表').waitFor();
+  await page.fill('input[name=username]', 'mom_new'); await page.fill('input[name=password]', 'mompass12');
+  await page.click('button[type=submit]');
+  await page.getByText('我已經報名的（1 位）').waitFor();
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE + '#calendar'); await page.locator('#calCard .cal-grid').waitFor();
   await shot('51-info-calendar');
   await page.goto('about:blank'); await page.goto(PAGE + '#notices'); await page.locator('#noticeCard').waitFor();

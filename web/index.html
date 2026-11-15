@@ -322,6 +322,16 @@
   .stats div { background: #fff; border: 1px solid var(--gray-line); border-radius: 12px; padding: 12px; cursor: pointer; }
   .stats b { display: block; font-size: 24px; line-height: 1.2; }
   .stats span { font-size: 13px; color: var(--gray); }
+  .uic img { width: 1.3em; height: 1.3em; object-fit: contain; vertical-align: -0.28em; border-radius: 4px; }
+  .award-strip { display: flex; flex-wrap: wrap; gap: 14px; }
+  .award-strip .a { width: 92px; text-align: center; font-size: 14px; font-weight: 700; }
+  .award-strip .a .pic { font-size: 52px; line-height: 1.15; display: block; }
+  .award-strip .a .s { display: block; font-weight: 400; }
+  .person { border: 1px solid var(--gray-line); border-radius: 12px; padding: 4px 12px 12px; margin-bottom: 10px; }
+  .qrow { border: 1px dashed var(--gray-line); border-radius: 12px; padding: 4px 12px 12px; margin-bottom: 10px; }
+  .cal-grid .d.ev { background: var(--yellow, #f5b82e); color: #14213d; font-weight: 800; }
+  .cal-grid .d.reg { box-shadow: inset 0 -4px 0 #2e9e5b; }
+  .cal-grid .d.regend { box-shadow: inset 0 -4px 0 #d64545; }
   .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .cal-head b { font-size: 18px; }
   .cal-head button { border: 1px solid var(--gray-line); background: #fff; border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; color: var(--blue); }
@@ -415,7 +425,36 @@ const LEVELS = ['剛入團', '羚羊', '狼', '鹿', '豹']; // 剛入團：本�
 const lvName = (l) => (l === '剛入團' ? l : l + '級');
 const LEVEL_ICON = { '剛入團': '🌱', '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆' };
 const BADGE_ICON = { 嚮導: '🧭', 環保: '♻️', 交通安全: '🚦', 表演: '🎭', 種植: '🌱', 飼養: '🐹', 勞作: '🔨', 義工: '🤝', 球類運動: '⚽', 體適能運動: '💪', 民俗體育運動: '🪀', 游泳: '🏊', 自行車: '🚲', 旅行: '🎒', 休閒活動: '🎲', 舞蹈: '💃', 體操: '🤸', 繪畫: '🎨', 音樂: '🎵', 模型: '🏠', 口技: '🗣️', 書法: '🖌️', 歌詠: '🎤', 收集: '📦', 資訊: '💻', 語文: '📖' };
-const iconOf = (u) => (u.category === '進程' ? LEVEL_ICON[u.unit] : BADGE_ICON[u.unit]) || '🎖️';
+/** 級別或章的圖示：預設表情符號；團長上傳官方圖片後自動換成圖片（SPEC 附錄第 50 點） */
+const iconOf = (u) => `<span class="uic" data-uk="${esc(u.category + '|' + u.unit)}">${(u.category === '進程' ? LEVEL_ICON[u.unit] : BADGE_ICON[u.unit]) || '🎖️'}</span>`;
+let unitImgs = null;
+function applyUnitImages() {
+  if (!unitImgs) return;
+  document.querySelectorAll('.uic[data-uk]:not(.has)').forEach((el) => {
+    const src = unitImgs[el.dataset.uk];
+    if (!src || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(src)) return;
+    el.classList.add('has');
+    const img = document.createElement('img'); img.src = src; img.alt = '';
+    el.textContent = ''; el.appendChild(img);
+  });
+}
+/** 把使用者選的圖縮到放得進試算表一格（最長邊 160px 起，太大就再縮） */
+async function shrinkImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error('這個檔案不是圖片，或瀏覽器打不開。')); i.src = url; });
+    for (const size of [160, 128, 96, 72]) {
+      const k = Math.min(1, size / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      let out = c.toDataURL('image/webp', 0.85);
+      if (!out.startsWith('data:image/webp')) out = c.toDataURL('image/png');
+      if (out.length <= 45000) return out;
+    }
+    throw new Error('這張圖太複雜，縮小後還是太大，請換一張比較簡單的圖。');
+  } finally { URL.revokeObjectURL(url); }
+}
 const unitLabel = (u) => (u.category === '進程' ? lvName(u.unit) : u.unit);
 const STATUS_ORDER = { '已完成待頒發': 0, '進行中': 1, '已頒發': 2, '未開始': 3 };
 const webRoot = () => location.origin + location.pathname.replace(/web\/?[^/]*$/, '');
@@ -523,24 +562,47 @@ function drawCalendar(el, site, ym) {
   const days = new Date(y, m, 0).getDate(), lead = new Date(y, m - 1, 1).getDay();
   const pad = (n) => ('0' + n).slice(-2);
   const inMonth = site.meetings.filter((x) => x.date.slice(0, 7) === ym);
+  // 活動：活動當天、開始報名、報名截止各標一筆
+  const marks = [];
+  (site.events || []).forEach((e) => {
+    for (let t = e.date; t <= (e.endDate || e.date) && marks.length < 400; ) {
+      marks.push([t, 'ev', '🎪', e.title + (e.endDate && e.endDate !== e.date ? `（${+e.date.slice(5, 7)}/${+e.date.slice(8)}～${+e.endDate.slice(5, 7)}/${+e.endDate.slice(8)}）` : '')]);
+      const n = new Date(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8) + 1); t = `${n.getFullYear()}-${('0' + (n.getMonth() + 1)).slice(-2)}-${('0' + n.getDate()).slice(-2)}`;
+    }
+    marks.push([e.regStart.slice(0, 10), 'reg', '🟢', `開始報名：${e.title}（${e.regStart.slice(11)} 起）`]);
+    marks.push([e.regEnd.slice(0, 10), 'regend', '🔴', `報名截止：${e.title}（到 ${e.regEnd.slice(11)}）`]);
+  });
+  const evMonth = marks.filter((x) => x[0].slice(0, 7) === ym);
+  const evDay = {};
+  evMonth.forEach((x) => { const d = +x[0].slice(8); (evDay[d] = evDay[d] || []).push(x[1]); });
   const byDay = {};
   inMonth.forEach((x) => { const d = +x.date.slice(8); byDay[d] = byDay[d] === '大活動' || x.type === '大活動' ? '大活動' : '一般'; });
   const cells = [];
   for (let i = 0; i < lead; i++) cells.push('<span class="d"></span>');
   for (let d = 1; d <= days; d++) {
     const ds = `${ym}-${pad(d)}`;
-    cells.push(`<span class="d ${byDay[d] ? (byDay[d] === '大活動' ? 'big' : 'has') : ''} ${ds === site.today ? 'today' : ''}">${d}</span>`);
+    cells.push(`<span class="d ${byDay[d] ? (byDay[d] === '大活動' ? 'big' : 'has') : ''} ${(evDay[d] || []).filter((c, i, a) => a.indexOf(c) === i).join(' ')} ${ds === site.today ? 'today' : ''}">${d}</span>`);
   }
   const step = (k) => { const t = new Date(y, m - 1 + k, 1); return `${t.getFullYear()}-${pad(t.getMonth() + 1)}`; };
   el.innerHTML = `<h2>📅 團集會行事曆</h2>
     <div class="cal-head"><button data-cal="${step(-1)}" aria-label="上個月" ${ym <= first ? 'disabled' : ''}>‹</button><b>${y} 年 ${m} 月</b><button data-cal="${step(1)}" aria-label="下個月">›</button></div>
     <div class="cal-grid">${WEEKDAYS.map((w) => `<span class="wd">${w}</span>`).join('')}${cells.join('')}</div>
-    <div class="cal-legend"><i style="background:var(--blue);margin-left:0"></i>團集會<i style="background:var(--yellow,#f5b82e)"></i>大活動</div>
-    ${inMonth.length ? inMonth.map((x) => `<div class="list-row"><span class="grow"><span class="t">${+x.date.slice(5, 7)}/${+x.date.slice(8)}（${WEEKDAYS[new Date(+x.date.slice(0, 4), +x.date.slice(5, 7) - 1, +x.date.slice(8)).getDay()]}）</span>　${esc(x.name)}${x.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${x.note ? `<br><span class="s">${esc(x.note)}</span>` : ''}</span></div>`).join('') : '<p class="muted" style="margin:8px 0 0">這個月沒有排定的集會。</p>'}`;
+    <div class="cal-legend"><i style="background:var(--blue);margin-left:0"></i>團集會<i style="background:var(--yellow,#f5b82e)"></i>大活動${(site.events || []).length ? '<i style="background:#2e9e5b"></i>開始報名<i style="background:#d64545"></i>報名截止' : ''}</div>
+    ${inMonth.length ? inMonth.map((x) => `<div class="list-row"><span class="grow"><span class="t">${+x.date.slice(5, 7)}/${+x.date.slice(8)}（${WEEKDAYS[new Date(+x.date.slice(0, 4), +x.date.slice(5, 7) - 1, +x.date.slice(8)).getDay()]}）</span>　${esc(x.name)}${x.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${x.note ? `<br><span class="s">${esc(x.note)}</span>` : ''}</span></div>`).join('') : (evMonth.length ? '' : '<p class="muted" style="margin:8px 0 0">這個月沒有排定的集會。</p>')}
+    ${evMonth.filter((x, i, a) => a.findIndex((y) => y[1] === x[1] && y[3] === x[3]) === i).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map((x) => `<div class="list-row tap" data-info="events"><span class="grow"><span class="t">${+x[0].slice(5, 7)}/${+x[0].slice(8)}</span>　${x[2]} ${esc(x[3])}</span></div>`).join('')}`;
+  el.querySelectorAll('[data-info=events]').forEach((b) => { b.onclick = () => renderInfo('events'); });
   el.querySelectorAll('[data-cal]').forEach((b) => { b.onclick = () => drawCalendar(el, site, b.dataset.cal); });
 }
 /** 公佈欄、活動時間、了解幼童軍：不用登入的三個頁面（LINE 圖文選單會直接連到這裡） */
-const INFO_PAGES = { notices: '📣 公佈欄', calendar: '📅 活動時間', about: '🧭 了解幼童軍' };
+const INFO_PAGES = { notices: '📣 公佈欄', calendar: '📅 活動時間', events: '🎪 活動報名', about: '🧭 了解幼童軍' };
+const fmtStamp = (t) => `${fmtDate(t.slice(0, 10))} ${t.slice(11)}`;
+const EV_PILL = { '報名中': 'st-進行中', '尚未開始': 'st-未開始', '已截止': 'st-未開始', '已關閉': 'st-未開始' };
+const pendingEvent = { get() { try { return sessionStorage.getItem('pendingEvent'); } catch (e) { return null; } }, set(v) { try { sessionStorage.setItem('pendingEvent', v); } catch (e) {} }, clear() { try { sessionStorage.removeItem('pendingEvent'); } catch (e) {} } };
+const eventCardHtml = (e) => `<h2>🎪 ${esc(e.title)} <span class="pill ${EV_PILL[e.state]}">${e.state}</span></h2>
+  <div class="list-row"><span class="grow">活動日期</span><b>${fmtDate(e.date)}${e.endDate && e.endDate !== e.date ? '～' + fmtDate(e.endDate) : ''}</b></div>
+  <div class="list-row"><span class="grow">報名時間</span><b>${fmtStamp(e.regStart)}<br>～ ${fmtStamp(e.regEnd)}</b></div>
+  <div class="list-row"><span class="grow">每人費用</span><b>${e.fee ? e.fee + ' 元' : '免費'}</b></div>
+  ${e.desc ? `<p class="prose" style="margin-top:10px">${esc(e.desc)}</p>` : ''}`;
 async function renderInfo(kind) {
   document.getElementById('title').textContent = '🐾 22團幼童軍';
   setHeader(''); setHash('#' + kind);
@@ -553,7 +615,13 @@ async function renderInfo(kind) {
       $app.innerHTML = back + (noticesHtml(list, 30) || '<section class="card"><h2>📣 公佈欄</h2><p class="muted">目前沒有公告。</p></section>');
     } else {
       const site = await loadSite(true);
-      if (kind === 'calendar') {
+      if (kind === 'events') {
+        const evs = site.events || [];
+        $app.innerHTML = back + (evs.length ? evs.map((e) => `<section class="card" data-ev="${esc(e.id)}">${eventCardHtml(e)}
+          ${e.state === '報名中' ? `<button class="btn cta" data-reg="${esc(e.id)}">✍️ 我要報名${state.me ? '' : '（先登入）'}</button>` : `<p class="muted small" style="margin-bottom:0">${e.state === '尚未開始' ? '還沒開始報名。' : '報名已經截止，有問題請聯絡團長。'}${state.me ? ' <button class="linkbtn" data-reg="' + esc(e.id) + '">看我的報名</button>' : ''}</p>`}</section>`).join('')
+          : '<section class="card"><h2>🎪 活動報名</h2><p class="muted">目前沒有開放報名的活動。</p></section>');
+        $$('[data-reg]').forEach((b) => { b.onclick = () => { if (state.me) return renderEventForm(b.dataset.reg); pendingEvent.set(b.dataset.reg); renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' }); }; });
+      } else if (kind === 'calendar') {
         $app.innerHTML = `${back}${site.activity ? `<section class="card"><h2>🕘 活動時間</h2><p class="prose">${esc(site.activity)}</p></section>` : ''}<section class="card" id="calCard"></section>
           <p class="muted small center">實際時間以公佈欄的通知為準。</p>`;
         drawCalendar($('#calCard'), site);
@@ -569,6 +637,51 @@ async function renderInfo(kind) {
     $app.innerHTML = `${back}<section class="card"><div class="msg err">${esc(e.message)}</div></section>`;
   }
   $('#infoBack').onclick = () => (state.me ? route() : renderHome());
+}
+
+/** 報名表（要登入）：一次可以填多位；每位填姓名、身分別和團長自訂的題目 */
+async function renderEventForm(eventId) {
+  document.getElementById('title').textContent = '🐾 22團幼童軍';
+  setHeader(''); setHash('#events'); setTabs(PUBLIC_TABS(), 'home', onPublicTab); scrollTop(); loading();
+  const back = '<button class="back" id="infoBack">← 活動報名</button>';
+  let d;
+  try { d = await api('eventList'); }
+  catch (e) { if (e.code === 'SESSION_EXPIRED') return; $app.innerHTML = `${back}<section class="card"><div class="msg err">${esc(e.message)}</div></section>`; $('#infoBack').onclick = () => renderInfo('events'); return; }
+  const ev = d.events.find((x) => x.id === eventId);
+  if (!ev) { $app.innerHTML = `${back}<section class="card"><p class="muted">找不到這個活動，可能已經結束或關閉。</p></section>`; $('#infoBack').onclick = () => renderInfo('events'); return; }
+  const open = ev.state === '報名中';
+  const person = (n) => `<div class="person" data-person><div class="row-flex"><b class="grow">第 <span data-no>${n}</span> 位</b><button type="button" class="linkbtn" data-rmp>移除</button></div>
+    <label>姓名</label><input type="text" data-f="name" maxlength="30" required>
+    <label>身分別</label><select class="full" data-f="identity" required><option value="">請選擇</option>${d.identities.map((i) => `<option>${i}</option>`).join('')}</select>
+    ${ev.questions.map((q) => `<label>${esc(q.label)}${q.required ? ' <span class="s">（必填）</span>' : ''}</label>${q.type === 'choice'
+      ? `<select class="full" data-q="${esc(q.id)}" ${q.required ? 'required' : ''}><option value="">請選擇</option>${q.options.map((o) => `<option>${esc(o)}</option>`).join('')}</select>`
+      : `<input type="text" data-q="${esc(q.id)}" maxlength="100" ${q.required ? 'required' : ''}>`}`).join('')}</div>`;
+  $app.innerHTML = `${back}<section class="card">${eventCardHtml(ev)}</section>
+    ${ev.mine.length ? `<section class="card"><h2>我已經報名的（${ev.mine.length} 位）</h2>${ev.mine.map((r) => `<div class="list-row"><span class="grow"><span class="t">${esc(r.name)}</span> <span class="s">${esc(r.identity)}</span><br>
+      <span class="s">應繳 ${r.amount} 元・${r.paid ? '✅ 已繳' : '尚未繳費'}</span></span>${open && !r.paid ? `<button class="btn danger small" data-cancel="${esc(r.regId)}" style="margin-top:0">取消</button>` : ''}</div>`).join('')}
+      <p class="muted small" style="margin-bottom:0">繳費由團長登記。已繳費或報名截止後要取消，請聯絡團長。</p></section>` : ''}
+    ${open ? `<section class="card"><h2>✍️ ${ev.mine.length ? '再報名其他人' : '填寫報名表'}</h2>
+      <p class="muted small">一次可以幫全家報名，每位各填一格。只需要姓名和身分別，不用填電話、地址等資料。</p>
+      <form id="fev"><div id="people">${person(1)}</div>
+        <button type="button" class="btn ghost small" id="addP">＋ 再加一位</button>
+        <button class="btn cta" type="submit">送出報名</button><div class="out"></div></form></section>` : ''}`;
+  $('#infoBack').onclick = () => renderInfo('events');
+  $$('[data-cancel]').forEach((b) => { b.onclick = () => { if (confirm('確定取消這一位的報名？')) act(b, async () => { await api('eventCancel', { regId: b.dataset.cancel }); toast('已取消報名'); renderEventForm(eventId); }); }; });
+  if (!open) return;
+  const renum = () => { $$('[data-person]').forEach((el, i, all) => { $('[data-no]', el).textContent = i + 1; $('[data-rmp]', el).hidden = all.length < 2; }); };
+  const wire = () => { $$('[data-rmp]').forEach((b) => { b.onclick = () => { b.closest('[data-person]').remove(); renum(); }; }); renum(); };
+  wire();
+  $('#addP').onclick = () => { if ($$('[data-person]').length >= 10) return alert('一次最多 10 位，請先送出再填下一批。'); $('#people').insertAdjacentHTML('beforeend', person(0)); wire(); };
+  bindForm($('#fev'), async () => {
+    const people = $$('[data-person]').map((el) => {
+      const answers = {};
+      $$('[data-q]', el).forEach((i) => { if (i.value.trim()) answers[i.dataset.q] = i.value.trim(); });
+      return { name: $('[data-f=name]', el).value.trim(), identity: $('[data-f=identity]', el).value, answers };
+    });
+    const r = await api('eventRegister', { eventId, people });
+    toast(`已報名 ${r.added} 位`);
+    renderEventForm(eventId);
+  });
 }
 
 /** 在 $app 最前面（或指定元素後面）補上公告；載入失敗就不顯示 */
@@ -963,6 +1076,8 @@ async function start() {
   if (!state.cubId || !state.me.cubs.some((c) => c.cubId === state.cubId)) state.cubId = (state.me.cubs[0] || {}).cubId || null;
   state.view = back ? back.view : 'home';
   if (back && back.admin) state.admin = back.admin;
+  const pe = pendingEvent.get();
+  if (pe) { pendingEvent.clear(); return renderEventForm(pe); } // 從活動頁按「我要報名」過來的，登入後直接開報名表
   const pa = pendingAward.get();
   if (pa) {
     pendingAward.clear();
@@ -1558,7 +1673,7 @@ const ADMIN_GROUPS = ['每次集會', '名單', '設定', '系統'];
 function adminMoreItems() {
   const L = isLeader();
   return [
-    ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公佈欄', true, '每次集會'],
+    ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公佈欄', true, '每次集會'], ['events', '🎪', '活動報名', L, '每次集會'],
     ['requests', '📝', '帳號申請', L, '名單'], ['overview', '📊', '總覽', true, '名單'], ['print', '🖨️', '列印紙本', true, '名單'],
     ['calendar', '📅', '行事曆', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
     ['admins', '👥', '帳號與權限', L, '設定'],
@@ -1703,6 +1818,10 @@ const ADMIN_PAGES = {
       <div class="row-flex"><button class="btn ghost small" id="chk">🔍 檢查項目總表${errN ? `（${errN} 個問題）` : ''}</button><button class="btn ghost small" id="exp">⬇️ 匯出 CSV</button><button class="btn ghost small" id="rl">🔄 重新載入</button></div>
       <div id="chkOut"></div></section>
     ${sel ? `<section class="card"><h2>${iconOf(sel)} ${esc(unitLabel(sel))}${sel.group ? ` <span class="pill st-進行中">${esc(sel.group)}</span>` : ''}</h2>
+      <div class="row-flex" style="margin-bottom:6px"><span style="font-size:56px;line-height:1">${iconOf(sel)}</span>
+        <span class="grow"><label class="btn ghost small" style="display:inline-block;margin-top:0;cursor:pointer">🖼️ 上傳這個章的圖片<input type="file" accept="image/*" id="uimg" hidden></label>
+          ${unitImgs && unitImgs[cat + '|' + sel.unit] ? '<button class="btn danger small" id="uimgDel" style="margin-top:0">移除圖片</button>' : ''}
+          <span class="muted small" id="uimgOut" style="display:block">請上傳官方的章圖（用手機拍布章也可以），系統會自動縮小。還沒上傳的會顯示表情符號。</span></span></div>
       <form id="fu">
         ${cat === '技能章' ? `<label>章名</label><input name="newName" type="text" maxlength="20" value="${esc(sel.unit)}" ${sel.hasAwards ? 'disabled' : ''}>
           ${sel.hasAwards ? '<p class="muted small">已經有頒章紀錄，章名不能改。</p>' : ''}
@@ -1718,6 +1837,10 @@ const ADMIN_PAGES = {
       ${cat === '進程' ? '<button class="btn ghost small" id="newSec">＋ 新增大項</button>' : (secs.length ? '' : '<button class="btn ghost small" data-add="－">＋ 新增一項</button>')}
     </section>` : ''}`;
     wireBack();
+    const saveImg = async (image) => { await api('unitImageSave', { category: cat, unit: sel.unit, image }); unitImgs = unitImgs || {}; if (image) unitImgs[cat + '|' + sel.unit] = image; else delete unitImgs[cat + '|' + sel.unit]; toast(image ? '圖片已更新' : '圖片已移除'); goAdmin('items', { cat, unit: sel.unit }); };
+    const ui = $('#uimg');
+    if (ui) ui.onchange = async () => { const f = ui.files[0]; if (!f) return; const out = $('#uimgOut'); out.textContent = '處理中…'; try { await saveImg(await shrinkImage(f)); } catch (e) { if (e.code !== 'SESSION_EXPIRED') out.textContent = '⚠️ ' + e.message; } };
+    const ud = $('#uimgDel'); if (ud) ud.onclick = () => { if (confirm('移除這張圖片，改回表情符號？')) act(ud, () => saveImg('')); };
     $$('[data-cat]').forEach((b) => { b.onclick = () => goAdmin('items', { cat: b.dataset.cat }); });
     $$('#units [data-unit]').forEach((b) => { b.onclick = () => goAdmin('items', { cat, unit: b.dataset.unit }); });
     $('#chk').onclick = () => {
@@ -1823,6 +1946,79 @@ const ADMIN_PAGES = {
       const n = d.notices.find((x) => x.id === b.dataset.nvis);
       b.onclick = () => act(b, async () => { await api('noticeSave', { id: n.id, title: n.title, content: n.content, meetingId: n.meetingId, pinned: n.pinned, visible: !n.visible }); done(n.visible ? '已下架' : '已重新上架'); });
     });
+  },
+
+  // ───── 活動報名與繳費紀錄（團長；SPEC 附錄第 50 點） ─────
+  async events(params) {
+    if (params.regs) {
+      const d = await api('eventRegs', { eventId: params.regs }), ev = d.event;
+      const sum = d.regs.reduce((a, r) => a + r.amount, 0), got = d.regs.filter((r) => r.paid).reduce((a, r) => a + r.amount, 0);
+      const byId = {};
+      d.regs.forEach((r) => { byId[r.identity] = (byId[r.identity] || 0) + 1; });
+      $app.innerHTML = `${backBtn('活動報名')}<section class="card"><h2>🎪 ${esc(ev.title)} <span class="pill ${EV_PILL[ev.state]}">${ev.state}</span></h2>
+        <p class="muted small">報名 ${d.regs.length} 位（${Object.keys(byId).map((k) => `${esc(k)} ${byId[k]}`).join('、') || '還沒有人報名'}）・已繳 ${d.regs.filter((r) => r.paid).length} 位・已收 ${got}／應收 ${sum} 元</p>
+        <div class="row-flex"><button class="btn ghost small" id="evEdit">✏️ 修改活動</button><button class="btn ghost small" id="evCsv">⬇️ 下載名單 CSV</button></div></section>
+        <section class="card"><h2>報名名單與繳費</h2>
+          <p class="muted small">金額可以逐筆修改（例如家長半價）；收到錢就勾「已繳」，改完按下方「儲存」。這裡只是記錄，不會真的扣款。</p>
+          ${d.regs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>姓名</th><th>身分別</th>${ev.questions.map((q) => `<th>${esc(q.label)}</th>`).join('')}<th>報名人</th><th>應繳金額</th><th>已繳</th><th></th></tr></thead><tbody>
+            ${d.regs.map((r) => `<tr data-reg="${esc(r.regId)}"><td>${esc(r.name)}</td><td>${esc(r.identity)}</td>${ev.questions.map((q) => `<td>${esc(r.answers[q.id] || '')}</td>`).join('')}<td class="s">${esc(r.by)}</td>
+              <td><input type="number" min="0" max="1000000" inputmode="numeric" data-amt value="${r.amount}" style="width:110px"></td>
+              <td><input type="checkbox" data-paid ${r.paid ? 'checked' : ''} style="width:24px;height:24px" aria-label="已繳"></td>
+              <td><button class="btn danger small" data-rmreg style="margin-top:0">取消報名</button></td></tr>`).join('')}</tbody></table></div>
+            <div class="savebar"><button class="btn green" id="paySave">💾 儲存繳費紀錄</button><div class="out" id="payOut"></div></div>` : '<p class="muted">還沒有人報名。</p>'}</section>`;
+      wireBack({ name: 'events', params: {} });
+      $('#evEdit').onclick = () => goAdmin('events', { edit: ev.id });
+      $('#evCsv').onclick = () => downloadCsv(`${ev.title}_報名名單_${todayStr()}.csv`, [['姓名', '身分別'].concat(ev.questions.map((q) => q.label), ['報名人', '應繳金額', '已繳'])].concat(d.regs.map((r) => [r.name, r.identity].concat(ev.questions.map((q) => r.answers[q.id] || ''), [r.by, r.amount, r.paid ? '是' : '否']))));
+      const changed = () => $$('tr[data-reg]').map((tr) => { const r = d.regs.find((x) => x.regId === tr.dataset.reg), amount = Number($('[data-amt]', tr).value), paid = $('[data-paid]', tr).checked; return amount !== r.amount || paid !== r.paid ? { regId: r.regId, amount, paid } : null; }).filter(Boolean);
+      leaveGuard = Object.assign(() => !changed().length || confirm('繳費紀錄還沒儲存，確定要離開嗎？'), { dirty: () => changed().length > 0 });
+      const ps = $('#paySave');
+      if (ps) ps.onclick = () => act(ps, async () => { const u = changed(); if (!u.length) return msg($('#payOut'), '沒有變更。', 'info'); await api('eventPay', { updates: u }); leaveGuard = null; toast(`已儲存 ${u.length} 筆`); goAdmin('events', { regs: ev.id }); });
+      $$('[data-rmreg]').forEach((b) => { b.onclick = () => { const tr = b.closest('tr'), r = d.regs.find((x) => x.regId === tr.dataset.reg); if (confirm(`確定取消「${r.name}」的報名？`)) act(b, async () => { await api('eventRegRemove', { regId: r.regId }); leaveGuard = null; toast('已取消'); goAdmin('events', { regs: ev.id }); }); }; });
+      return;
+    }
+    const d = await api('eventAdminList');
+    if (params.edit) {
+      const ev = d.events.find((x) => x.id === params.edit) || null;
+      const qrow = (q) => `<div class="qrow" data-qrow data-qid="${esc(q ? q.id : '')}"><div class="row-flex"><b class="grow">題目</b><button type="button" class="linkbtn" data-rmq>刪除這一題</button></div>
+        <input type="text" data-q="label" maxlength="60" placeholder="例如：飲食" value="${esc(q ? q.label : '')}" required>
+        <label>作答方式</label><select class="full" data-q="type"><option value="choice" ${!q || q.type === 'choice' ? 'selected' : ''}>選擇題（選一個）</option><option value="text" ${q && q.type === 'text' ? 'selected' : ''}>簡答</option></select>
+        <div data-opts><label>選項（用逗號分開）</label><input type="text" data-q="options" placeholder="葷, 素" value="${esc(q ? q.options.join(', ') : '')}"></div>
+        <label class="check"><input type="checkbox" data-q="required" ${q && q.required ? 'checked' : ''}> 必填</label></div>`;
+      $app.innerHTML = `${backBtn('活動報名')}<section class="card"><h2>${ev ? '✏️ 修改活動' : '＋ 新增活動'}</h2>
+        <form id="fe"><label>活動名稱</label><input name="title" type="text" maxlength="60" value="${esc(ev ? ev.title : '')}" required>
+          <label>說明（時間、地點、要帶的東西、繳費方式……）</label><textarea name="desc" maxlength="2000" style="min-height:110px">${esc(ev ? ev.desc : '')}</textarea>
+          <div class="row-flex"><span class="grow"><label>活動開始日</label><input name="date" type="date" value="${ev ? ev.date : ''}" required></span><span class="grow"><label>活動結束日</label><input name="endDate" type="date" value="${ev ? ev.endDate : ''}"></span></div>
+          <div class="row-flex"><span class="grow"><label>開始報名</label><input name="regStart" type="datetime-local" value="${ev ? ev.regStart : ''}" required></span><span class="grow"><label>結束報名</label><input name="regEnd" type="datetime-local" value="${ev ? ev.regEnd : ''}" required></span></div>
+          <label>每人費用（元；免費填 0。之後可以在名單裡逐筆調整）</label><input name="fee" type="number" min="0" max="1000000" inputmode="numeric" value="${ev ? ev.fee : 0}">
+          <h3>報名表的題目</h3>
+          <p class="muted small">每位報名的人一定會填<b>姓名</b>和<b>身分別</b>（${d.identities.join('、')}）。下面可以再加自己的題目，最多 10 題。<b>不可以問電話、地址、身分證、生日等機敏資訊</b>，系統會擋下來。</p>
+          <div id="qs">${(ev ? ev.questions : []).map(qrow).join('')}</div>
+          <button type="button" class="btn ghost small" id="addQ">＋ 新增題目</button>
+          ${ev ? `<label class="check"><input type="checkbox" name="enabled" ${ev.enabled ? 'checked' : ''}> 開放（取消勾選＝關閉活動，網站上不再顯示）</label>` : ''}
+          <button class="btn cta" type="submit">${ev ? '儲存' : '建立活動'}</button><div class="out"></div></form></section>`;
+      wireBack({ name: 'events', params: ev ? { regs: ev.id } : {} });
+      const wireQ = () => {
+        $$('[data-rmq]').forEach((b) => { b.onclick = () => b.closest('[data-qrow]').remove(); });
+        $$('[data-qrow]').forEach((el) => { const t = $('[data-q=type]', el), o = $('[data-opts]', el); const f = () => { o.hidden = t.value !== 'choice'; }; t.onchange = f; f(); });
+      };
+      wireQ();
+      $('#addQ').onclick = () => { if ($$('[data-qrow]').length >= 10) return alert('最多 10 題。'); $('#qs').insertAdjacentHTML('beforeend', qrow(null)); wireQ(); };
+      bindForm($('#fe'), async (fd) => {
+        const questions = $$('[data-qrow]').map((el) => ({ id: el.dataset.qid, label: $('[data-q=label]', el).value.trim(), type: $('[data-q=type]', el).value, options: $('[data-q=options]', el).value.split(/[,，、\n]/).map((x) => x.trim()).filter(Boolean), required: $('[data-q=required]', el).checked }));
+        const r = await api('eventSave', { id: ev ? ev.id : undefined, title: fd.get('title'), desc: fd.get('desc'), date: fd.get('date'), endDate: fd.get('endDate'), regStart: fd.get('regStart'), regEnd: fd.get('regEnd'), fee: fd.get('fee'), questions, enabled: ev ? !!fd.get('enabled') : true });
+        siteData = null; toast(ev ? '已儲存' : '活動已建立');
+        goAdmin('events', { regs: r.id });
+      });
+      return;
+    }
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🎪 活動報名</h2>
+      <p class="muted small">建立活動後，網站首頁的月曆會標出活動日、開始報名與報名截止；家長、服務員登入後就能在「活動報名」填表。繳費只記錄金額與是否已繳。</p>
+      <button class="btn cta" id="newEv">＋ 新增活動</button></section>
+      <section class="card"><h2>全部活動（${d.events.length}）</h2>${d.events.map((e) => `<div class="list-row tap" data-ev="${esc(e.id)}" style="${e.enabled ? '' : 'opacity:.55'}"><span class="grow"><span class="t">${esc(e.title)}</span> <span class="pill ${EV_PILL[e.state]}">${e.state}</span><br>
+        <span class="s">${fmtDate(e.date)}・報名 ${e.count} 位・已繳 ${e.paidCount} 位</span></span><span class="s">›</span></div>`).join('') || '<p class="muted">還沒有活動。</p>'}</section>`;
+    wireBack();
+    $('#newEv').onclick = () => goAdmin('events', { edit: 'new' });
+    $$('[data-ev]').forEach((b) => { b.onclick = () => goAdmin('events', { regs: b.dataset.ev }); });
   },
 
   // ───── 我的帳號（改密碼、改稱呼；管理員在後台也找得到） ─────
@@ -2237,6 +2433,7 @@ const ADMIN_PAGES = {
         <p>一般團集會出席 <b>${d.trial.count}／${d.trial.need}</b> 次${d.trial.ready ? '（✅ 已滿，可以入團）' : ''}。大活動不算。</p>
         <div class="bar ${d.trial.ready ? 'full' : ''}"><span style="width:${Math.min(100, Math.round(d.trial.count / d.trial.need * 100))}%"></span></div>
         ${L ? '<button class="btn green" id="join">🎉 轉為入團</button>' : ''}</section>` : ''}
+      ${d.units.some((u) => u.status === '已頒發') ? `<section class="card"><h2>🏅 已獲得的章</h2><div class="award-strip">${d.units.filter((u) => u.status === '已頒發').map((u) => `<span class="a"><span class="pic">${iconOf(u)}</span>${esc(unitLabel(u))}<span class="s">${u.awardDate ? fmtDate(u.awardDate) : ''}</span></span>`).join('')}</div></section>` : ''}
       ${(d.roles || []).length ? `<section class="card"><details><summary class="fold">🎗️ 職務紀錄（${d.roles.length}）</summary>${d.roles.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.role)}</span> <span class="s">${esc(x.squad)}</span></span><span class="s">${fmtDate(x.start)} ～ ${x.end ? fmtDate(x.end) : '現在'}</span></div>`).join('')}</details></section>` : ''}
       ${tab === 'bind' ? (bindHtml || '<section class="card"><p class="muted">只有團長可以管理綁定碼與家長帳號。</p></section>') : ''}
       ${tab === 'prog' ? (c.status === '體驗' ? '<section class="card"><p class="muted">體驗者入團後才開始進程。</p></section>' : `<section class="card"><h2>🗺️ 進程</h2>${prog.map(unitRow).join('')}</section>`) : ''}
@@ -2669,6 +2866,8 @@ const ADMIN_PAGES = {
   },
 };
 
+new MutationObserver(applyUnitImages).observe($app, { childList: true, subtree: true });
+api('unitImages').then((r) => { unitImgs = r.images || {}; applyUnitImages(); }).catch(() => { unitImgs = {}; });
 start();
 </script>
 </body>
