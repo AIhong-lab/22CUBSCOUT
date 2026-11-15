@@ -547,14 +547,26 @@ function accountsById_() {
   return m;
 }
 
+/** 最高權限帳號（admin）的帳號ID；還沒建立就回傳空字串（SPEC 附錄第 46 點） */
+function ownerId_() { var a = findAccountByName_(DEFAULT_ADMIN_USERNAME); return a ? a.accountId : ''; }
+/** 帳號管理用：對象是 admin → 一律不可；對象是團長 → 只有 admin 可以 */
+function guardOwner_(targetId, who, admins) {
+  var owner = ownerId_();
+  if (!owner) return;
+  if (targetId === owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE + '要重設密碼請用試算表選單。');
+  var t = (admins || loadAdmins_()).filter(function (a) { return a.accountId === targetId; })[0];
+  if (t && t.role === Logic.ROLE.LEADER && who.account.accountId !== owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_ONLY_MESSAGE);
+}
+
 registerAdmin_('adminList', 'manageAdmins', function () {
-  var acc = accountsById_();
+  var acc = accountsById_(), owner = ownerId_();
   var names = adminNames_();
   var rows = readRows_(SHEET.ADMINS).filter(function (r) { return Logic.clean(r[0]); });
   return {
+    ownerExists: !!owner,
     admins: rows.map(function (r) {
       var id = Logic.clean(r[0]);
-      return { accountId: id, name: Logic.clean(r[1]), role: Logic.clean(r[2]), username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!Logic.clean(r[5]) };
+      return { owner: !!owner && id === owner, accountId: id, name: Logic.clean(r[1]), role: Logic.clean(r[2]), username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!Logic.clean(r[5]) };
     })
   };
 });
@@ -566,7 +578,7 @@ registerAdmin_('adminAdd', 'manageAdmins', function (req, who) {
   return withLock_(function () {
     var target = accountsById_()[Logic.clean(req.accountId)];
     if (!target || target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
-    var v = Logic.validateAdminChange(loadAdmins_(), who.account.accountId, { type: 'add', targetId: target.accountId, role: role });
+    var v = Logic.validateAdminChange(loadAdmins_(), who.account.accountId, { type: 'add', targetId: target.accountId, role: role }, ownerId_());
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     appendRows_(SHEET.ADMINS, [[target.accountId, name, role, new Date(), who.account.accountId, '', '']]);
     logOp_(who.account.accountId, '指定管理員', target.username, '', role + '：' + name);
@@ -580,10 +592,11 @@ registerAdmin_('adminUpdate', 'manageAdmins', function (req, who) {
     var admins = loadAdmins_();
     var t = admins.filter(function (a) { return a.accountId === Logic.clean(req.accountId); })[0];
     if (!t) throw new ApiError(ERR.NOT_FOUND, '找不到這位管理員。');
+    if (t.accountId === ownerId_() && who.account.accountId !== t.accountId) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE);
     var row = t._raw.slice(0, HEADERS[SHEET.ADMINS].length);
     var before = row[2] + '：' + row[1];
     if (req.role && Logic.clean(req.role) !== t.role) {
-      var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'setRole', targetId: t.accountId, role: Logic.clean(req.role) });
+      var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'setRole', targetId: t.accountId, role: Logic.clean(req.role) }, ownerId_());
       if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
       row[2] = Logic.clean(req.role);
     } else if (!Logic.can(who.admin.role, 'manageAdmins')) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
@@ -603,7 +616,7 @@ registerAdmin_('adminRemove', 'manageAdmins', function (req, who) {
     var admins = loadAdmins_();
     var t = admins.filter(function (a) { return a.accountId === Logic.clean(req.accountId); })[0];
     if (!t) throw new ApiError(ERR.NOT_FOUND, '找不到這位管理員。');
-    var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'remove', targetId: t.accountId });
+    var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'remove', targetId: t.accountId }, ownerId_());
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     deleteRows_(SHEET.ADMINS, [t._row]);
     logOp_(who.account.accountId, '移除管理員', t.accountId, t.role + '：' + t.name, '');
@@ -652,6 +665,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
   return withLock_(function () {
     var acc = accountsById_()[Logic.clean(req.accountId)];
     if (!acc) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
+    if (acc.accountId !== who.account.accountId) guardOwner_(acc.accountId, who);
     var settings = loadSettings_().values;
     var code = Logic.generateCode(8, randInt_, []);
     var exp = new Date(Date.now() + settings['臨時碼有效小時數'] * 3600000);
@@ -676,6 +690,7 @@ registerAdmin_('accountStatus', 'manageAccounts', function (req, who) {
     var acc = accountsById_()[Logic.clean(req.accountId)];
     if (!acc) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
     if (status === '停用') {
+      guardOwner_(acc.accountId, who);
       if (acc.accountId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '不可以停用自己的帳號。');
       var c = Logic.canDeleteAccount(loadAdmins_(), acc.accountId);
       if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error.replace('刪除', '停用'));
@@ -698,6 +713,7 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
     if (Logic.clean(req.confirmUsername) !== acc.username) throw new ApiError(ERR.BAD_INPUT, '請輸入正確的帳號名稱以確認刪除。');
     if (acc.accountId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '不可以刪除自己的帳號。');
     var admins = loadAdmins_();
+    guardOwner_(acc.accountId, who, admins);
     var c = Logic.canDeleteAccount(admins, acc.accountId);
     if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error);
     purgeSessions_(acc.accountId);

@@ -879,11 +879,19 @@ var Logic = (function () {
    * @param change {type: 'add'|'setRole'|'remove', targetId, role}
    * @return {{ok: boolean, error?: string}}
    */
-  function validateAdminChange(admins, actorId, change) {
+  /** ownerId：最高權限帳號（admin）的帳號ID；有的話只有它能指定或取消團長，且它本身不能被更動（SPEC 附錄第 46 點）。沒有就照舊 */
+  var OWNER_ONLY_MESSAGE = '只有最高權限帳號（admin）可以指定或取消團長。';
+  var OWNER_LOCKED_MESSAGE = 'admin 是最高權限帳號，不能更動。';
+  function validateAdminChange(admins, actorId, change, ownerId) {
     var actor = (admins || []).filter(function (a) { return a.accountId === actorId; })[0];
     if (!actor || actor.role !== ROLE.LEADER) return { ok: false, error: '只有團長可以管理管理員' };
     var target = admins.filter(function (a) { return a.accountId === change.targetId; })[0];
     var leaders = admins.filter(function (a) { return a.role === ROLE.LEADER; }).length;
+    if (ownerId) {
+      if (change.targetId === ownerId && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
+      var touchesLeader = change.role === ROLE.LEADER || (target && target.role === ROLE.LEADER && change.type !== 'add');
+      if (touchesLeader && actorId !== ownerId) return { ok: false, error: OWNER_ONLY_MESSAGE };
+    }
     if (change.type === 'add') {
       if (target) return { ok: false, error: '這個帳號已經是管理員' };
       if (change.role !== ROLE.LEADER && change.role !== ROLE.ASSISTANT) return { ok: false, error: '角色只能是團長或服務員' };
@@ -1070,7 +1078,7 @@ var Logic = (function () {
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
     TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
-    can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, canDeleteAccount: canDeleteAccount,
+    can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
     diffNotifications: diffNotifications
   };

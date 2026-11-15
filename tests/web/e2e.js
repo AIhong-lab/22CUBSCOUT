@@ -645,6 +645,18 @@ function seed(env) {
   assert.match(csvText, /^\ufeff姓名,小隊,剛入團,羚羊,狼,鹿,豹,技能章數,出席次數\r\n/, 'CSV 有 BOM 與標題列');
   assert.match(csvText, /測試小狼甲,一小隊/);
 
+  // 最高權限鎖在 admin：一般團長看得到提示，admin 那一列沒有「管理」按鈕，指定時只能選服務員
+  env.ctx.ensureDefaultAdmin_();
+  await sideTab('admins');
+  await page.locator('#ownerNote').waitFor();
+  assert.match(await text(), /🔒 最高權限/);
+  assert.equal(await page.locator('.list-row', { hasText: '帳號 admin' }).locator('[data-ad]').count(), 0, 'admin 不能被管理');
+  assert.equal(await page.locator('.list-row', { hasText: '帳號 leader01' }).locator('[data-ad]').count(), 0, '一般團長不能動團長');
+  await page.locator('[data-pick]').first().click();
+  assert.deepEqual(await page.locator('form#fa select[name=role] option').allInnerTexts(), ['服務員'], '一般團長只能指定服務員');
+  await shot('47-admins-owner');
+  await page.locator('.sheet [data-close]').click();
+
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
   await tab('login');

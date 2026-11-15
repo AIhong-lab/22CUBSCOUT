@@ -898,3 +898,47 @@ test('家長線上請假：只能幫自己的孩子、只能請未來的集會�
   assert.match(call(P, 'parentLeave', { cubId, meetingId: up[1].meetingId }).message, /已經點名為出席/);
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '家長請假'));
 });
+
+test('最高權限鎖在 admin：只有 admin 能指定或取消團長，admin 本身不能被別人更動', () => {
+  const { env, call, L } = world();
+  const acc = (name) => env.rows('帳號').find((r) => r[1] === name)[0];
+  const helper = acc('helper01'), parent = acc('parent01');
+  // 還沒有 admin 帳號時維持原本規則（否則沒有人能指定團長）
+  assert.equal(call(L, 'me').isOwner, false);
+  assert.equal(call(L, 'adminList').ownerExists, false);
+  const made = env.ctx.ensureDefaultAdmin_();
+  const O = env.api({ action: 'login', username: made.username, password: made.password }).token;
+  const owner = acc('admin');
+  assert.equal(call(O, 'me').isOwner, true);
+  assert.equal(call(L, 'me').isOwner, false);
+  const list = call(L, 'adminList');
+  assert.equal(list.ownerExists, true);
+  assert.equal(list.admins.find((a) => a.accountId === owner).owner, true);
+  assert.equal(list.admins.find((a) => a.accountId === helper).owner, false);
+  // 一般團長：不能指定、升、降、移除團長
+  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '團長' }).message, /只有最高權限帳號（admin）/);
+  assert.match(call(L, 'adminAdd', { accountId: parent, role: '團長', name: '測試家長' }).message, /只有最高權限帳號（admin）/);
+  assert.equal(call(O, 'adminUpdate', { accountId: helper, role: '團長' }).ok, true, 'admin 可以指定團長');
+  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '服務員' }).message, /只有最高權限帳號（admin）/);
+  assert.match(call(L, 'adminRemove', { accountId: helper }).message, /只有最高權限帳號（admin）/);
+  assert.match(call(L, 'accountStatus', { accountId: helper, status: '停用' }).message, /只有最高權限帳號（admin）/, '不能用停用帳號繞過');
+  assert.match(call(L, 'accountDelete', { accountId: helper, confirmUsername: 'helper01' }).message, /只有最高權限帳號（admin）/, '不能用刪除帳號繞過');
+  assert.match(call(L, 'accountTempCode', { accountId: helper }).message, /只有最高權限帳號（admin）/, '不能重設其他團長的密碼');
+  // 一般團長：仍可管理服務員
+  assert.equal(call(L, 'adminAdd', { accountId: parent, role: '服務員', name: '測試家長' }).ok, true);
+  assert.equal(call(L, 'adminUpdate', { accountId: parent, name: '測試家長乙' }).ok, true);
+  assert.equal(call(L, 'adminRemove', { accountId: parent }).ok, true);
+  // admin 本身：任何人都不能更動
+  for (const T of [L, O]) {
+    assert.equal(call(T, 'adminUpdate', { accountId: owner, role: '服務員' }).ok, false);
+    assert.equal(call(T, 'adminRemove', { accountId: owner }).ok, false);
+    assert.equal(call(T, 'accountStatus', { accountId: owner, status: '停用' }).ok, false);
+    assert.equal(call(T, 'accountDelete', { accountId: owner, confirmUsername: 'admin' }).ok, false);
+  }
+  assert.match(call(L, 'adminUpdate', { accountId: owner, name: '改名' }).message, /最高權限帳號/);
+  assert.match(call(L, 'accountTempCode', { accountId: owner }).message, /最高權限帳號/);
+  assert.equal(env.rows('管理員').find((r) => r[0] === owner)[2], '團長');
+  // admin 可以取消團長
+  assert.equal(call(O, 'adminUpdate', { accountId: helper, role: '服務員' }).ok, true);
+  assert.equal(call(O, 'adminRemove', { accountId: acc('leader01') }).ok, true);
+});
