@@ -263,6 +263,7 @@ test('個資處理：匿名化保留統計、刪除綁定', () => {
 
 test('備份：未設定資料夾提示、輪替保留份數、刪除所有舊備份；權限過寬警告', () => {
   const { env, call, L } = world();
+  delete env.props.BACKUP_FOLDER_ID; // 模擬資料夾設定被移除
   assert.match(call(L, 'backupNow').message, /尚未設定備份資料夾/);
   assert.equal(JSON.parse(env.props.BACKUP_LAST).ok, false);
   env.props.BACKUP_FOLDER_ID = 'FOLDER';
@@ -468,3 +469,101 @@ test('註冊申請：舊的代碼註冊仍可用（第一位團長邀請碼、�
   assert.equal(r.ok, true);
 });
 
+
+test('設定頁：讀取、修改（檢查範圍、寫操作日誌）、服務員不能改、個資說明改版', () => {
+  const { env, call, L, A, P } = world();
+  assert.equal(call(A, 'settingsGet').code, 'FORBIDDEN');
+  assert.equal(call(A, 'settingsSave', { changes: { '晉級所需出席次數': '8' } }).code, 'FORBIDDEN');
+  const g = call(L, 'settingsGet');
+  assert.ok(!g.settings.some((x) => x.key === '小隊清單'), '小隊清單在專屬頁面改');
+  assert.equal(g.settings.find((x) => x.key === '晉級所需出席次數').value, '8');
+  assert.match(call(L, 'settingsSave', { changes: { '晉級所需出席次數': '999' } }).message, /0～100 的整數/);
+  assert.match(call(L, 'settingsSave', { changes: { '每週備份': '好' } }).message, /是」或「否/);
+  assert.match(call(L, 'settingsSave', { changes: { '不存在': '1' } }).message, /不支援/);
+  const r = call(L, 'settingsSave', { changes: { '晉級所需出席次數': '6', '每週備份': '否', '剛入團所需出席次數': '4' } });
+  assert.equal(r.changed, 2, '沒變的不算');
+  const v = env.ctx.loadSettings_().values;
+  assert.deepEqual([v['晉級所需出席次數'], v['每週備份']], [6, false]);
+  assert.ok(env.rows('操作日誌').some((x) => x[2] === '修改設定' && x[3] === '晉級所需出席次數' && String(x[4]) === '8' && String(x[5]) === '6'), '記錄修改前後');
+  // 個資說明改版：家長下次要重新同意
+  assert.match(call(L, 'consentSave', { content: '太短' }).message, /太短/);
+  const c = call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' });
+  assert.equal(c.version, 2);
+  assert.equal(env.rows('告知同意內容').length, 2, '舊版保留');
+  assert.equal(call(P, 'me').needsConsent, true);
+  assert.match(call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' }).message, /沒有變更/);
+});
+
+// ═════ 項目管理（SPEC 7.7，階段 4B） ═════
+test('項目管理：樹狀資料、改文字（ID 不變）、新增（自動 ID、影響預覽）、停用與重新啟用、排序', () => {
+  const { env, call, L, A, cubId } = world();
+  assert.equal(call(A, 'itemsTree').code, 'FORBIDDEN', '服務員不能管理項目');
+  const t = call(L, 'itemsTree');
+  assert.equal(t.items.length, 168);
+  assert.ok(t.units.some((u) => u.unit === '剛入團') && t.units.some((u) => u.unit === '嚮導' && u.group === '服務類'));
+  assert.ok(t.details.length >= 375);
+  // 改文字：ID 不變、寫日誌
+  assert.equal(call(L, 'itemSave', { id: 'P-狼-國旗-1', text: '能說出升降旗的禮節（團改寫）' }).changed, 1);
+  const row = env.rows('項目總表').find((r) => r[0] === 'P-狼-國旗-1');
+  assert.equal(row[4], '能說出升降旗的禮節（團改寫）');
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '修改項目' && /參與升降旗/.test(r[4])), '記錄修改前');
+  // 讓小狼的嚮導全部完成 → 已完成待頒發；新增嚮導項目要先看到影響預覽
+  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導').map((r) => r[0]);
+  call(L, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
+  const add = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線' });
+  assert.equal(add.needConfirm, true);
+  assert.match(add.warnings[0], /1 位小狼的「嚮導」從「已完成待頒發」變成「進行中」：測試小狼甲/);
+  assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導').length, 2, '未確認前不寫入');
+  const ok = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線', confirm: true });
+  assert.equal(ok.id, 'B-嚮導-3', '序號取最大 + 1');
+  // 停用剛新增的 → 又回到已完成待頒發（預覽提示）
+  const off = call(L, 'itemToggle', { id: 'B-嚮導-3', enabled: false });
+  assert.match(off.warnings[0], /從「進行中」變成「已完成待頒發」/);
+  assert.equal(call(L, 'itemToggle', { id: 'B-嚮導-3', enabled: false, confirm: true }).changed, 1);
+  assert.equal(env.rows('項目總表').find((r) => r[0] === 'B-嚮導-3')[6], '否', '只停用不刪除');
+  // 停用後再新增，序號不重用
+  assert.equal(call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '另一項', confirm: true }).id, 'B-嚮導-4');
+  // 排序：同一大項內上移
+  const wolfFlag = () => call(L, 'itemsTree').items.filter((i) => i.unit === '狼' && i.section === '國旗').sort((a, b) => a.order - b.order).map((i) => i.id);
+  const before = wolfFlag();
+  call(L, 'itemMove', { id: before[1], dir: 'up' });
+  assert.deepEqual(wolfFlag(), [before[1], before[0], ...before.slice(2)]);
+  assert.equal(call(L, 'itemMove', { id: before[1], dir: 'up' }).changed, 0, '已經在最上面');
+  // 公開查詢立即看到新文字（清快取）
+  const cat = env.api({ action: 'catalog' });
+  assert.ok(cat.units.find((u) => u.unit === '狼').items.some((i) => i.text === '能說出升降旗的禮節（團改寫）'));
+});
+
+test('項目管理：大項改名、技能章新增與改名（有頒章紀錄不能改）、說明、本團細項、匯出', () => {
+  const { env, call, L, cubId } = world();
+  assert.equal(call(L, 'sectionRename', { category: '進程', unit: '狼', section: '蒐集', newName: '收藏' }).changed, 1);
+  assert.equal(env.rows('項目總表').find((r) => r[0] === 'P-狼-蒐集-1')[3], '收藏', 'ID 不變');
+  assert.match(call(L, 'sectionRename', { category: '進程', unit: '狼', section: '收藏', newName: '國旗' }).message, /已經有/);
+  // 新增技能章 → 新增項目
+  assert.match(call(L, 'unitSave', { category: '技能章', unit: '露營', isNew: true, group: '不存在' }).message, /分類/);
+  assert.equal(call(L, 'unitSave', { category: '技能章', unit: '露營', isNew: true, group: '技巧類', desc: '本團自訂' }).unit, '露營');
+  assert.equal(call(L, 'itemSave', { category: '技能章', unit: '露營', text: '能自己打包過夜裝備' }).id, 'B-露營-1');
+  assert.equal(call(L, 'unitSave', { category: '技能章', unit: '露營', group: '技巧類', newName: '野營' }).unit, '野營');
+  assert.equal(env.rows('項目總表').find((r) => r[0] === 'B-露營-1')[2], '野營', '項目跟著改章名、ID 不變');
+  call(L, 'backfill', { cubId, unit: '嚮導', date: '2025-06-01' });
+  assert.match(call(L, 'unitSave', { category: '技能章', unit: '嚮導', group: '服務類', newName: '導遊' }).message, /已經有頒章紀錄/);
+  assert.match(call(L, 'unitSave', { category: '進程', unit: '狼', newName: '大狼' }).message, /不能改名/);
+  // 晉級條件與說明
+  call(L, 'unitSave', { category: '進程', unit: '剛入團', desc: '新的說明', rule: '新的晉級條件' });
+  const nb = env.rows('級別與章說明').find((r) => r[0] === '剛入團');
+  assert.deepEqual([nb[3], nb[4]], ['新的說明', '新的晉級條件']);
+  // 本團細項：新增、修改（核對原內容）、停用
+  call(L, 'detailSave', { itemId: 'P-狼-國旗-1', group: '國旗禮節', text: '升旗時立正', standard: '連續 3 次', life: '學校升旗' });
+  let d = call(L, 'itemsTree').details.find((x) => x.text === '升旗時立正');
+  assert.ok(d && d.enabled);
+  assert.match(call(L, 'detailSave', { key: d.key, origItemId: d.itemId, origText: '別的內容', itemId: d.itemId, text: 'x' }).message, /剛剛被修改過/);
+  call(L, 'detailSave', { key: d.key, origItemId: d.itemId, origText: d.text, itemId: d.itemId, group: '國旗禮節', text: '升旗時立正並注目' });
+  call(L, 'detailToggle', { key: d.key, origItemId: d.itemId, origText: '升旗時立正並注目', enabled: false });
+  d = call(L, 'itemsTree').details.find((x) => x.key === d.key);
+  assert.deepEqual([d.text, d.enabled], ['升旗時立正並注目', false]);
+  // 匯出
+  const ex = call(L, 'itemsExport');
+  assert.match(ex.csv, /^項目ID,類別/);
+  assert.match(ex.csv, /B-露營-1,技能章,野營/);
+  assert.ok(env.rows('操作日誌').filter((r) => ['大項改名', '新增技能章', '技能章改名', '修改說明', '新增細項', '修改細項', '停用細項'].includes(r[2])).length >= 7);
+});

@@ -20,6 +20,7 @@
 - 里程碑一期間新增：公開頁面（SPEC 第六節第 11 點、附錄第 21、22 點）：公開 API `catalog`（`PUBLIC_ACTIONS`，只回傳啟用項目與說明，快取 5 分鐘）；前端 `renderHome`（首頁 `#home`）、`renderCatalog('progress'|'badges')`（`#progress`、`#badges`），`setHash` 更新網址方便分享；未登入者預設看首頁。
 - 里程碑一期間新增：進程細項（SPEC 附錄第 24、27 點）：團自訂細項掛在官方項目下，只顯示不勾選、不影響達標；`Logic.parseDetails`／`buildDetailSeed`、`loadDetails_`／`detailsView_`（白名單 group/standard/life/subs）；catalog（快取鍵 `CATALOG2`）、`buildCubView_`、`cubAdminDetail` 的項目帶 `details`；前端 `detailsHtml()`。技能章不掛細項；晉級所需技能章枚數先不做。
 - 里程碑一期間新增：新的註冊方式（SPEC 附錄第 31 點、7.2-1）：`register` 沒帶 `code` 走 `registerByRequest_`（身分、孩子姓名、同意）→ 寫「註冊申請」；`requestChildren`（已登入加孩子）；後台 `requestList`／`requestApprove`／`requestReject`（權限 `reviewRequests`，團長）；`me.requests`；`adminHome.alerts.pendingRequests`。結案時清空填寫姓名。前端 `renderSignup1~3`、`renderNoCub` 顯示申請狀態、`ADMIN_PAGES.requests`。舊的代碼註冊保留。
+- 2026-11-15 團長同意開始階段 4B：`gas/ItemsAdmin.js`（項目管理 API：`itemsTree`、`itemSave`、`itemToggle`、`itemMove`、`sectionRename`、`unitSave`、`detailSave`、`detailToggle`、`itemsExport`、`itemsReload`；新增／停用／啟用先回 `needConfirm` 影響預覽）、設定頁（`settingsGet`／`settingsSave`／`consentSave`，`Logic.validateSettingValue`）、`ensureBackup_()`（setup 自動建立備份資料夾與每週排程）、試算表選單「團長預設帳號（admin）」（`ensureDefaultAdmin_`，隨機密碼只顯示在視窗）。前端 `ADMIN_PAGES.items`、`ADMIN_PAGES.settings`。
 - **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構
@@ -104,8 +105,9 @@
 | `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
-| `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`（編輯器手動執行一次） |
-| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
+| `ItemsAdmin.js` | 項目管理 API（SPEC 7.7，4B）：樹狀資料、改文字、新增（自動ID、影響預覽）、停用／啟用、排序、大項改名、技能章新增／改名、說明、本團細項、匯出、重新載入；改完清公開查詢快取 |
+| `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`、`ensureBackup_`（setup 自動建立資料夾與排程） |
+| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：團長預設帳號 admin（`ensureDefaultAdmin_`）、把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`ensureNewbieLevel_()`（補上剛入團，只做一次）、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。

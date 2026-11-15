@@ -1311,7 +1311,7 @@ function adminMoreItems() {
   return [
     ['requests', '📝', '註冊審核', L], ['award', '🏅', '頒章', L], ['overview', '📊', '進程總覽', true], ['attOverview', '🐾', '出席總覽', true], ['calendar', '📅', '行事曆', L],
     ['periods', '🎯', '年度出席', L], ['print', '🖨️', '列印簽核單', true], ['squads', '🏕️', '小隊設定', L], ['admins', '👥', '管理員', L], ['accounts', '🔑', '帳號管理', L],
-    ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '公開查詢頁', true],
+    ['items', '📝', '項目管理', L], ['settings', '⚙️', '設定', L], ['privacy', '🔐', '個資處理', L], ['backup', '💾', '備份與權限', L], ['line', '💬', '連結 LINE 通知', true], ['pub', '📖', '公開查詢頁', true],
   ].filter((x) => x[3]);
 }
 const isWide = () => !!(window.matchMedia && matchMedia('(min-width: 1000px)').matches);
@@ -1384,6 +1384,169 @@ const ADMIN_PAGES = {
     const gr = $('#goRoll'); if (gr) gr.onclick = () => tabTo('roll');
     const gs = $('#goSign'); if (gs) gs.onclick = () => tabTo('sign');
     const gc = $('#goCal'); if (gc) gc.onclick = () => goAdmin('calendar');
+  },
+
+  // ───── 項目管理（團長，SPEC 7.7） ─────
+  async items(params) {
+    const d = await api('itemsTree');
+    const cat = params.cat || '進程';
+    const unitsOf = (c) => d.units.filter((u) => u.category === c);
+    const list = unitsOf(cat);
+    const sel = list.find((u) => u.unit === params.unit) || list[0];
+    const go = (p) => goAdmin('items', Object.assign({ cat, unit: sel && sel.unit }, p));
+    const its = sel ? d.items.filter((i) => i.category === cat && i.unit === sel.unit).sort((a, b) => a.order - b.order) : [];
+    const secs = [];
+    its.forEach((i) => { if (!secs.includes(i.section)) secs.push(i.section); });
+    const detCount = (id) => d.details.filter((x) => x.itemId === id && x.enabled).length;
+    const errN = d.errors.items.length + d.errors.details.length;
+    const itemRow = (i, k, arr) => `<div class="list-row" style="align-items:flex-start;${i.enabled ? '' : 'opacity:.55'}">
+      <span class="grow">${esc(i.text)}${i.enabled ? '' : ' <span class="pill st-未開始">已停用</span>'}<br><span class="s">${esc(i.id)}</span></span>
+      <span class="row-flex" style="flex:none;gap:4px;justify-content:flex-end">
+        <button class="btn ghost small" data-up="${esc(i.id)}" ${k === 0 ? 'disabled' : ''} aria-label="上移">▲</button>
+        <button class="btn ghost small" data-down="${esc(i.id)}" ${k === arr.length - 1 ? 'disabled' : ''} aria-label="下移">▼</button>
+        <button class="btn ghost small" data-edit="${esc(i.id)}">✏️ 修改</button>
+        ${cat === '進程' ? `<button class="btn ghost small" data-det="${esc(i.id)}">📋 細項 ${detCount(i.id)}</button>` : ''}
+        <button class="btn ${i.enabled ? 'danger' : 'alt'} small" data-tog="${esc(i.id)}" data-on="${i.enabled ? '0' : '1'}">${i.enabled ? '停用' : '重新啟用'}</button></span></div>`;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 項目管理</h2>
+      <p class="muted small">修改後立即生效。項目ID 不會改變，已完成與已頒章的紀錄都會保留；項目只能停用、不能刪除。新增、停用或重新啟用會先顯示對哪些小狼有影響。</p>
+      <div class="chips">${['進程', '技能章'].map((c) => `<button class="chip ${c === cat ? 'on' : ''}" data-cat="${c}">${c === '進程' ? '🗺️ 進程' : '🎖️ 技能章'}</button>`).join('')}</div>
+      <div class="chips" id="units">${list.map((u) => `<button class="chip ${sel && u.unit === sel.unit ? 'on' : ''}" data-unit="${esc(u.unit)}">${iconOf(u)} ${esc(unitLabel(u))}</button>`).join('')}
+        ${cat === '技能章' ? '<button class="chip" id="newBadge">＋ 新增技能章</button>' : ''}</div>
+      <div class="row-flex"><button class="btn ghost small" id="chk">🔍 檢查項目總表${errN ? `（${errN} 個問題）` : ''}</button><button class="btn ghost small" id="exp">⬇️ 匯出 CSV</button><button class="btn ghost small" id="rl">🔄 重新載入</button></div>
+      <div id="chkOut"></div></section>
+    ${sel ? `<section class="card"><h2>${iconOf(sel)} ${esc(unitLabel(sel))}${sel.group ? ` <span class="pill st-進行中">${esc(sel.group)}</span>` : ''}</h2>
+      <form id="fu">
+        ${cat === '技能章' ? `<label>章名</label><input name="newName" type="text" maxlength="20" value="${esc(sel.unit)}" ${sel.hasAwards ? 'disabled' : ''}>
+          ${sel.hasAwards ? '<p class="muted small">已經有頒章紀錄，章名不能改。</p>' : ''}
+          <label>分類</label><select class="full" name="group">${d.groups.map((g) => `<option ${g === sel.group ? 'selected' : ''}>${g}</option>`).join('')}</select>` : ''}
+        <label>說明</label><textarea name="desc" style="min-height:80px">${esc(sel.desc)}</textarea>
+        ${cat === '進程' ? `<label>晉級條件</label><textarea name="rule" style="min-height:80px">${esc(sel.rule)}</textarea>` : ''}
+        <button class="btn small" type="submit">儲存說明</button><div class="out"></div></form></section>
+    <section class="card"><h2>${cat === '進程' ? '任務' : '合格標準'}（${its.filter((i) => i.enabled).length} 項啟用${its.some((i) => !i.enabled) ? `，${its.filter((i) => !i.enabled).length} 項停用` : ''}）</h2>
+      ${secs.map((sec) => { const arr = its.filter((i) => i.section === sec); return `
+        ${sec !== '－' ? `<div class="row-flex" style="margin-top:14px"><span class="section-title" style="margin:0">${esc(sec)}</span><button class="linkbtn" data-rsec="${esc(sec)}" style="font-size:15px">改名</button></div>` : ''}
+        ${arr.map((i, k) => itemRow(i, k, arr)).join('')}
+        <button class="btn ghost small" data-add="${esc(sec)}">＋ 在${sec === '－' ? '這裡' : '「' + esc(sec) + '」'}新增一項</button>`; }).join('') || '<p class="muted">還沒有項目。</p>'}
+      ${cat === '進程' ? '<button class="btn ghost small" id="newSec">＋ 新增大項</button>' : (secs.length ? '' : '<button class="btn ghost small" data-add="－">＋ 新增一項</button>')}
+    </section>` : ''}`;
+    wireBack();
+    $$('[data-cat]').forEach((b) => { b.onclick = () => goAdmin('items', { cat: b.dataset.cat }); });
+    $$('#units [data-unit]').forEach((b) => { b.onclick = () => goAdmin('items', { cat, unit: b.dataset.unit }); });
+    $('#chk').onclick = () => {
+      const all = d.errors.items.map((e) => `項目總表第 ${e.row} 列：${e.reason}`).concat(d.errors.details.map((e) => `進程細項第 ${e.row} 列：${e.reason}`));
+      $('#chkOut').innerHTML = all.length ? `<div class="msg warn small">${all.map(esc).join('<br>')}<br>這些列暫時不會被使用，請到試算表修正。</div>` : '<div class="msg ok small">✅ 沒有發現問題。</div>';
+    };
+    $('#exp').onclick = (ev) => act(ev.currentTarget, async () => {
+      const r = await api('itemsExport');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['﻿' + r.csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = r.filename; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
+    });
+    $('#rl').onclick = (ev) => act(ev.currentTarget, async () => { await api('itemsReload'); catalogData = null; toast('已重新載入'); go({}); });
+    const nb = $('#newBadge');
+    if (nb) nb.onclick = () => openSheet(`<h2>＋ 新增技能章</h2><form id="fb"><label>章名</label><input name="unit" type="text" maxlength="20" required>
+      <label>分類</label><select class="full" name="group">${d.groups.map((g) => `<option>${g}</option>`).join('')}</select>
+      <label>說明（可留空）</label><textarea name="desc"></textarea><button class="btn" type="submit">新增</button><div class="out"></div></form>`, (sh, close) => {
+      bindForm($('#fb', sh), async (fd) => { const r = await api('unitSave', { category: '技能章', isNew: true, unit: fd.get('unit'), group: fd.get('group'), desc: fd.get('desc') }); close(); toast('已新增，接著新增合格標準'); goAdmin('items', { cat: '技能章', unit: r.unit }); });
+    });
+    if (!sel) return;
+    bindForm($('#fu'), async (fd, out) => {
+      const r = await api('unitSave', { category: cat, unit: sel.unit, desc: fd.get('desc'), rule: fd.get('rule') || '', group: fd.get('group') || '', newName: fd.get('newName') || '' });
+      catalogData = null; toast('已儲存'); go({ unit: r.unit });
+    });
+    const withC = async (action, data) => { const r = await withConfirm(action, data); if (r) { catalogData = null; go({}); } };
+    $$('[data-up]').forEach((b) => { b.onclick = () => act(b, () => withC('itemMove', { id: b.dataset.up, dir: 'up' })); });
+    $$('[data-down]').forEach((b) => { b.onclick = () => act(b, () => withC('itemMove', { id: b.dataset.down, dir: 'down' })); });
+    $$('[data-tog]').forEach((b) => { b.onclick = () => act(b, () => withC('itemToggle', { id: b.dataset.tog, enabled: b.dataset.on === '1' })); });
+    $$('[data-edit]').forEach((b) => {
+      const it = its.find((x) => x.id === b.dataset.edit);
+      b.onclick = () => openSheet(`<h2>✏️ 修改項目</h2><p class="muted small">${esc(it.id)}（ID 不會改變，已完成紀錄保留）</p><form id="fe"><textarea name="text" required>${esc(it.text)}</textarea><button class="btn" type="submit">儲存</button><div class="out"></div></form>`, (sh, close) => {
+        bindForm($('#fe', sh), async (fd) => { await api('itemSave', { id: it.id, text: fd.get('text') }); close(); catalogData = null; toast('已儲存'); go({}); });
+      });
+    });
+    const addSheet = (sec) => openSheet(`<h2>＋ 新增項目</h2><p class="muted small">${esc(unitLabel(sel))}${sec && sec !== '－' ? '・' + esc(sec) : ''}（項目ID 自動產生）</p>
+      <form id="fa">${sec === null ? '<label>大項名稱</label><input name="section" type="text" maxlength="20" required>' : ''}<label>項目內容</label><textarea name="text" required></textarea>
+      <button class="btn" type="submit">新增</button><div class="out"></div></form>`, (sh, close) => {
+      bindForm($('#fa', sh), async (fd) => {
+        const r = await withConfirm('itemSave', { category: cat, unit: sel.unit, section: sec === null ? fd.get('section') : sec, text: fd.get('text') });
+        if (!r) return;
+        close(); catalogData = null; toast('已新增 ' + r.id); go({});
+      });
+    });
+    $$('[data-add]').forEach((b) => { b.onclick = () => addSheet(b.dataset.add); });
+    const ns = $('#newSec'); if (ns) ns.onclick = () => addSheet(null);
+    $$('[data-rsec]').forEach((b) => {
+      b.onclick = () => {
+        const name = prompt(`把大項「${b.dataset.rsec}」改名為（項目ID 不變）：`, b.dataset.rsec);
+        if (!name || name.trim() === b.dataset.rsec) return;
+        act(b, async () => { await api('sectionRename', { category: cat, unit: sel.unit, section: b.dataset.rsec, newName: name.trim() }); catalogData = null; go({}); });
+      };
+    });
+    // 本團細項編輯
+    $$('[data-det]').forEach((b) => {
+      const it = its.find((x) => x.id === b.dataset.det);
+      b.onclick = () => {
+        const rows = d.details.filter((x) => x.itemId === it.id).sort((a, c) => a.order - c.order);
+        const rowHtml = (x) => `<div class="unit" style="padding:10px" data-key="${x.key}">
+          <div class="row-flex"><input name="group" type="text" placeholder="分組" value="${esc(x.group)}" style="flex:1"><input name="text" type="text" placeholder="細項內容" value="${esc(x.text)}" style="flex:2"></div>
+          <div class="row-flex" style="margin-top:6px"><input name="standard" type="text" placeholder="通過標準（每組第一條填即可）" value="${esc(x.standard)}" style="flex:1"><input name="life" type="text" placeholder="生活應用" value="${esc(x.life)}" style="flex:1"></div>
+          <div class="row-flex"><button type="button" class="btn small" data-sv>儲存</button><button type="button" class="btn ${x.enabled ? 'danger' : 'alt'} small" data-dt="${x.enabled ? '0' : '1'}">${x.enabled ? '停用' : '重新啟用'}</button>${x.enabled ? '' : '<span class="pill st-未開始">已停用</span>'}</div></div>`;
+        openSheet(`<h2>📋 本團細項</h2><p class="muted small">${esc(it.text)}<br>只顯示給家長與服務員參考，不影響簽核與達標。</p>
+          <div id="dl">${rows.map(rowHtml).join('') || '<p class="muted">還沒有細項。</p>'}</div>
+          <h3>＋ 新增細項</h3><form id="fd"><input name="group" type="text" placeholder="分組（例如原本的大項名稱，可留空）" value="${esc(rows.length ? rows[rows.length - 1].group : '')}">
+          <input name="text" type="text" placeholder="細項內容" required style="margin-top:8px"><input name="standard" type="text" placeholder="通過標準（可留空）" style="margin-top:8px"><input name="life" type="text" placeholder="生活應用（可留空）" style="margin-top:8px">
+          <button class="btn" type="submit">新增細項</button><div class="out"></div></form>`, (sh, close) => {
+          const reopen = () => { close(); catalogData = null; go({}); };
+          $$('[data-key]', sh).forEach((box) => {
+            const x = rows.find((y) => String(y.key) === box.dataset.key);
+            const v = (n) => $(`[name=${n}]`, box).value;
+            $('[data-sv]', box).onclick = (ev) => act(ev.currentTarget, async () => { await api('detailSave', { key: x.key, origItemId: x.itemId, origText: x.text, itemId: x.itemId, group: v('group'), text: v('text'), standard: v('standard'), life: v('life') }); toast('已儲存'); reopen(); });
+            $('[data-dt]', box).onclick = (ev) => act(ev.currentTarget, async () => { await api('detailToggle', { key: x.key, origItemId: x.itemId, origText: x.text, enabled: ev.currentTarget.dataset.dt === '1' }); reopen(); });
+          });
+          bindForm($('#fd', sh), async (fd) => { await api('detailSave', { itemId: it.id, group: fd.get('group'), text: fd.get('text'), standard: fd.get('standard'), life: fd.get('life') }); toast('已新增細項'); reopen(); });
+        });
+      };
+    });
+  },
+
+  // ───── 設定（團長，SPEC 7.8） ─────
+  async settings() {
+    const d = await api('settingsGet');
+    const field = (x) => {
+      const id = 'st-' + d.settings.indexOf(x);
+      const input = x.type === 'bool'
+        ? `<select class="full" id="${id}" data-k="${esc(x.key)}"><option ${x.value === '是' ? 'selected' : ''}>是</option><option ${x.value === '否' ? 'selected' : ''}>否</option></select>`
+        : `<input id="${id}" data-k="${esc(x.key)}" type="${x.type === 'int' ? 'number' : 'text'}" ${x.type === 'int' ? `min="${x.min}" max="${x.max}" inputmode="numeric"` : ''} value="${esc(x.value)}">`;
+      return `<div class="list-row" style="display:block"><label for="${id}" style="margin-top:0">${esc(x.key)}${x.type === 'int' ? `<span class="s">（${x.min}～${x.max}）</span>` : ''}</label>
+        ${x.desc ? `<p class="muted small" style="margin:0 0 6px">${esc(x.desc)}</p>` : ''}${input}
+        ${x.error ? `<div class="msg warn small">試算表裡的值「${esc(x.sheetValue)}」有問題（${esc(x.error)}），目前用上面的值。</div>` : ''}</div>`;
+    };
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>⚙️ 設定</h2>
+      <p class="muted small">改完按最下面「儲存」，立即生效。小隊名稱請到「🏕️ 小隊設定」。</p>
+      <form id="fs">${d.settings.map(field).join('')}
+        <div class="savebar"><button class="btn green" type="submit">💾 儲存設定</button><div class="out"></div></div></form></section>
+      <section class="card"><h2>📜 個資說明（家長註冊時看到的內容）</h2>
+        <p class="muted small">目前是第 ${esc(d.consent ? d.consent.version : '－')} 版${d.consent && d.consent.effective ? '（' + fmtDate(d.consent.effective) + ' 起）' : ''}。儲存後會變成新的一版，舊版保留；<b>已綁定的家長下次登入要重新同意</b>。</p>
+        <form id="fc"><textarea name="content" style="min-height:260px">${esc(d.consent ? d.consent.content : '')}</textarea>
+          <button class="btn alt" type="submit">儲存為新版本</button><div class="out"></div></form></section>`;
+    wireBack();
+    const orig = {};
+    $$('[data-k]').forEach((el) => { orig[el.dataset.k] = el.value; });
+    const changes = () => { const c = {}; $$('[data-k]').forEach((el) => { if (el.value.trim() !== orig[el.dataset.k]) c[el.dataset.k] = el.value.trim(); }); return c; };
+    leaveGuard = Object.assign(() => !Object.keys(changes()).length || confirm('設定還沒儲存，確定要離開嗎？'), { dirty: () => Object.keys(changes()).length > 0 });
+    bindForm($('#fs'), async (fd, out) => {
+      const c = changes();
+      if (!Object.keys(c).length) return msg(out, '沒有修改任何設定。', 'info');
+      const r = await api('settingsSave', { changes: c });
+      Object.assign(orig, c);
+      msg(out, `已儲存 ${r.changed} 項設定，立即生效。`, 'ok');
+      toast('設定已儲存');
+    });
+    bindForm($('#fc'), async (fd, out) => {
+      if (!confirm('儲存為新版本後，所有已綁定的家長下次登入都要重新閱讀並同意。確定嗎？')) return;
+      const r = await api('consentSave', { content: fd.get('content') });
+      msg(out, `已儲存為第 ${r.version} 版。`, 'ok');
+    });
   },
 
   // ───── 註冊審核（團長） ─────
@@ -1997,7 +2160,7 @@ const ADMIN_PAGES = {
     const h = await api('adminHome');
     const b = h.alerts.backup, p = h.alerts.permission;
     $app.innerHTML = `${backBtn()}<section class="card"><h2>💾 備份</h2>
-      ${h.alerts.backupFolderSet ? '' : '<div class="msg warn small">尚未設定備份資料夾（見 SETUP.md 第 7 步）。</div>'}
+      ${h.alerts.backupFolderSet ? '' : '<div class="msg warn small">尚未設定備份資料夾：請在 Apps Script 執行一次 setup，會自動建立資料夾並開啟每週自動備份。</div>'}
       <p>上次備份：${b ? fmtTime(b.at) + '<br>' + esc(b.message) : '還沒有紀錄'}</p>
       <button class="btn" id="bk">立即備份</button><button class="btn danger" id="pg">刪除所有舊備份並重新備份</button></section>
       <section class="card"><h2>🛡️ 試算表權限</h2>

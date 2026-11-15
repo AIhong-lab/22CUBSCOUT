@@ -95,6 +95,32 @@ function weeklyBackup() {
   checkPermissions_();
 }
 
+/** 備份資料夾名稱（setup 自動建立時使用） */
+var BACKUP_FOLDER_NAME = '幼童軍進程系統備份';
+
+/**
+ * 自動備份免設定（SPEC 附錄第 38 點）：沒有備份資料夾就在執行者的雲端硬碟建立一個（預設只有自己看得到），
+ * 沒有每週備份排程就安裝。已經設定好的不動。
+ * @return {string[]} 做了哪些事（給 setup 報告）
+ */
+function ensureBackup_() {
+  var props = PropertiesService.getScriptProperties();
+  var done = [];
+  var folderId = props.getProperty('BACKUP_FOLDER_ID');
+  var ok = false;
+  if (folderId) { try { DriveApp.getFolderById(folderId); ok = true; } catch (e) { ok = false; } }
+  if (!ok) {
+    var folder = DriveApp.createFolder(BACKUP_FOLDER_NAME);
+    props.setProperty('BACKUP_FOLDER_ID', folder.getId());
+    done.push('建立備份資料夾「' + BACKUP_FOLDER_NAME + '」');
+  }
+  if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'weeklyBackup'; })) {
+    installBackupTrigger();
+    done.push('開啟每週日 03:00 自動備份');
+  }
+  return done;
+}
+
 /** 安裝每週備份排程（每週日凌晨 3 點）；重複執行不會重複安裝 */
 function installBackupTrigger() {
   removeTriggers_('weeklyBackup');

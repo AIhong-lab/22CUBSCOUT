@@ -11,7 +11,7 @@ const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 // GAS 載入順序（Logic 最先，Setup 最後）
-const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'Backup.js', 'Webhook.js', 'Setup.js'];
+const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'ItemsAdmin.js', 'Backup.js', 'Webhook.js', 'Setup.js'];
 
 function buildSeedData() {
   const itemsCsv = read('data/items.csv');

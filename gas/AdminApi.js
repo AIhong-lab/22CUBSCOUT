@@ -619,6 +619,75 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
   });
 });
 
+// ───────────── 設定（SPEC 7.8，團長專用） ─────────────
+
+registerAdmin_('settingsGet', 'manageSettings', function () {
+  var parsed = loadSettings_();
+  var raw = {};
+  readRows_(SHEET.SETTINGS).forEach(function (r) { var k = Logic.clean(r[0]); if (k) raw[k] = Logic.clean(r[1]); });
+  var errs = {};
+  parsed.errors.forEach(function (e) { errs[e.key] = e.reason; });
+  var c = latestConsent_();
+  return {
+    settings: Logic.SETTINGS.filter(function (s) { return s.type !== 'list'; }).map(function (s) {
+      var v = parsed.values[s.key];
+      return {
+        key: s.key, type: s.type, desc: s.desc, min: s.min, max: s.max,
+        value: s.type === 'bool' ? (v ? '是' : '否') : String(v), sheetValue: raw[s.key] === undefined ? '' : raw[s.key], error: errs[s.key] || ''
+      };
+    }),
+    consent: c ? { version: c.version, content: c.content, effective: c.effective } : null
+  };
+});
+
+/** 修改設定：全部檢查通過才寫入；修改前後的值寫入操作日誌 */
+registerAdmin_('settingsSave', 'manageSettings', function (req, who) {
+  var changes = req.changes || {};
+  var keys = Object.keys(changes);
+  if (!keys.length) throw new ApiError(ERR.BAD_INPUT, '沒有要修改的設定。');
+  var stored = {}, errors = [];
+  keys.forEach(function (k) {
+    var v = Logic.validateSettingValue(k, changes[k]);
+    if (v.ok) stored[k] = v.stored; else errors.push(v.error);
+  });
+  if (errors.length) throw new ApiError(ERR.BAD_INPUT, errors.join('\n'));
+  return withLock_(function () {
+    var rows = readRows_(SHEET.SETTINGS);
+    var ups = [], adds = [], changed = 0;
+    keys.forEach(function (k) {
+      var r = rows.filter(function (x) { return Logic.clean(x[0]) === k; })[0];
+      if (r) {
+        if (Logic.clean(r[1]) === stored[k]) return;
+        ups.push({ row: r._row, values: [k, stored[k], r[2] === undefined ? '' : r[2]] });
+        logOp_(who.account.accountId, '修改設定', k, Logic.clean(r[1]), stored[k]);
+      } else {
+        var def = Logic.SETTINGS.filter(function (s) { return s.key === k; })[0];
+        adds.push([k, stored[k], def.desc]);
+        logOp_(who.account.accountId, '修改設定', k, '', stored[k]);
+      }
+      changed++;
+    });
+    if (ups.length) updateRows_(SHEET.SETTINGS, ups);
+    if (adds.length) appendRows_(SHEET.SETTINGS, adds);
+    return { changed: changed };
+  });
+});
+
+/** 個資說明改版：新增一列（版本 +1），舊版保留；家長下次登入要重新同意 */
+registerAdmin_('consentSave', 'manageSettings', function (req, who) {
+  var content = String(req.content || '').replace(/\r\n/g, '\n').trim();
+  if (content.length < 20) throw new ApiError(ERR.BAD_INPUT, '個資說明內容太短了。');
+  if (content.length > 10000) throw new ApiError(ERR.BAD_INPUT, '個資說明最多 10000 字。');
+  return withLock_(function () {
+    var c = latestConsent_();
+    if (c && c.content.trim() === content) throw new ApiError(ERR.BAD_INPUT, '內容沒有變更。');
+    var version = (c ? c.version : 0) + 1;
+    appendRows_(SHEET.CONSENT, [[version, content, today_()]]);
+    logOp_(who.account.accountId, '個資說明改版', '第 ' + version + ' 版', c ? '第 ' + c.version + ' 版' : '', '第 ' + version + ' 版');
+    return { version: version };
+  });
+});
+
 // ───────────── 註冊申請審核（SPEC 附錄第 31 點，團長專用） ─────────────
 
 registerAdmin_('requestList', 'reviewRequests', function () {

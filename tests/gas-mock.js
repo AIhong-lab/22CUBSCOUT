@@ -110,6 +110,7 @@ function loadGas(opts = {}) {
       getSharingAccess: () => drive.sharing.file,
       makeCopy: (name) => { if (drive.failCopy) throw new Error('模擬複製失敗'); const f = { name, created: clock, trashed: false, getName: () => f.name, getDateCreated: () => new RealDate(f.created), setTrashed: (v) => { f.trashed = v; } }; drive.files.push(f); clock += 1000; return f; },
     }),
+    createFolder: (name) => { drive.folders = (drive.folders || []).concat([name]); return { getId: () => 'FOLDER-' + drive.folders.length, getName: () => name }; },
     getFolderById: () => ({
       getSharingAccess: () => drive.sharing.folder,
       getFiles: () => { const list = drive.files.filter((f) => !f.trashed); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; },

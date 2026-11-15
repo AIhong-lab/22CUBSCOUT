@@ -305,7 +305,7 @@ function seed(env) {
   const ah = await text();
   assert.match(ah, /今天沒有集會/);
   assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
-  assert.match(ah, /尚未設定備份資料夾/);
+  assert.match(ah, /還沒有備份紀錄/, 'setup 已自動建立備份資料夾，只是還沒備份過');
   await shot('10-admin-home'); await noHScroll('後台首頁');
 
   // 行事曆：新增今天的集會
@@ -395,6 +395,46 @@ function seed(env) {
   await page.locator('table.tbl').waitFor();
   assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
   await shot('14-overview');
+
+  // ═════ 4B：項目管理與設定 ═════
+  await tab('more');
+  await page.locator('.menu-grid button[data-p=items]').click();
+  await page.getByText('📝 項目管理').waitFor();
+  assert.match(await text(), /剛入團任務|任務（5 項啟用）/);
+  await page.locator('[data-cat=技能章]').click();
+  await page.locator('#units [data-unit=嚮導]').click();
+  await page.getByText('合格標準（2 項啟用）').waitFor();
+  await page.locator('[data-add]').first().click();
+  await page.fill('#fa textarea[name=text]', '能帶家人走一次自己規劃的路線');
+  await page.click('#fa button[type=submit]');
+  await page.getByText('合格標準（3 項啟用）').waitFor();
+  assert.ok(env.rows('項目總表').some((r) => r[0] === 'B-嚮導-3'));
+  await page.locator('[data-edit="B-嚮導-3"]').click();
+  await page.fill('#fe textarea[name=text]', '能帶家人走一次路線（修改）');
+  await page.click('#fe button[type=submit]');
+  await page.getByText('能帶家人走一次路線（修改）').waitFor();
+  await page.locator('[data-tog="B-嚮導-3"]').click();
+  await page.getByText('已停用').first().waitFor();
+  await shot('40-items'); await noHScroll('項目管理');
+  await page.locator('[data-cat=進程]').click();
+  await page.locator('#units [data-unit=剛入團]').click();
+  await page.locator('[data-det="P-剛入團-1"]').click();
+  await page.locator('.sheet [data-key]').first().waitFor();
+  assert.equal(await page.locator('.sheet [data-key]').count(), 4);
+  await page.locator('.sheet [data-close]').click();
+  // 設定
+  await page.locator('[data-back]').click();
+  await page.locator('.menu-grid button[data-p=settings]').click();
+  await page.getByText('⚙️ 設定').waitFor();
+  const inp = page.locator('[data-k="晉級所需出席次數"]');
+  assert.equal(await inp.inputValue(), '8');
+  await inp.fill('6');
+  await page.click('#fs button[type=submit]');
+  await page.getByText('已儲存 1 項設定').waitFor();
+  assert.equal(env.ctx.loadSettings_().values['晉級所需出席次數'], 6);
+  await shot('41-settings'); await noHScroll('設定');
+  await page.locator('[data-back]').click();
+  await page.locator('.menu-grid').waitFor();
 
   // 切換到家長畫面
   await page.getByText('家長畫面').click();

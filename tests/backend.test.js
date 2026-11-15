@@ -304,7 +304,7 @@ test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄
   env.ctx.onOpen();
   assert.equal(env.ui.menus[0].title, '🐺 幼童軍系統');
   assert.ok(env.ui.menus[0].items.every(([, fn]) => typeof env.ctx[fn] === 'function' && !fn.endsWith('_')), '選單函式存在且非私有');
-  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['把帳號設為團長', '顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
+  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['🔑 團長預設帳號（admin）', '把帳號設為團長', '顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
   assert.equal(typeof env.ctx.menuInviteAssistant, 'undefined');
 });
 
@@ -463,4 +463,41 @@ test('剛入團：已上線的系統重跑 setup 會補上剛入團，並把細�
   assert.ok(env.rows('級別與章說明').some((x) => x[0] === '剛入團'));
   const again = env.ctx.setup();
   assert.ok(!again.seeded.some((x) => /剛入團/.test(x)), '已補過就不再執行');
+});
+
+test('自動備份免設定：setup 建立備份資料夾並開啟每週備份；重跑不重複建立', () => {
+  const env = loadGas();
+  const r = env.ctx.setup();
+  assert.ok(env.props.BACKUP_FOLDER_ID, '已設定資料夾 ID');
+  assert.ok(r.seeded.some((x) => /建立備份資料夾/.test(x)));
+  assert.ok(r.seeded.some((x) => /每週日 03:00 自動備份/.test(x)));
+  const id = env.props.BACKUP_FOLDER_ID;
+  const again = env.ctx.setup();
+  assert.equal(env.props.BACKUP_FOLDER_ID, id, '不重建');
+  assert.ok(!again.seeded.some((x) => /備份/.test(x)));
+  assert.equal(env.ctx.runBackup_().ok, true, '可以直接備份');
+});
+
+test('團長預設帳號：選單一按就建立 admin（團長），密碼隨機只顯示在視窗；再按一次重設密碼', () => {
+  const { env } = fresh();
+  env.ctx.menuDefaultAdmin();
+  const msg1 = env.ui.alerts.at(-1);
+  const pw1 = /密碼：(\S+)/.exec(msg1)[1];
+  assert.match(msg1, /帳號：admin/);
+  assert.match(msg1, /已建立團長帳號/);
+  assert.ok(!JSON.stringify(env.rows('帳號')).includes(pw1), '試算表只存雜湊');
+  assert.ok(!JSON.stringify(env.rows('操作日誌')).includes(pw1), '日誌不記密碼');
+  const login = env.api({ action: 'login', username: 'admin', password: pw1 });
+  assert.equal(login.ok, true, JSON.stringify(login));
+  const me = env.api({ action: 'me', token: login.token });
+  assert.equal(me.role, '團長');
+  assert.equal(env.api({ action: 'itemsTree', token: login.token }).ok, true, '最高權限：可用團長專屬功能');
+  env.ctx.menuDefaultAdmin();
+  const pw2 = /密碼：(\S+)/.exec(env.ui.alerts.at(-1))[1];
+  assert.notEqual(pw1, pw2);
+  assert.match(env.ui.alerts.at(-1), /已重設/);
+  assert.equal(env.api({ action: 'me', token: login.token }).code, 'SESSION_EXPIRED', '重設後舊的登入失效');
+  assert.equal(env.api({ action: 'login', username: 'admin', password: pw1 }).code, 'BAD_LOGIN');
+  assert.equal(env.api({ action: 'login', username: 'admin', password: pw2 }).ok, true);
+  assert.equal(env.rows('帳號').filter((r) => r[1] === 'admin').length, 1, '不重複建立');
 });

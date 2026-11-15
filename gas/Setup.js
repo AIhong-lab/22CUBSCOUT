@@ -35,6 +35,8 @@ function setup() {
     if (missing.length) { appendRows_(SHEET.SETTINGS, missing); report.seeded.push(SHEET.SETTINGS + ' 補上 ' + missing.length + ' 項'); }
 
     report.hidden = organizeSheets_(true);
+    try { ensureBackup_().forEach(function (x) { report.seeded.push(x); }); }
+    catch (e) { report.seeded.push('⚠️ 自動備份設定失敗：' + (e && e.message ? e.message : e) + '（可稍後在 Apps Script 執行 installBackupTrigger）'); }
     report.firstLeaderInvite = ensureFirstLeaderInvite_();
     printSetupReport_(report);
     return report;

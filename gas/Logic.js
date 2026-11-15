@@ -236,6 +236,21 @@ var Logic = (function () {
   }
 
   /** setup() 用：設定分頁初始內容（含標題列） */
+  /**
+   * 後台設定頁：檢查單一設定值（SPEC 7.8）。小隊清單另有專屬頁面，不在這裡改。
+   * @return {{ok: boolean, stored?: string, error?: string}} stored 為要寫入試算表的文字
+   */
+  function validateSettingValue(key, raw) {
+    var s = SETTINGS.filter(function (x) { return x.key === key; })[0];
+    if (!s || s.type === 'list') return { ok: false, error: '不支援修改這個設定' };
+    var v = clean(raw);
+    if (s.type === 'bool') return v === '是' || v === '否' ? { ok: true, stored: v } : { ok: false, error: key + '：只能選「是」或「否」' };
+    if (s.type === 'str') return s.pattern.test(v) ? { ok: true, stored: v } : { ok: false, error: key + '：格式不正確' };
+    var n = Number(v);
+    if (!/^-?\d+$/.test(v) || n < s.min || n > s.max) return { ok: false, error: key + '：需為 ' + s.min + '～' + s.max + ' 的整數' };
+    return { ok: true, stored: String(n) };
+  }
+
   function defaultSettingsRows() {
     return [['鍵', '值', '說明']].concat(SETTINGS.map(function (s) {
       return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.type === 'list' ? s.def.join('、') : s.def, s.desc];
@@ -998,7 +1013,7 @@ var Logic = (function () {
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
     clean: clean, parseCsv: parseCsv, toCsv: toCsv,
-    parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, parseList: parseList, changeSquads: changeSquads,
+    parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, validateSettingValue: validateSettingValue, parseList: parseList, changeSquads: changeSquads,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed, buildDetailSeed: buildDetailSeed, parseDetails: parseDetails,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
     isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,

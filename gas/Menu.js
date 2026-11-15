@@ -11,11 +11,58 @@ var DEFAULT_WEB_URL = 'https://aihong-lab.github.io/22CUBSCOUT/';
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🐺 幼童軍系統')
+    .addItem('🔑 團長預設帳號（admin）', 'menuDefaultAdmin')
     .addItem('把帳號設為團長', 'menuSetLeader')
     .addSeparator()
     .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
     .addItem('只顯示需要編輯的分頁', 'menuHideSystemSheets')
     .addToUi();
+}
+
+/** 團長預設帳號的帳號名稱（SPEC 附錄第 39 點） */
+var DEFAULT_ADMIN_USERNAME = 'admin';
+
+/**
+ * 團長預設帳號：沒有 admin 帳號就建立（團長、最高權限），已經有就重設密碼並確保是團長。
+ * 密碼每次隨機產生、只顯示在這個視窗，不寫進程式、日誌或試算表（試算表只存雜湊）。
+ */
+function menuDefaultAdmin() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ensureDefaultAdmin_();
+  ui.alert('團長預設帳號', '網址：' + (PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL) +
+    '\n帳號：' + r.username + '\n密碼：' + r.password + '\n\n' + (r.created ? '已建立團長帳號。' : '已重設這個帳號的密碼（其他裝置已登出）。') +
+    '\n請抄下密碼，登入後到「我的 → 修改密碼」改成自己的密碼。這個視窗關掉後就看不到密碼了。', ui.ButtonSet.OK);
+}
+
+function ensureDefaultAdmin_() {
+  return withLock_(function () {
+    var settings = loadSettings_().values;
+    var password = Logic.generateCode(10, randInt_, []).toLowerCase();
+    var salt = randomHex_(32);
+    var hash = Logic.hashPassword(password, salt, HASH_ITERATIONS, hmacHex_);
+    var acc = findAccountByName_(DEFAULT_ADMIN_USERNAME);
+    var created = false, now = new Date();
+    if (!acc) {
+      var id = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
+      appendRows_(SHEET.ACCOUNTS, [[id, DEFAULT_ADMIN_USERNAME, '團長', hash, salt, '啟用', now, '', '', '']]);
+      acc = findAccountByName_(DEFAULT_ADMIN_USERNAME);
+      created = true;
+    } else {
+      var row = acc._raw.slice(0, HEADERS[SHEET.ACCOUNTS].length);
+      row[3] = hash; row[4] = salt; row[5] = '啟用'; row[8] = ''; row[9] = '';
+      updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
+      purgeSessions_(acc.accountId);
+    }
+    var admins = loadAdmins_();
+    var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
+    if (!cur) appendRows_(SHEET.ADMINS, [[acc.accountId, '團長', Logic.ROLE.LEADER, now, '試算表選單', '', '']]);
+    else if (cur.role !== Logic.ROLE.LEADER) {
+      var ar = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length); ar[2] = Logic.ROLE.LEADER;
+      updateRows_(SHEET.ADMINS, [{ row: cur._row, values: ar }]);
+    }
+    logOp_('試算表選單', created ? '建立團長預設帳號' : '重設團長預設帳號密碼', DEFAULT_ADMIN_USERNAME, '', '團長');
+    return { username: DEFAULT_ADMIN_USERNAME, password: password, created: created };
+  });
 }
 
 /**
