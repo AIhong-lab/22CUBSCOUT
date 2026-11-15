@@ -44,7 +44,7 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
 HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本'];
@@ -55,7 +55,7 @@ HEADERS[SHEET.UNITS] = ['名稱', '類別', '分類', '說明', '晉級條件', 
 HEADERS[SHEET.DETAILS] = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
 HEADERS[SHEET.COMPLETIONS] = ['小狼ID', '項目ID', '完成日期', '簽核人', '備註', '回報人', '回報狀態'];
 HEADERS[SHEET.AWARDS] = ['小狼ID', '級別或章名', '頒發日期', '頒發場合', '備註', '簽核人', '登錄時間'];
-HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間'];
+HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型'];
 HEADERS[SHEET.ATTENDANCE] = ['集會ID', '小狼ID', '狀態', '點名人', '點名時間'];
 HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席總數', '備註'];
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
@@ -70,7 +70,7 @@ HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '�
  * 需設為「純文字」格式的欄（1 起算），避免試算表把日期字串或全數字代碼自動轉型。
  */
 var TEXT_COLUMNS = {};
-TEXT_COLUMNS[SHEET.CUBS] = [1, 4, 6, 9];
+TEXT_COLUMNS[SHEET.CUBS] = [1, 4, 6, 9, 10];
 TEXT_COLUMNS[SHEET.ACCOUNTS] = [1, 2];
 TEXT_COLUMNS[SHEET.BINDINGS] = [1, 2];
 TEXT_COLUMNS[SHEET.ADMINS] = [1];

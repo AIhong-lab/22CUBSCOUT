@@ -922,6 +922,20 @@ function viewHome(d) {
     <p class="muted">${esc(LEVEL_ICON[n.level] || '')} ${esc(lvName(n.level))}的下一關任務：</p>
     ${n.items.map((i, k) => `<div class="mission"><span class="no">${k + 1}</span><span class="txt">${esc(i.text)}</span></div>`).join('')}
     <button class="btn ghost small" id="toMap" data-lv="${esc(n.level)}">🗺️ 看${esc(lvName(n.level))}全部任務 →</button>`;
+  if (d.trial) {
+    // 體驗者：只有一個條件——參加滿 N 次一般團集會（SPEC 附錄第 40 點）
+    const t = d.trial;
+    $app.innerHTML = `<section class="card hero"><div class="top"><div class="avatar">🧪</div>
+        <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">體驗中${c.trialStart ? '・' + fmtDate(c.trialStart) + ' 開始' : ''}</div>
+          <span class="levelchip">體驗者</span></div></div>
+        <div class="stats3"><div><b>🐾 ${t.count}／${t.need}</b>一般團集會</div><div><b>${t.ready ? '✅' : '⏳'}</b>${t.ready ? '可以入團' : '還差 ' + (t.need - t.count) + ' 次'}</div><div><b>🌙 ${d.attendance.counts.leave}</b>請假</div></div></section>
+      <section class="card"><h2>🧪 體驗者</h2>
+        <p>參加滿 <b>${t.need} 次一般團集會</b>（大活動、特殊團集會不算，請假不算）就可以入團。${t.ready ? '<br>🎉 已經滿了！團長確認後會幫孩子轉為入團，接著開始挑戰「🌱 剛入團」。' : ''}</p>
+        <div class="bar ${t.ready ? 'full' : ''}"><span style="width:${Math.min(100, Math.round(t.count / t.need * 100))}%"></span></div>
+        <button class="btn ghost small" id="toMap" data-lv="剛入團">🌱 先看看剛入團要做什麼 →</button></section>`;
+    $('#toMap').onclick = () => { state.mapSel = '剛入團'; state.view = 'progress'; renderParent(true); };
+    return;
+  }
   $app.innerHTML = `
     <section class="card hero">
       <div class="top"><div class="avatar">${av}</div>
@@ -1369,6 +1383,8 @@ const ADMIN_PAGES = {
         : `<p class="muted">今天沒有集會。${nextM ? `下次集會：<b>${fmtDate(nextM.date)} ${esc(nextM.name)}</b>` : (isLeader() ? '行事曆還沒有之後的集會。' : '')}</p>
           ${!nextM && isLeader() ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
       ${al.pendingRequests ? `<section class="card"><div class="banner"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></div><button class="btn alt small" id="toReq">前往審核</button></section>` : ''}
+      ${(h.trials || []).length ? `<section class="card"><h2>🧪 體驗者 <span class="pill st-已完成待頒發">${h.trials.length}</span></h2>
+        ${h.trials.map((t) => `<div class="list-row tap" data-cub="${esc(t.cubId)}"><span class="grow"><span class="t">${esc(t.name)}</span> <span class="s">${esc(t.squad || '')}</span><br><span class="s">一般團集會 ${t.count}／${t.need} 次</span></span>${t.ready ? '<span class="pill st-已頒發">✅ 可以入團</span>' : ''}<span>›</span></div>`).join('')}</section>` : ''}
       <section class="card"><h2>🏅 待頒章 <span class="pill st-已完成待頒發">${h.pending.length}</span></h2>
         ${h.pending.length ? h.pending.map((p) => row(p, `<span class="s">達標 ${fmtDate(p.eligibleDate)}</span>`)).join('') : '<p class="muted">目前沒有待頒章的小狼。</p>'}
         ${h.pending.length && isLeader() ? '<button class="btn alt" id="toAward">🏅 前往頒章</button>' : ''}</section>
@@ -1617,14 +1633,14 @@ const ADMIN_PAGES = {
       <section class="card"><h2>📋 點名</h2>
         <select class="full" id="mSel">${meetings.map((m) => `<option value="${esc(m.meetingId)}" ${m.meetingId === mid ? 'selected' : ''}>${fmtDate(m.date)}　${esc(m.name)}</option>`).join('')}</select>
         ${squadChips(sheet.squads, squad)}
-        <p class="muted small">點一下切換：空白 → 🐾 出席 → 🌙 請假 → 空白</p>
+        <p class="muted small">點一下切換：空白 → 🐾 出席 → 🌙 請假 → 空白${sheet.meeting.type === '大活動' ? '<br>🏕️ 這場是大活動：不列體驗者。' : ''}</p>
         <button class="btn alt small" id="allIn">✅ 全部出席（請假的不變）</button>
         <div id="rows"></div>
         <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="save">儲存點名</button></div>
         ${isLeader() ? '<button class="linkbtn" id="cal">📅 管理行事曆</button>' : ''}</section>`;
     const draw = () => {
       const show = sheet.cubs.filter((c) => squad === '全團' || c.squad === squad);
-      $('#rows').innerHTML = show.length ? show.map((c) => `<div class="list-row"><span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span></span>
+      $('#rows').innerHTML = show.length ? show.map((c) => `<div class="list-row"><span class="grow"><span class="t">${esc(c.name)}</span>${c.trial ? ' <span class="pill st-已完成待頒發">🧪 體驗</span>' : ''} <span class="s">${esc(c.squad || '')}</span></span>
         <button class="roll-btn ${esc(marks[c.cubId])} ${marks[c.cubId] !== orig[c.cubId] ? 'changed' : ''}" data-id="${esc(c.cubId)}">${marks[c.cubId] === '出席' ? '🐾 出席' : marks[c.cubId] === '請假' ? '🌙 請假' : '　－　'}</button></div>`).join('') : '<p class="muted">這個小隊沒有小狼。</p>';
       const vals = Object.values(marks);
       const changed = Object.keys(marks).filter((k) => marks[k] !== orig[k]).length;
@@ -1727,16 +1743,16 @@ const ADMIN_PAGES = {
     const st = { squad: params.squad || '全團', status: params.status || '在團', sort: params.sort || 'squad' };
     $app.innerHTML = `
       <section class="card"><h2>🐺 小狼名單</h2>
-        ${isLeader() ? '<button class="btn alt" id="add">＋ 新增小狼</button>' : ''}
+        ${isLeader() ? '<div class="row-flex"><button class="btn alt small" id="add">＋ 新增小狼</button><button class="btn ghost small" id="addTrial">🧪 新增體驗者</button></div>' : ''}
         ${squadChips(d.squads, st.squad)}
-        <div class="chips" id="sts">${['在團', '離團', '已匿名', '全部'].map((s) => `<button class="chip ${s === st.status ? 'on' : ''}" data-st="${s}">${s}</button>`).join('')}</div>
+        <div class="chips" id="sts">${['在團', '體驗', '離團', '已匿名', '全部'].map((s) => `<button class="chip ${s === st.status ? 'on' : ''}" data-st="${s}">${s}</button>`).join('')}</div>
         <div class="row-flex"><span class="muted small">排序：</span><select id="sort"><option value="squad">小隊</option><option value="join">入團日</option><option value="name">姓名</option></select></div>
         <div id="list"></div></section>`;
     const draw = () => {
       const list = d.cubs.filter((c) => (st.squad === '全團' || c.squad === st.squad) && (st.status === '全部' || c.status === st.status));
       list.sort((a, b) => st.sort === 'join' ? (a.joinDate < b.joinDate ? -1 : 1) : st.sort === 'name' ? a.name.localeCompare(b.name, 'zh-Hant') : (a.squad || '').localeCompare(b.squad || '', 'zh-Hant') || a.name.localeCompare(b.name, 'zh-Hant'));
-      $('#list').innerHTML = list.length ? list.map((c) => `<div class="list-row tap" data-id="${esc(c.cubId)}"><span style="font-size:28px">${c.level ? LEVEL_ICON[c.level] : '🌱'}</span>
-        <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">入團 ${fmtDate(c.joinDate)}${c.level ? '・' + esc(lvName(c.level)) : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
+      $('#list').innerHTML = list.length ? list.map((c) => `<div class="list-row tap" data-id="${esc(c.cubId)}"><span style="font-size:28px">${c.status === '體驗' ? '🧪' : c.level ? LEVEL_ICON[c.level] : '🌱'}</span>
+        <span class="grow"><span class="t">${esc(c.name)}</span> <span class="s">${esc(c.squad || '')}</span><br><span class="s">${c.status === '體驗' ? '體驗者' : '入團 ' + fmtDate(c.joinDate)}${c.level ? '・' + esc(lvName(c.level)) : ''}${c.status !== '在團' ? '・' + esc(c.status) : ''}</span></span><span>›</span></div>`).join('') : '<p class="muted">沒有符合條件的小狼。</p>';
       $$('#list .list-row').forEach((r) => { r.onclick = () => goAdmin('cub', { cubId: r.dataset.id }); });
     };
     $('#sort').value = st.sort;
@@ -1746,28 +1762,32 @@ const ADMIN_PAGES = {
     draw();
     const add = $('#add');
     if (add) add.onclick = () => goAdmin('cubEdit', {});
+    const at = $('#addTrial'); if (at) at.onclick = () => goAdmin('cubEdit', { trial: true });
   },
 
   // ───── 新增／編輯小狼 ─────
   async cubEdit(params) {
-    let cub = { name: '', squad: '', joinDate: todayStr() };
+    let cub = { name: '', squad: '', joinDate: todayStr(), trialStart: todayStr(), status: params.trial ? '體驗' : '在團' };
     const sq = await api('squadList');
     if (params.cubId) cub = (await api('cubAdminDetail', { cubId: params.cubId })).cub;
+    const trial = cub.status === '體驗';
     const names = sq.squads.map((x) => x.name);
     const opts = [''].concat(names);
     if (cub.squad && !names.includes(cub.squad)) opts.push(cub.squad); // 不在清單的舊名稱仍可保留
-    $app.innerHTML = `${backBtn()}<section class="card"><h2>${params.cubId ? '✏️ 編輯小狼' : '＋ 新增小狼'}</h2>
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>${params.cubId ? '✏️ 編輯' + (trial ? '體驗者' : '小狼') : trial ? '🧪 新增體驗者' : '＋ 新增小狼'}</h2>
+      ${trial && !params.cubId ? '<p class="muted small">體驗者還沒入團：只能參加一般團集會，滿 4 次後由團長「轉為入團」。</p>' : ''}
       <form id="f"><label>姓名</label><input name="name" type="text" value="${esc(cub.name)}" required>
         <label>小隊</label><select class="full" name="squad">${opts.map((n) => `<option value="${esc(n)}" ${n === (cub.squad || '') ? 'selected' : ''}>${n ? esc(n) + (names.includes(n) ? '' : '（不在清單）') : '（不分小隊）'}</option>`).join('')}</select>
         ${names.length ? '' : '<div class="msg warn small">還沒有設定小隊清單。請先到「更多 → 🏕️ 小隊設定」新增小隊。</div>'}
         <button type="button" class="linkbtn" id="toSq">🏕️ 管理小隊清單</button>
-        <label>入團日（可填過去日期）</label><input name="joinDate" type="date" value="${esc(cub.joinDate)}" required>
+        ${trial ? `<label>體驗開始日</label><input name="trialStart" type="date" value="${esc(cub.trialStart || todayStr())}" required>`
+          : `<label>入團日（可填過去日期）</label><input name="joinDate" type="date" value="${esc(cub.joinDate)}" required>`}
         <button class="btn" type="submit">儲存</button><div class="out"></div></form></section>`;
     wireBack(params.cubId ? { name: 'cub', params: { cubId: params.cubId } } : null);
     $('#toSq').onclick = () => goAdmin('squads');
     bindForm($('#f'), async (fd) => {
-      const r = await api('cubSave', { cubId: params.cubId, name: fd.get('name'), squad: fd.get('squad'), joinDate: fd.get('joinDate') });
-      toast(params.cubId ? '已儲存' : '已新增，綁定碼已產生');
+      const r = await api('cubSave', { cubId: params.cubId, trial, name: fd.get('name'), squad: fd.get('squad'), joinDate: fd.get('joinDate'), trialStart: fd.get('trialStart') });
+      toast(params.cubId ? '已儲存' : trial ? '已新增體驗者' : '已新增，綁定碼已產生');
       goAdmin('cub', { cubId: r.cubId });
     });
   },
@@ -1778,7 +1798,7 @@ const ADMIN_PAGES = {
     const info = list.cubs.find((c) => c.cubId === params.cubId) || {};
     const c = d.cub, L = isLeader();
     let bindHtml = '';
-    if (L && c.status === '在團') {
+    if (L && (c.status === '在團' || c.status === '體驗')) {
       const b = await api('cubBindings', { cubId: c.cubId });
       bindHtml = `<section class="card"><h2>🔑 綁定碼</h2>
         <div class="codebox">${esc(info.code || '（無）')}</div><p class="muted small center">還可以使用 ${esc(info.codeUsesLeft)} 次</p>
@@ -1806,18 +1826,26 @@ const ADMIN_PAGES = {
     const att = d.attendance;
     $app.innerHTML = `${backBtn('小狼名單')}
       <section class="card hero"><div class="top"><div class="avatar">${c.currentLevel ? LEVEL_ICON[c.currentLevel] : '🌱'}</div>
-        <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">${esc(c.squad || '')}・入團 ${fmtDate(c.joinDate)}（${esc(c.tenure)}）</div>
+        <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">${esc(c.squad || '')}・${c.status === '體驗' ? '體驗者（' + fmtDate(c.trialStart) + ' 開始）' : '入團 ' + fmtDate(c.joinDate) + '（' + esc(c.tenure) + '）'}</div>
         <span class="levelchip">${c.currentLevel ? esc(lvName(c.currentLevel)) : '尚未頒發剛入團'}・${esc(c.status)}</span></div></div>
         <div class="stats3"><div><b>🐾 ${att.counts.attended}</b>出席</div><div><b>🌙 ${att.counts.leave}</b>請假</div><div><b>${att.rate ? esc(att.rate.text) : '－'}</b>出席率</div></div></section>
       <section class="card"><div class="row-flex">${L ? '<button class="btn ghost small" id="edit">✏️ 編輯</button><button class="btn ghost small" id="bf">📥 補登頒章</button>' : ''}<button class="btn ghost small" id="pr">🖨️ 列印簽核單</button>
-        ${L && c.status === '在團' ? '<button class="btn danger small" id="leave">標記離團</button>' : ''}${L && c.status !== '已匿名' ? '<button class="btn danger small" id="priv">個資處理</button>' : ''}</div></section>
+        ${L && (c.status === '在團' || c.status === '體驗') ? '<button class="btn danger small" id="leave">標記離團</button>' : ''}${L && c.status !== '已匿名' ? '<button class="btn danger small" id="priv">個資處理</button>' : ''}</div></section>
+      ${c.status === '體驗' && d.trial ? `<section class="card"><h2>🧪 體驗者</h2>
+        <p>一般團集會出席 <b>${d.trial.count}／${d.trial.need}</b> 次${d.trial.ready ? '（✅ 已滿，可以入團）' : ''}。大活動不算。</p>
+        <div class="bar ${d.trial.ready ? 'full' : ''}"><span style="width:${Math.min(100, Math.round(d.trial.count / d.trial.need * 100))}%"></span></div>
+        ${L ? '<button class="btn green" id="join">🎉 轉為入團</button>' : ''}</section>` : ''}
       ${bindHtml}
-      <section class="card"><h2>🗺️ 進程</h2>${prog.map(unitRow).join('')}</section>
+      ${c.status === '體驗' ? '' : `<section class="card"><h2>🗺️ 進程</h2>${prog.map(unitRow).join('')}</section>`}
       <section class="card"><h2>🎖️ 技能章</h2>${badges.map(unitRow).join('')}</section>`;
     wireBack();
     const reload = () => goAdmin('cub', { cubId: c.cubId });
     const on = (sel, fn) => { const el = $(sel); if (el) el.onclick = (ev) => fn(ev.currentTarget); };
     on('#edit', () => goAdmin('cubEdit', { cubId: c.cubId }));
+    on('#join', (b) => {
+      const dte = prompt(`「${c.name}」轉為入團，之後開始挑戰剛入團。\n入團日（例如 ${todayStr()}）：`, todayStr());
+      if (dte) act(b, async () => { const r = await withConfirm('cubJoin', { cubId: c.cubId, joinDate: dte.trim() }); if (r) { confetti(); toast('已轉為入團 🎉'); reload(); } });
+    });
     on('#bf', () => goAdmin('backfill', { cubId: c.cubId }));
     on('#pr', () => goAdmin('print', { cubIds: [c.cubId] }));
     on('#priv', () => goAdmin('privacy', { cubId: c.cubId }));
@@ -1985,9 +2013,10 @@ const ADMIN_PAGES = {
     $app.innerHTML = `${backBtn()}<section class="card"><h2>📅 集會行事曆</h2>
       <form id="f"><label>一次新增多筆（每行一場：日期 名稱）</label>
         <textarea name="lines" placeholder="2026-11-22 團集會&#10;2026-11-29 露營&#10;2026-12-06"></textarea>
-        <p class="muted small">名稱可省略，預設為「團集會」。</p>
+        <p class="muted small">名稱可省略，預設為「團集會」。名稱裡有「大活動」三個字會自動標成大活動（體驗者不算、點名不列體驗者），也可以在下方逐場切換。</p>
         <button class="btn" type="submit">新增</button><div class="out"></div></form></section>
-      <section class="card"><h2>📋 全部集會</h2>${d.meetings.slice().reverse().map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span> ${esc(m.name)}<br><span class="s">${m.enabled ? '出席 ' + m.attended + ' 人' : '已取消'}</span></span>
+      <section class="card"><h2>📋 全部集會</h2>${d.meetings.slice().reverse().map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span> ${esc(m.name)}${m.type === '大活動' ? ' <span class="pill st-已頒發">🏕️ 大活動</span>' : ''}<br><span class="s">${m.enabled ? '出席 ' + m.attended + ' 人' : '已取消'}</span></span>
+        <button class="btn ghost small" data-ty="${esc(m.meetingId)}" data-to="${m.type === '大活動' ? '一般' : '大活動'}">${m.type === '大活動' ? '改為一般' : '設為大活動'}</button>
         <button class="btn ghost small" data-ed="${esc(m.meetingId)}">修改</button><button class="btn ${m.enabled ? 'danger' : 'green'} small" data-tg="${esc(m.meetingId)}" data-en="${m.enabled ? 0 : 1}">${m.enabled ? '取消' : '恢復'}</button></div>`).join('') || '<p class="muted">還沒有集會。</p>'}</section>`;
     wireBack();
     bindForm($('#f'), async (fd) => {
@@ -1996,6 +2025,7 @@ const ADMIN_PAGES = {
       if (r.bad.length) alert('以下幾行看不懂，沒有新增：\n' + r.bad.join('\n'));
       goAdmin('calendar');
     });
+    $$('[data-ty]').forEach((b) => { b.onclick = () => act(b, async () => { await api('meetingSave', { meetingId: b.dataset.ty, type: b.dataset.to }); goAdmin('calendar'); }); });
     $$('[data-tg]').forEach((b) => { b.onclick = () => { if (b.dataset.en === '1' || confirm('取消這場集會？（不會刪除，已點名的紀錄保留，但不再列入出席統計）')) act(b, async () => { await api('meetingSave', { meetingId: b.dataset.tg, enabled: b.dataset.en === '1' }); goAdmin('calendar'); }); }; });
     $$('[data-ed]').forEach((b) => {
       b.onclick = () => {

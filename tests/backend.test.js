@@ -48,7 +48,7 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   assert.equal(env.rows('進程細項').length, 375, '團自訂細項只匯入一次');
   assert.equal(env.rows('告知同意內容').length, 1);
   assert.match(env.rows('告知同意內容')[0][1], /我們會記錄哪些資料/);
-  assert.equal(env.rows('設定').length, 22);
+  assert.equal(env.rows('設定').length, 23);
   assert.match(r.firstLeaderInvite.code, /^[A-Z2-9]{8}$/);
   assert.ok(env.logs.some(([, m]) => String(m).includes(r.firstLeaderInvite.code)), '邀請碼印在執行紀錄');
   assert.ok(env.props.SPREADSHEET_ID && env.props.WEBHOOK_KEY);
@@ -185,7 +185,7 @@ test('查詢：只能看自己綁定的小狼；回傳欄位採白名單', () =>
   assert.equal(env.api({ action: 'cubDetail', token: leaderToken, cubId: 'C1' }).code, 'NOT_FOUND', '管理員的家長畫面也只看自己綁定的');
   const d = env.api({ action: 'cubDetail', token, cubId: 'C1' });
   assert.equal(d.ok, true);
-  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'squad', 'tenure']);
+  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'squad', 'status', 'tenure', 'trialStart']);
   assert.equal(d.cub.joinDate, '2025-09-01');
   assert.equal(d.cub.tenure, '1 年 2 個月');
   assert.equal(d.nextChallenge.type, 'start');

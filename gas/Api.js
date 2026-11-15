@@ -462,13 +462,14 @@ function buildCubView_(cub, today) {
   var mById = {};
   meetings.forEach(function (m) { mById[m.meetingId] = m; });
   var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
-  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId }; });
+  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type }; });
 
   var progress = Logic.computeCubProgress({
     cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
     intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
     autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
-    levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數']
+    levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數'],
+    newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null
   });
 
   // 簽核人帳號ID → 管理員姓名
@@ -491,7 +492,8 @@ function buildCubView_(cub, today) {
   // 出席：只顯示已到日期的集會；未來的列為即將到來；沒點名的顯示「－」（不記缺席）
   var statusOf = {};
   att.forEach(function (a) { statusOf[a.meetingId] = a.status; });
-  var inTeam = meetings.filter(function (m) { return m.date >= cub.joinDate && (!cub.leftDate || m.date <= cub.leftDate); });
+  var since = cub.trialStart && (!cub.joinDate || cub.trialStart < cub.joinDate) ? cub.trialStart : cub.joinDate;
+  var inTeam = meetings.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
   var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   var upcoming = inTeam.filter(function (m) { return m.date > today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 5);
   var period = Logic.periodOf(loadPeriods_(), today);
@@ -506,8 +508,9 @@ function buildCubView_(cub, today) {
   return {
     cub: {
       cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate,
-      tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || ''
+      tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart
     },
+    trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, settings['體驗所需出席次數']) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位
       return { type: n.type, message: n.message, level: n.level || '', items: n.items.map(function (i) { return { section: i.section, text: i.text }; }) };

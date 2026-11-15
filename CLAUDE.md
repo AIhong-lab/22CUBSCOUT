@@ -21,6 +21,7 @@
 - 里程碑一期間新增：進程細項（SPEC 附錄第 24、27 點）：團自訂細項掛在官方項目下，只顯示不勾選、不影響達標；`Logic.parseDetails`／`buildDetailSeed`、`loadDetails_`／`detailsView_`（白名單 group/standard/life/subs）；catalog（快取鍵 `CATALOG2`）、`buildCubView_`、`cubAdminDetail` 的項目帶 `details`；前端 `detailsHtml()`。技能章不掛細項；晉級所需技能章枚數先不做。
 - 里程碑一期間新增：新的註冊方式（SPEC 附錄第 31 點、7.2-1）：`register` 沒帶 `code` 走 `registerByRequest_`（身分、孩子姓名、同意）→ 寫「註冊申請」；`requestChildren`（已登入加孩子）；後台 `requestList`／`requestApprove`／`requestReject`（權限 `reviewRequests`，團長）；`me.requests`；`adminHome.alerts.pendingRequests`。結案時清空填寫姓名。前端 `renderSignup1~3`、`renderNoCub` 顯示申請狀態、`ADMIN_PAGES.requests`。舊的代碼註冊保留。
 - 2026-11-15 團長同意開始階段 4B：`gas/ItemsAdmin.js`（項目管理 API：`itemsTree`、`itemSave`、`itemToggle`、`itemMove`、`sectionRename`、`unitSave`、`detailSave`、`detailToggle`、`itemsExport`、`itemsReload`；新增／停用／啟用先回 `needConfirm` 影響預覽）、設定頁（`settingsGet`／`settingsSave`／`consentSave`，`Logic.validateSettingValue`）、`ensureBackup_()`（setup 自動建立備份資料夾與每週排程）、試算表選單「團長預設帳號（admin）」（`ensureDefaultAdmin_`，隨機密碼只顯示在視窗）。前端 `ADMIN_PAGES.items`、`ADMIN_PAGES.settings`。
+- 體驗者（SPEC 附錄第 40 點）：狀態「體驗」、`Logic.trialProgress`（只算一般團集會）、`cubsOnDate_(date, type)`（大活動不列體驗者）、`cubJoin`（轉為入團）、`adminHome.trials`、家長端 `trial`；剛入團出席用 `newbieAfter`（入團日之後）。
 - **里程碑一**：等團長部署並在團裡試用。團長明確說「繼續做 4B」之前，只修試用發現的問題，不動 4B 以後的階段。
 
 ## 架構
@@ -57,7 +58,7 @@
 ## 試算表結構（欄位順序固定，只能往右加欄）
 | 分頁 | 欄位 |
 |---|---|
-| 小狼名單 | 小狼ID、姓名、小隊、入團日、目前級別、綁定碼、綁定碼剩餘次數、狀態（在團/離團/已匿名）、離團日 |
+| 小狼名單 | 小狼ID、姓名、小隊、入團日、目前級別、綁定碼、綁定碼剩餘次數、狀態（在團/體驗/離團/已匿名）、離團日、體驗開始日 |
 | 帳號 | 帳號ID、帳號名稱、稱呼、密碼雜湊、密碼鹽、狀態（啟用/停用）、建立時間、最後登入時間、臨時碼雜湊、臨時碼到期時間 |
 | 登入工作階段 | 憑證雜湊、帳號ID、建立時間、到期時間 |
 | 綁定紀錄 | 帳號ID、小狼ID、綁定時間、同意時間、同意版本 |
@@ -69,7 +70,7 @@
 | 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間 |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |
-| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間 |
+| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動） |
 | 出席紀錄 | 集會ID、小狼ID、狀態（出席/請假；空白＝無此列）、點名人、點名時間 |
 | 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註 |
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |

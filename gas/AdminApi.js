@@ -44,9 +44,12 @@ function progressCtx_() {
   var attByCub = {};
   loadAttendance_().forEach(function (a) {
     if (!meetings[a.meetingId]) return;
-    (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId });
+    (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: meetings[a.meetingId].type });
   });
+  var trialEnd = {};
+  loadCubs_().forEach(function (c) { if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate; });
   return {
+    trialEnd: trialEnd,
     settings: settings, items: loadItems_().items, completions: loadCompletions_(), awards: loadAwards_(),
     meetings: meetings, attByCub: attByCub, today: today_()
   };
@@ -57,7 +60,8 @@ function progressOf_(ctx, cubId) {
     cubId: cubId, items: ctx.items, completions: ctx.completions, awards: ctx.awards,
     intervalMonths: ctx.settings['晉級間隔月數'], today: ctx.today, attendance: ctx.attByCub[cubId] || [],
     autoItemId: ctx.settings['出席自動完成項目ID'], autoCount: ctx.settings['自動完成所需出席次數'],
-    levelAttendCount: ctx.settings['晉級所需出席次數'], newbieAttendCount: ctx.settings['剛入團所需出席次數']
+    levelAttendCount: ctx.settings['晉級所需出席次數'], newbieAttendCount: ctx.settings['剛入團所需出席次數'],
+    newbieAfter: (ctx.trialEnd || {})[cubId] || null
   });
 }
 
@@ -91,12 +95,18 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       else if (Logic.isNearlyDone(u, threshold)) near.push(Object.assign(base, { remaining: u.remaining }));
     });
   });
+  // 體驗者：一般團集會出席滿設定次數 → 提醒團長「轉為入團」
+  var trialNeed = ctx.settings['體驗所需出席次數'];
+  var trials = cubs.filter(function (c) { return c.status === Logic.TRIAL; }).map(function (c) {
+    var t = Logic.trialProgress(ctx.attByCub[c.cubId] || [], trialNeed);
+    return { cubId: c.cubId, name: c.name, squad: c.squad, count: t.count, need: t.need, ready: t.ready };
+  });
   var props = PropertiesService.getScriptProperties();
   var parse = function (k) { try { return JSON.parse(props.getProperty(k) || 'null'); } catch (e) { return null; } };
   var admins = loadAdmins_();
   return {
     me: { name: who.admin.name, role: who.admin.role },
-    pending: pending, waiting: waiting, near: near,
+    pending: pending, waiting: waiting, near: near, trials: trials,
     alerts: {
       itemErrors: loadItems_().errors,
       settingErrors: loadSettings_().errors,
@@ -141,7 +151,11 @@ function requireSquad_(squad) {
 }
 
 registerAdmin_('cubSave', 'manageCubs', function (req, who) {
-  var name = Logic.clean(req.name), squad = Logic.clean(req.squad).slice(0, 20), joinDate = requireDate_(Logic.clean(req.joinDate), '入團日');
+  var trialCub = req.cubId ? findCub_(req.cubId).status === Logic.TRIAL : !!req.trial;
+  var name = Logic.clean(req.name), squad = Logic.clean(req.squad).slice(0, 20);
+  // 體驗者沒有入團日，改填「體驗開始日」（SPEC 附錄第 40 點）
+  var joinDate = trialCub ? '' : requireDate_(Logic.clean(req.joinDate), '入團日');
+  var trialStart = trialCub ? requireDate_(Logic.clean(req.trialStart || req.joinDate), '體驗開始日') : '';
   if (!name || name.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
   return withLock_(function () {
     var settings = loadSettings_().values;
@@ -149,17 +163,39 @@ registerAdmin_('cubSave', 'manageCubs', function (req, who) {
     if (req.cubId) {
       var cub = findCub_(req.cubId);
       var row = cubRow_(cub);
-      var before = [row[1], row[2], dateStr_(row[3])].join('／');
-      row[1] = name; row[2] = squad; row[3] = joinDate;
+      var before = [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／');
+      row[1] = name; row[2] = squad;
+      if (trialCub) row[9] = trialStart; else row[3] = joinDate;
       updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-      logOp_(who.account.accountId, '編輯小狼', cub.cubId, before, [name, squad, joinDate].join('／'));
+      logOp_(who.account.accountId, '編輯小狼', cub.cubId, before, [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／'));
       return { cubId: cub.cubId };
     }
     var id = newId_('C', loadCubs_().map(function (c) { return c.cubId; }));
     var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
-    appendRows_(SHEET.CUBS, [[id, name, squad, joinDate, '', code, settings['綁定碼可用次數'], '在團', '']]);
-    logOp_(who.account.accountId, '新增小狼', id, '', [name, squad, joinDate].join('／'));
+    appendRows_(SHEET.CUBS, [[id, name, squad, joinDate, '', code, settings['綁定碼可用次數'], trialCub ? Logic.TRIAL : '在團', '', trialStart]]);
+    logOp_(who.account.accountId, trialCub ? '新增體驗者' : '新增小狼', id, '', [name, squad, trialCub ? '體驗開始 ' + trialStart : joinDate].join('／'));
     return { cubId: id, code: code };
+  });
+});
+
+/**
+ * 體驗者轉為入團（SPEC 附錄第 40 點）：入團日預設今天；一般團集會出席未滿設定次數時先確認。
+ * 入團後開始挑戰剛入團；剛入團的出席次數只算入團日之後。
+ */
+registerAdmin_('cubJoin', 'manageCubs', function (req, who) {
+  var d = requireDate_(Logic.clean(req.joinDate) || today_(), '入團日');
+  return withLock_(function () {
+    var cub = findCub_(req.cubId);
+    if (cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '這位小狼不是體驗者。');
+    if (cub.trialStart && d < cub.trialStart) throw new ApiError(ERR.BAD_INPUT, '入團日不可早於體驗開始日（' + cub.trialStart + '）。');
+    var ctx = progressCtx_();
+    var t = Logic.trialProgress(ctx.attByCub[cub.cubId] || [], ctx.settings['體驗所需出席次數']);
+    if (!t.ready && !req.confirm) return { needConfirm: true, warnings: [cub.name + ' 只參加了 ' + t.count + '／' + t.need + ' 次一般團集會，還沒滿。'] };
+    var row = cubRow_(cub);
+    row[3] = d; row[7] = '在團';
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
+    logOp_(who.account.accountId, '體驗者轉為入團', cub.cubId, '體驗（' + t.count + '／' + t.need + '）', '入團 ' + d);
+    return { joinDate: d };
   });
 });
 
@@ -167,11 +203,11 @@ registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
   var d = requireDate_(Logic.clean(req.leftDate), '離團日');
   return withLock_(function () {
     var cub = findCub_(req.cubId);
-    if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '這位小狼目前不是在團狀態。');
+    if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '這位小狼目前不是在團狀態。');
     var row = cubRow_(cub);
     row[5] = ''; row[6] = 0; row[7] = '離團'; row[8] = d; // 綁定碼立即失效
     updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-    logOp_(who.account.accountId, '標記離團', cub.cubId, '在團', '離團 ' + d);
+    logOp_(who.account.accountId, '標記離團', cub.cubId, cub.status, '離團 ' + d);
     return {};
   });
 });
@@ -179,7 +215,7 @@ registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
 registerAdmin_('cubNewCode', 'manageBindCodes', function (req, who) {
   return withLock_(function () {
     var cub = findCub_(req.cubId);
-    if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只有在團的小狼可以產生綁定碼。');
+    if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '只有在團的小狼可以產生綁定碼。');
     var settings = loadSettings_().values;
     var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
     var row = cubRow_(cub);
@@ -290,7 +326,8 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
     rate.period = period.name;
   }
   return {
-    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '' },
+    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart },
+    trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, ctx.settings['體驗所需出席次數']) : null,
     units: p.units.map(function (u) {
       var info = units[u.category + '|' + u.unit] || {};
       return {
@@ -692,7 +729,7 @@ registerAdmin_('consentSave', 'manageSettings', function (req, who) {
 
 registerAdmin_('requestList', 'reviewRequests', function () {
   var accounts = accountsById_();
-  var cubs = loadCubs_().filter(function (c) { return c.status === '在團'; });
+  var cubs = loadCubs_().filter(function (c) { return c.status === '在團' || c.status === Logic.TRIAL; });
   var adminIds = {};
   loadAdmins_().forEach(function (a) { adminIds[a.accountId] = true; });
   var items = loadRequests_().filter(function (r) { return r.status === '待審核'; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
@@ -753,7 +790,7 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
     var cub;
     if (Logic.clean(req.mode) === 'link') {
       cub = findCub_(req.cubId);
-      if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只能連結在團的小狼。');
+      if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '只能連結在團的小狼或體驗者。');
     } else {
       var cname = Logic.clean(req.name).replace(/\s+/g, '') || r.name;
       if (!cname || cname.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫小狼姓名（最多 30 字）。');
@@ -791,7 +828,7 @@ registerAdmin_('meetingList', 'attendance', function () {
   var count = {};
   loadAttendance_().forEach(function (a) { if (a.status === '出席') count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
   var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date); }).map(function (m) {
-    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, attended: count[m.meetingId] || 0 };
+    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, attended: count[m.meetingId] || 0 };
   }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()) };
 });
@@ -824,8 +861,9 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       if (req.name !== undefined) row[2] = Logic.clean(req.name).slice(0, 40) || '團集會';
       if (req.note !== undefined) row[3] = Logic.clean(req.note).slice(0, 100);
       if (req.enabled !== undefined) row[4] = req.enabled ? '是' : '否';
+      if (req.type !== undefined) { if (Logic.MEETING_TYPES.indexOf(Logic.clean(req.type)) < 0) throw new ApiError(ERR.BAD_INPUT, '類型只能是一般或大活動。'); row[7] = Logic.clean(req.type); }
       updateRows_(SHEET.MEETINGS, [{ row: m._row, values: row }]);
-      logOp_(who.account.accountId, '修改集會', m.meetingId, before, [row[1], row[2], row[4]].join('／'));
+      logOp_(who.account.accountId, '修改集會', m.meetingId, before + '／' + m.type, [row[1], row[2], row[4], row[7] || '一般'].join('／'));
       return { updated: 1 };
     }
     var ids = meetings.map(function (x) { return x.meetingId; });
@@ -838,7 +876,9 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       if (!Logic.isDateStr(d)) { bad.push('第 ' + (i + 1) + ' 行：' + line); return; }
       var id = newId_('M', ids);
       ids.push(id);
-      add.push([id, d, (mm[4] || '').trim().slice(0, 40) || '團集會', '', '是', who.account.accountId, now]);
+      // 名稱裡有「大活動」就標成大活動（體驗者不算、點名不列體驗者）
+      var nm = (mm[4] || '').trim().slice(0, 40) || '團集會';
+      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般']);
     });
     if (!add.length) throw new ApiError(ERR.BAD_INPUT, '沒有可新增的集會。每行格式：2026-11-22 團集會' + (bad.length ? '\n看不懂的行：\n' + bad.join('\n') : ''));
     appendRows_(SHEET.MEETINGS, add);
@@ -848,12 +888,13 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
 });
 
 /** 該集會當天在團的小狼 */
-function cubsOnDate_(date) {
+function cubsOnDate_(date, type) {
   return loadCubs_().filter(function (c) {
     if (c.status === '已匿名') return false;
-    if (!c.joinDate || c.joinDate > date) return false;
     if (c.status === '離團' && c.leftDate && c.leftDate < date) return false;
-    return true;
+    if (c.joinDate && c.joinDate <= date) return true;
+    // 體驗者（含已轉入團者的體驗期間）：只參加「一般」團集會
+    return !!(c.trialStart && c.trialStart <= date && (type || '一般') === '一般');
   });
 }
 
@@ -862,8 +903,8 @@ registerAdmin_('attendanceSheet', 'attendance', function (req) {
   if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
   var st = {};
   loadAttendance_().forEach(function (a) { if (a.meetingId === m.meetingId) st[a.cubId] = a.status; });
-  var cubs = cubsOnDate_(m.date).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '' }; });
-  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name }, cubs: cubs, squads: squadsOf_(loadCubs_()) };
+  var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date) }; });
+  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type }, cubs: cubs, squads: squadsOf_(loadCubs_()) };
 });
 
 /** 儲存點名：只更新送來的小狼（以「集會＋小狼」為單位，同時點名不互相覆蓋）；空白＝刪除該筆 */
@@ -876,7 +917,7 @@ registerAdmin_('attendanceSave', 'attendance', function (req, who) {
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
     var valid = {};
-    cubsOnDate_(m.date).forEach(function (c) { valid[c.cubId] = true; });
+    cubsOnDate_(m.date, m.type).forEach(function (c) { valid[c.cubId] = true; });
     var existing = {};
     loadAttendance_().forEach(function (a) { if (a.meetingId === m.meetingId) existing[a.cubId] = a; });
     var add = [], upd = [], del = [], now = new Date(), changed = 0;

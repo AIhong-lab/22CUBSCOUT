@@ -137,6 +137,7 @@ var Logic = (function () {
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
     { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
+    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（大活動不算；請假不算）' },
     { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
     { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
@@ -381,6 +382,22 @@ var Logic = (function () {
     return { byItem: byItem, errors: errors };
   }
 
+  // ───────────── 體驗者（SPEC 附錄第 40 點） ─────────────
+
+  var TRIAL = '體驗';
+  var MEETING_TYPES = ['一般', '大活動'];
+
+  /**
+   * 體驗者的進度：只算「一般」團集會的出席（大活動、請假不算）。
+   * @param {Array<{date, status, type}>} records
+   * @return {{count: number, need: number, ready: boolean, readyDate: string|null}}
+   */
+  function trialProgress(records, need) {
+    var dates = (records || []).filter(function (a) { return a.status === '出席' && (a.type || '一般') === '一般' && isDateStr(a.date); })
+      .map(function (a) { return a.date; }).sort();
+    return { count: dates.length, need: need, ready: dates.length >= need, readyDate: dates.length >= need ? dates[need - 1] : null };
+  }
+
   // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
 
   var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
@@ -495,7 +512,9 @@ var Logic = (function () {
         eligible: false, eligibleDate: null
       };
       if (!award) {
-        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today, attended, g.unit === NEWBIE ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0));
+        var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today,
+          g.unit === NEWBIE && p.newbieAfter ? attended.filter(function (d) { return d > p.newbieAfter; }) : attended,
+          g.unit === NEWBIE ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0));
         u.eligible = e.eligible; u.eligibleDate = e.date; u.waitingUntil = e.waitingUntil || null;
         if (e.attendRequired) { u.attendRequired = e.attendRequired; u.attendSinceLast = e.attendSinceLast; }
       }
@@ -1024,6 +1043,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
+    TRIAL: TRIAL, MEETING_TYPES: MEETING_TYPES, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,

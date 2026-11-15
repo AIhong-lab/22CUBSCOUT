@@ -567,3 +567,55 @@ test('項目管理：大項改名、技能章新增與改名（有頒章紀錄�
   assert.match(ex.csv, /B-露營-1,技能章,野營/);
   assert.ok(env.rows('操作日誌').filter((r) => ['大項改名', '新增技能章', '技能章改名', '修改說明', '新增細項', '修改細項', '停用細項'].includes(r[2])).length >= 7);
 });
+
+// ═════ 體驗者（SPEC 附錄第 40 點） ═════
+test('體驗者：團長新增 → 只算一般團集會 → 滿 4 次提醒 → 轉為入團 → 剛入團出席只算入團後', () => {
+  const { env, call, L, A } = world();
+  const t = call(L, 'cubSave', { trial: true, name: '測試體驗丙', squad: '一小隊', trialStart: '2026-09-01' });
+  assert.equal(t.ok, true, JSON.stringify(t));
+  const cub = env.rows('小狼名單').find((r) => r[1] === '測試體驗丙');
+  assert.deepEqual([cub[3], cub[7], cub[9]], ['', '體驗', '2026-09-01'], '沒有入團日、狀態體驗、記錄體驗開始日');
+  // 行事曆：名稱有「大活動」自動標成大活動
+  call(L, 'meetingSave', { lines: '2026-09-06 團集會\n2026-09-13 團集會\n2026-09-20 秋季露營大活動\n2026-09-27 團集會\n2026-10-04 團集會\n2026-10-11 團集會\n2026-10-18 團集會' });
+  const ms = call(L, 'meetingList').meetings.filter((m) => m.date >= '2026-09-06' && m.date <= '2026-10-18');
+  assert.deepEqual(ms.map((m) => m.type), ['一般', '一般', '大活動', '一般', '一般', '一般', '一般']);
+  const big = ms[2];
+  assert.ok(!call(A, 'attendanceSheet', { meetingId: big.meetingId }).cubs.some((c) => c.cubId === cub[0]), '大活動點名不列體驗者');
+  const s1 = call(A, 'attendanceSheet', { meetingId: ms[0].meetingId });
+  assert.equal(s1.cubs.find((c) => c.cubId === cub[0]).trial, true, '一般團集會列出體驗者並標示');
+  // 出席 3 次一般 + 1 次請假
+  [0, 1, 3].forEach((i) => call(A, 'attendanceSave', { meetingId: ms[i].meetingId, marks: { [cub[0]]: '出席' } }));
+  call(A, 'attendanceSave', { meetingId: ms[4].meetingId, marks: { [cub[0]]: '請假' } });
+  let home = call(L, 'adminHome');
+  let tr = home.trials.find((x) => x.cubId === cub[0]);
+  assert.deepEqual([tr.count, tr.need, tr.ready], [3, 4, false]);
+  const early = call(L, 'cubJoin', { cubId: cub[0], joinDate: '2026-10-05' });
+  assert.equal(early.needConfirm, true);
+  assert.match(early.warnings[0], /3／4 次一般團集會/);
+  assert.equal(call(A, 'cubJoin', { cubId: cub[0] }).code, 'FORBIDDEN', '服務員不能轉入團');
+  call(A, 'attendanceSave', { meetingId: ms[5].meetingId, marks: { [cub[0]]: '出席' } });
+  home = call(L, 'adminHome');
+  assert.equal(home.trials.find((x) => x.cubId === cub[0]).ready, true, '滿 4 次可以入團');
+  // 家長端（綁定後）看得到體驗進度
+  const v = env.api({ action: 'consentText' }).version;
+  const pa = env.api({ action: 'register', identity: '家長', username: 'trialmom', password: 'trialpass1', nickname: '體驗丙媽媽', childNames: ['測試體驗丙'], consentVersion: v });
+  const rq = call(L, 'requestList').items.find((x) => x.name === '測試體驗丙');
+  assert.deepEqual(rq.sameName, [cub[0]], '審核時可連結到體驗者');
+  call(L, 'requestApprove', { requestId: rq.requestId, mode: 'link', cubId: cub[0] });
+  const pv = call(pa.token, 'cubDetail', { cubId: cub[0] });
+  assert.equal(pv.cub.status, '體驗');
+  assert.deepEqual([pv.trial.count, pv.trial.need], [4, 4]);
+  assert.ok(!pv.attendance.meetings.some((m) => m.name.includes('大活動')), '體驗者的出席紀錄不列大活動');
+  // 轉為入團
+  assert.match(call(L, 'cubJoin', { cubId: cub[0], joinDate: '2026-08-01' }).message, /不可早於體驗開始日/);
+  assert.equal(call(L, 'cubJoin', { cubId: cub[0], joinDate: '2026-10-12' }).joinDate, '2026-10-12');
+  const joined = env.rows('小狼名單').find((r) => r[0] === cub[0]);
+  assert.deepEqual([joined[3], joined[7]], ['2026-10-12', '在團']);
+  assert.equal(call(L, 'cubJoin', { cubId: cub[0] }).message, '這位小狼不是體驗者。');
+  // 剛入團：體驗期間的出席不算，入團後要再出席 4 次
+  call(L, 'signoff', { cubIds: [cub[0]], itemIds: itemsOf(env, '剛入團'), date: '2026-10-18' });
+  call(A, 'attendanceSave', { meetingId: ms[6].meetingId, marks: { [cub[0]]: '出席' } });
+  const nb = call(L, 'cubAdminDetail', { cubId: cub[0] }).units.find((u) => u.unit === '剛入團');
+  assert.deepEqual([nb.status, nb.eligible, nb.attendSinceLast, nb.attendRequired], ['已完成待頒發', false, 1, 4], '只算入團後的 1 次');
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '體驗者轉為入團'));
+});

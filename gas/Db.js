@@ -127,7 +127,7 @@ function loadCubs_() {
     return {
       cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: dateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), trialStart: dateStr_(r[9]), _row: r._row, _raw: r
     };
   });
 }
@@ -216,7 +216,7 @@ function loadAwards_() {
 
 function loadMeetings_() {
   return readRows_(SHEET.MEETINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', _row: r._row };
+    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', _row: r._row };
   });
 }
 

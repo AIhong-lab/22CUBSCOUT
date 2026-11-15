@@ -47,7 +47,7 @@ function seed(env) {
   page.on('pageerror', (e) => errors.push(e.message));
   const dialogs = [];
   let dialogAnswer = true; // confirm／prompt 預設按確定（prompt 用預設值）
-  page.on('dialog', (d) => { dialogs.push(d.message()); dialogAnswer ? d.accept() : d.dismiss(); });
+  page.on('dialog', (d) => { dialogs.push(d.message()); dialogAnswer ? d.accept(d.type() === 'prompt' ? d.defaultValue() : undefined) : d.dismiss(); });
   await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
   let calls = 0;
   await page.route(GAS, (r) => {
@@ -395,6 +395,21 @@ function seed(env) {
   await page.locator('table.tbl').waitFor();
   assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
   await shot('14-overview');
+
+  // ═════ 體驗者：新增 → 小狼頁顯示體驗進度與「轉為入團」 ═════
+  await tab('cubs');
+  await page.locator('#addTrial').click();
+  await page.getByText('🧪 新增體驗者').waitFor();
+  await page.fill('#f input[name=name]', '測試體驗丁');
+  await page.click('#f button[type=submit]');
+  await page.locator('#join').waitFor();
+  assert.match(await text(), /一般團集會出席 0／4 次/);
+  assert.ok(!/🗺️ 進程/.test(await text()), '體驗者還不顯示進程');
+  await shot('50-trial'); await noHScroll('體驗者');
+  await page.locator('#join').click(); // prompt 用預設日期；未滿 4 次跳確認（預設按確定）
+  await page.getByText('🗺️ 進程').waitFor();
+  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試體驗丁')[7], '在團');
+  assert.ok(dialogs.some((m) => /0／4 次一般團集會/.test(m)), '未滿 4 次先確認');
 
   // ═════ 4B：項目管理與設定 ═════
   await tab('more');
