@@ -74,7 +74,18 @@ function endRoleInRow_(cub, row, endDate) {
   return true;
 }
 
-/** 設定職務：role = 小隊長／副小隊長／''（卸任）。狼級以上才能擔任；每小隊正副各一位，換人先確認 */
+/**
+ * 能不能擔任正副小隊長：狼級以上可以；小隊裡真的沒有狼級以上的在團小狼時，羚羊級也可以（SPEC 附錄第 45 點）。
+ * @return {{ok: boolean, reason?: string}}
+ */
+function canLeadSquad_(cub, cubs) {
+  if (Logic.ROLE_LEVELS.indexOf(cub.level) >= 0) return { ok: true };
+  var seniors = (cubs || loadCubs_()).filter(function (c) { return c.status === '在團' && c.squad === cub.squad && Logic.ROLE_LEVELS.indexOf(c.level) >= 0; });
+  if (cub.level === '羚羊' && cub.squad && !seniors.length) return { ok: true };
+  return { ok: false, reason: cub.level === '羚羊' ? cub.squad + '有狼級以上的小狼（' + seniors.map(function (c) { return c.name; }).join('、') + '），請由他們擔任' : '狼級以上才能擔任（小隊沒有狼級以上時，羚羊級也可以）；' + cub.name + ' 目前是' + (cub.level || '尚未晉級') };
+}
+
+/** 設定職務：role = 小隊長／副小隊長／''（卸任）。資格見 canLeadSquad_；每小隊正副各一位，換人先確認 */
 registerAdmin_('cubRoleSave', 'manageRoles', function (req, who) {
   var role = Logic.clean(req.role);
   if (role && Logic.CUB_ROLES.indexOf(role) < 0) throw new ApiError(ERR.BAD_INPUT, '職務只能是小隊長或副小隊長。');
@@ -88,7 +99,8 @@ registerAdmin_('cubRoleSave', 'manageRoles', function (req, who) {
     var ups = [];
     if (role) {
       if (!cub.squad) throw new ApiError(ERR.BAD_INPUT, '請先幫這位小狼設定小隊。');
-      if (Logic.ROLE_LEVELS.indexOf(cub.level) < 0) throw new ApiError(ERR.BAD_INPUT, '狼級以上才能擔任' + role + '（' + cub.name + ' 目前是' + (cub.level || '尚未晉級') + '）。');
+      var can = canLeadSquad_(cub);
+      if (!can.ok) throw new ApiError(ERR.BAD_INPUT, '不能擔任' + role + '：' + can.reason + '。');
       var holder = loadCubs_().filter(function (c) { return c.cubId !== cub.cubId && c.status === '在團' && c.squad === cub.squad && c.role === role; })[0];
       if (holder && !req.confirm) return { needConfirm: true, warnings: [cub.squad + '的' + role + '目前是 ' + holder.name + '，確定後會改由 ' + cub.name + ' 擔任。'] };
       if (holder) { var hr = cubRow_(holder); endRoleInRow_(holder, hr, date); ups.push({ row: holder._row, values: hr }); }

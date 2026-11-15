@@ -585,6 +585,66 @@ function seed(env) {
   const newCub = env.rows('小狼名單').find((r) => r[1] === '測試小狼戊');
   assert.ok(newCub, '核准後新增小狼');
 
+  // ═════ 公告欄、小隊輔、批次匯入、正副小隊長、升團（團長，寬螢幕） ═════
+  const sideTab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
+  await sideTab('notices');
+  await page.getByText('發布公告').waitFor();
+  await page.fill('form#fn input[name=title]', '12 月團集會通知');
+  await page.fill('form#fn textarea[name=content]', '早上九點在活動中心集合，請穿制服。');
+  await page.selectOption('form#fn select[name=meetingId]', 'M5');
+  await page.check('form#fn input[name=pinned]');
+  await page.click('form#fn button[type=submit]');
+  await page.getByText('全部公告（1）').waitFor();
+  assert.match(await text(), /📌 12 月團集會通知/);
+  await shot('40-notices'); await noHScroll('公告欄');
+  assert.equal(env.rows('公告').length, 1);
+
+  await sideTab('squads');
+  await page.locator('[data-staff=一小隊]').click();
+  await page.locator('form#fst input[type=checkbox]').first().check();
+  await page.click('form#fst button[type=submit]');
+  await page.getByText('已儲存小隊輔').waitFor();
+  await page.locator('[data-staff=一小隊]').waitFor();
+  assert.match(await text(), /一小隊[\s\S]*小隊輔：團長[\s\S]*二小隊[\s\S]*小隊輔：未設定/);
+  await shot('41-squad-staff');
+  assert.equal(env.rows('小隊輔').length, 1);
+
+  await sideTab('cubs');
+  await page.locator('#importBtn').click();
+  await page.fill('form#fim textarea', '測試小狼己 一小隊 2026-09-01\n測試小狼庚');
+  await page.click('form#fim button[type=submit]');
+  await page.getByText('已匯入 2 位').waitFor();
+  assert.ok(env.rows('小狼名單').find((r) => r[1] === '測試小狼己' && r[2] === '一小隊' && r[7] === '在團'), '匯入後寫進名單');
+
+  // 一小隊沒有狼級以上 → 羚羊級的測試小狼甲可以當小隊長
+  await page.locator('#list .list-row', { hasText: '測試小狼甲' }).click();
+  await page.locator('#moreBtn').click();
+  await page.locator('#role').click();
+  await page.selectOption('form#frl select[name=role]', '小隊長');
+  await page.click('form#frl button[type=submit]');
+  await page.getByText('已更新職務').waitFor();
+  await page.getByText('職務紀錄（1）').waitFor();
+  assert.match(await text(), /一小隊・小隊長[\s\S]*小隊輔：團長/);
+  await shot('42-cub-role'); await noHScroll('小狼頁職務');
+  assert.equal(env.rows('小狼名單').find((r) => r[0] === 'C1')[10], '小隊長');
+
+  // 升團：職務自動卸任，狀態「升團」
+  await sideTab('cubs');
+  await page.locator('#list .list-row', { hasText: '測試小狼己' }).click();
+  await page.locator('#moreBtn').click();
+  await page.locator('#leave').click();
+  await shot('43-leave-form');
+  await page.click('form#flv button[type=submit]');
+  await page.getByText('已標記升團').waitFor();
+  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試小狼己')[7], '升團');
+
+  // 匯出 CSV
+  await sideTab('overview');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#csv').click()]);
+  const csvText = fs.readFileSync(await dl.path(), 'utf8');
+  assert.match(csvText, /^\ufeff姓名,小隊,剛入團,羚羊,狼,鹿,豹,技能章數,出席次數\r\n/, 'CSV 有 BOM 與標題列');
+  assert.match(csvText, /測試小狼甲,一小隊/);
+
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE + '#progress'); await page.locator('.stage').first().waitFor();
   await tab('login');
@@ -592,6 +652,28 @@ function seed(env) {
   await page.click('button[type=submit]');
   await page.getByText('下一步挑戰').waitFor();
   assert.match(await text(), /測試小狼戊/, '家長核准後看到孩子');
+
+  // 家長首頁看得到公告；出席頁可以先請假、也可以取消
+  await page.locator('#noticeCard').waitFor();
+  assert.match(await page.locator('#noticeCard').innerText(), /12 月團集會通知[\s\S]*早上九點/);
+  await shot('44-parent-notice');
+  await seg('attendance');
+  await page.getByText('接下來的集會').waitFor();
+  await page.locator('[data-leave][data-on="1"]').first().click();
+  await page.getByText('已請假').first().waitFor();
+  await page.locator('[data-leave][data-on="0"]').first().waitFor();
+  const kid = env.rows('小狼名單').find((r) => r[1] === '測試小狼戊')[0];
+  assert.equal(env.rows('出席紀錄').filter((r) => r[1] === kid && r[2] === '請假').length, 1, '請假寫進出席紀錄');
+  await shot('45-parent-leave'); await noHScroll('家長請假');
+  await page.locator('[data-leave][data-on="0"]').first().click();
+  await page.getByText('已取消請假').waitFor();
+  assert.equal(env.rows('出席紀錄').filter((r) => r[1] === kid && r[2] === '請假').length, 0, '取消後沒有請假紀錄');
+
+  // 沒登入的首頁也看得到公告
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#noticeCard').waitFor();
+  assert.match(await page.locator('#noticeCard').innerText(), /12 月團集會通知/);
+  await shot('46-public-notice'); await noHScroll('公開首頁公告');
 
   assert.deepEqual(errors, [], '頁面不可有 JavaScript 錯誤');
   console.log(`前端端對端測試全部通過（共呼叫後端 ${calls} 次）`);

@@ -379,7 +379,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
     rate.period = period.name;
   }
   return {
-    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: Logic.ROLE_LEVELS.indexOf(cub.level) >= 0, squadStaff: squadStaffNames_(cub.squad) },
+    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad) },
     roles: roleHistory_(cub.cubId),
     trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, ctx.settings['體驗所需出席次數']) : null,
     units: p.units.map(function (u) {

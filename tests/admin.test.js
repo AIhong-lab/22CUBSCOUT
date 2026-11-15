@@ -801,7 +801,18 @@ test('小隊輔：團長指定、me 帶出自己的小隊、家長看得到姓�
 test('正副小隊長：狼級以上才能擔任、每小隊各一位（換人先確認）、任期紀錄、換小隊或離團自動卸任', () => {
   const { env, call, L, A, cubId } = world();
   assert.equal(call(A, 'cubRoleSave', { cubId, role: '小隊長' }).code, 'FORBIDDEN');
-  assert.match(call(L, 'cubRoleSave', { cubId, role: '小隊長' }).message, /狼級以上才能擔任/);
+  assert.match(call(L, 'cubRoleSave', { cubId, role: '小隊長' }).message, /狼級以上才能擔任/, '還沒晉級不能擔任');
+  // 小隊沒有狼級以上時，羚羊級也可以擔任（本團現況）
+  const lionId = call(L, 'cubSave', { name: '測試小狼羚', squad: '二小隊', joinDate: '2025-03-01' }).cubId;
+  call(L, 'backfill', { cubId: lionId, unit: '羚羊', date: '2026-01-01', includeLower: true });
+  assert.equal(call(L, 'cubAdminDetail', { cubId: lionId }).cub.canLead, true);
+  assert.equal(call(L, 'cubRoleSave', { cubId: lionId, role: '小隊長' }).changed, 1, '二小隊沒有狼級以上，羚羊可以當小隊長');
+  const wolfId = call(L, 'cubSave', { name: '測試小狼狼', squad: '二小隊', joinDate: '2025-03-01' }).cubId;
+  call(L, 'backfill', { cubId: wolfId, unit: '狼', date: '2026-01-01', includeLower: true });
+  const lion2 = call(L, 'cubSave', { name: '測試小狼羚二', squad: '二小隊', joinDate: '2025-03-01' }).cubId;
+  call(L, 'backfill', { cubId: lion2, unit: '羚羊', date: '2026-01-01', includeLower: true });
+  assert.match(call(L, 'cubRoleSave', { cubId: lion2, role: '副小隊長' }).message, /有狼級以上的小狼（測試小狼狼）/, '小隊有狼級以上時，羚羊不能擔任');
+  call(L, 'cubBatchSave', { changes: [{ cubId: lionId, squad: '' }, { cubId: wolfId, squad: '' }, { cubId: lion2, squad: '' }] });
   call(L, 'backfill', { cubId, unit: '狼', date: '2026-01-01', includeLower: true });
   assert.equal(call(L, 'cubRoleSave', { cubId, role: '小隊長', date: '2026-09-01' }).changed, 1);
   assert.equal(env.rows('小狼名單').find((r) => r[0] === cubId)[10], '小隊長');
