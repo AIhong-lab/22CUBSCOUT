@@ -1111,3 +1111,12 @@ test('每個活動一份獨立的存檔試算表（附錄第 51 點）：建立�
   env.ext.fail = false;
   assert.match(call(L, 'eventSheetSync', { eventId: id2 }).sheetUrl, /EXT-2/);
 });
+
+test('技能章改名後，上傳過的圖片跟著新名字（附錄第 50 點）', () => {
+  const { env, call, L } = world();
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  call(L, 'unitSave', { category: '技能章', unit: '露營', isNew: true, group: '技巧類' });
+  assert.equal(call(L, 'unitImageSave', { category: '技能章', unit: '露營', image: png }).ok, true);
+  call(L, 'unitSave', { category: '技能章', unit: '露營', group: '技巧類', newName: '野營' });
+  assert.deepEqual(Object.keys(env.api({ action: 'unitImages' }).images), ['技能章|野營'], '改名後圖片還在');
+});

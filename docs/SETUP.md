@@ -21,6 +21,7 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 | `WEBHOOK_KEY` | `setup()` 自動（0B 已產生則沿用） | LINE webhook 網址的 `?key=` |
 | `LINE_MESSAGING_TOKEN` | 團長手動 | LINE Developers → Messaging API → Channel access token |
 | `BACKUP_FOLDER_ID` | `setup()` 自動 | 備份資料夾 ID（自動建立「幼童軍進程系統備份」資料夾） |
+| `EVENT_FOLDER_ID` | 第一次建立活動時自動 | 活動報名存檔資料夾 ID（「幼童軍活動報名存檔」） |
 | `WEB_URL` | 團長手動（選用） | 網頁網址 `https://aihong-lab.github.io/22CUBSCOUT/web/`，LINE 通知的按鈕會用到 |
 
 ## 4. 更新後端程式（不需安裝任何工具）

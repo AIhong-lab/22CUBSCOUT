@@ -4440,6 +4440,9 @@ registerAdmin_('unitSave', 'manageItems', function (req, who) {
       if (loadAwards_().some(function (a) { return a.unit === unit; })) throw new ApiError(ERR.BAD_INPUT, '「' + unit + '」已經有頒章紀錄，不能改名（頒章紀錄是用章名對應的）。');
       var its = rawItemRows_().filter(function (x) { return Logic.clean(x[1]) === category && Logic.clean(x[2]) === unit; });
       if (its.length) updateRows_(SHEET.ITEMS, its.map(function (x) { var v = itemRowValues_(x); v[2] = newName; return { row: x._row, values: v }; }));
+      // 上傳過的章圖跟著新名字（SPEC 附錄第 50 點）
+      var img = loadUnitImages_()[category + '|' + unit];
+      if (img) { var iv = readRows_(SHEET.UNIT_IMAGES).filter(function (x) { return x._row === img._row; })[0]; updateRows_(SHEET.UNIT_IMAGES, [{ row: img._row, values: [newName, iv[1], iv[2], iv[3], iv[4]] }]); }
       logOp_(who.account.accountId, '技能章改名', unit, unit, newName);
     }
     var finalName = newName || unit;
