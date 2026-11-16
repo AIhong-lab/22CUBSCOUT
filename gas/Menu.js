@@ -29,7 +29,7 @@ var DEFAULT_ADMIN_USERNAME = 'admin';
 function menuDefaultAdmin() {
   var ui = SpreadsheetApp.getUi();
   var r = ensureDefaultAdmin_();
-  ui.alert('團長預設帳號', '網址：' + (PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL) +
+  ui.alert('團長預設帳號', '網址：' + webUrl_() +
     '\n帳號：' + r.username + '\n密碼：' + r.password + '\n\n' + (r.created ? '已建立團長帳號。' : '已重設這個帳號的密碼（其他裝置已登出）。') +
     '\n請抄下密碼，登入後到「我的 → 修改密碼」改成自己的密碼。這個視窗關掉後就看不到密碼了。', ui.ButtonSet.OK);
 }

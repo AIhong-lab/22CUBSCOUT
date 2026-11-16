@@ -740,7 +740,7 @@ test('LINE 關鍵字：可晉級／快達標只回已連結的管理員；進度
   say(env, '進度', 'Ustranger');
   assert.equal(replies().length, n + 1);
   assert.ok(!/測試小狼/.test(JSON.stringify(replies().at(-1).body)), '不含任何個資');
-  assert.match(replies().at(-1).body.messages[0].text, /aihong-lab\.github\.io/);
+  assert.match(replies().at(-1).body.messages[0].text, /script\.google\.com\/macros\/s\/TEST\/exec/, '沒設定 WEB_URL 時用這個專案自己的網址');
   say(env, '可晉級', 'Uleader');
   assert.match(replies().at(-1).body.messages[0].text, /測試小狼甲：環保技能章/);
   say(env, '快達標', 'Uleader');

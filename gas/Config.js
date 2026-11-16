@@ -110,6 +110,7 @@ TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
+  MOVED: 'MOVED',
   SESSION_EXPIRED: 'SESSION_EXPIRED',
   BAD_LOGIN: 'BAD_LOGIN',
   LOCKED: 'LOCKED',

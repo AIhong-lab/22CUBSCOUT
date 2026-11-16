@@ -13,6 +13,7 @@ const toSigned = (buf) => [...buf].map((x) => (x > 127 ? x - 256 : x));
 class Range {
   constructor(sheet, r, c, nr, nc) { Object.assign(this, { sheet, r, c, nr, nc }); }
   getValues() {
+    this.sheet.reads = (this.sheet.reads || 0) + 1;
     const out = [];
     for (let i = 0; i < this.nr; i++) {
       const row = this.sheet.data[this.r - 1 + i] || [];
@@ -111,6 +112,7 @@ function loadGas(opts = {}) {
   // 另外建立的試算表（每個活動一份存檔）：ext.books[id]；ext.fail = true 模擬建立失敗
   const ext = { books: {}, fail: false };
   const html = {};
+  const mkHtml = (content) => { const o = { kind: 'html', content, meta: {}, getContent: () => o.content, setTitle(t) { o.title = t; return o; }, addMetaTag(k, v) { o.meta[k] = v; return o; } }; return o; };
   drive.api = {
     Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
     getFileById: (id) => ({
@@ -142,7 +144,7 @@ function loadGas(opts = {}) {
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
     Logger: { log: (m) => logs.push(['log', m]) },
     // 模擬 HtmlService：html[檔名] 有內容才找得到檔案
-    HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' }, createHtmlOutputFromFile: (name) => { if (!html[name]) throw new Error('找不到 HTML 檔案 ' + name); const o = { kind: 'html', content: html[name], meta: {}, setTitle(t) { o.title = t; return o; }, addMetaTag(k, v) { o.meta[k] = v; return o; } }; return o; } },
+    HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' }, createHtmlOutputFromFile: (name) => { if (!html[name]) throw new Error('找不到 HTML 檔案 ' + name); return mkHtml(html[name]); }, createHtmlOutput: (c) => mkHtml(c) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ t, setMimeType() { return this; } }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
@@ -161,7 +163,7 @@ function loadGas(opts = {}) {
       put: (k, v, sec) => { cache[k] = { v: String(v), exp: clock + sec * 1000 }; },
       remove: (k) => { delete cache[k]; } }) },
     DriveApp: drive.api,
-    ScriptApp: { getProjectTriggers: () => [...triggers], deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
+    ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }), getProjectTriggers: () => [...triggers], deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
       WeekDay: { SUNDAY: 'SUNDAY' },
       newTrigger: (fn) => { const b = { timeBased: () => b, onWeekDay: () => b, atHour: () => b, everyDays: () => b, create: () => { const t = { getHandlerFunction: () => fn }; triggers.push(t); return t; } }; return b; } },
   };

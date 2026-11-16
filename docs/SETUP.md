@@ -44,7 +44,8 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 5. 之後每次更新：`程式碼.gs` 和 `Index.html` 兩個都貼最新的，再部署新版本。
 - 分享某一頁：網址後面加 `?p=notices`（公佈欄）、`?p=progress`、`?p=badges`、`?p=about`、`?p=calendar`、`?p=events`。LINE 圖文選單改用這種網址。
 - 頁面最上方會有一條 Google 的灰色提示橫幅，這是 GAS 的規定，拿不掉。
-- 原本 GitHub Pages 的網址仍然可以用，兩邊連的是同一份資料。
+- **鎖在 GAS**：確認 GAS 版可以正常登入、操作之後，到後台「系統設定」把「允許外部網頁連線」改成「否」。之後 GitHub 版和任何外部網頁都連不到資料，舊網址會顯示「網站搬家了」。萬一鎖了之後 GAS 版有問題，打開試算表「設定」分頁，把這一項的值改回「是」。
+- 沒鎖之前，原本 GitHub Pages 的網址仍然可以用，兩邊連的是同一份資料。
 - ⚠️ 這個做法只在模擬環境測過，請用手機和電腦各實測一次（登入、列印簽核單、下載 CSV、上傳章的圖片）。
 
 ## 5. GitHub Pages
@@ -99,11 +100,11 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 
 | 格 | 按鈕 | 網址 |
 |---|---|---|
-| A | 公佈欄 | `https://aihong-lab.github.io/22CUBSCOUT/web/#notices` |
-| B | 進程查詢 | `https://aihong-lab.github.io/22CUBSCOUT/web/#progress` |
-| C | 技能章查詢 | `https://aihong-lab.github.io/22CUBSCOUT/web/#badges` |
-| D | 了解幼童軍 | `https://aihong-lab.github.io/22CUBSCOUT/web/#about` |
-| E | 活動時間 | `https://aihong-lab.github.io/22CUBSCOUT/web/#calendar` |
+| A | 公佈欄 | `（你的 /exec 網址）?p=notices` |
+| B | 進程查詢 | `（你的 /exec 網址）?p=progress` |
+| C | 技能章查詢 | `（你的 /exec 網址）?p=badges` |
+| D | 了解幼童軍 | `（你的 /exec 網址）?p=about` |
+| E | 活動時間 | `（你的 /exec 網址）?p=calendar` |
 | F | 22團 FB | 你們的 Facebook 粉絲專頁網址 |
 
    每一格的「動作標籤」填按鈕名稱即可。

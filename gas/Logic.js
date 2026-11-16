@@ -148,6 +148,7 @@ var Logic = (function () {
     { key: '每週備份', type: 'bool', def: true, desc: '是/否' },
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
     { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' },
+    { key: '允許外部網頁連線', type: 'bool', def: true, desc: '是：GitHub 等外部網頁也能連到後端（舊做法）。否：只有放在 GAS 上的網頁能用（鎖在 GAS）。請先確認 GAS 版網頁可以正常登入，再改成「否」' },
     { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
 

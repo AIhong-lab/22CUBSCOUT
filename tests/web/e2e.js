@@ -48,8 +48,21 @@ function seed(env) {
   const dialogs = [];
   let dialogAnswer = true; // confirm／prompt 預設按確定（prompt 用預設值）
   page.on('dialog', (d) => { dialogs.push(d.message()); dialogAnswer ? d.accept(d.type() === 'prompt' ? d.defaultValue() : undefined) : d.dismiss(); });
-  await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
+  // E2E_GAS=1：模擬「網頁由 GAS 提供」——頁面內容來自 doGet（含內嵌資料），後端呼叫走 google.script.run
+  const IN_GAS = process.env.E2E_GAS === '1';
   let calls = 0;
+  if (IN_GAS) {
+    env.html.Index = fs.readFileSync(path.join(ROOT, 'dist/Index.html'), 'utf8');
+    await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: env.ctx.doGet({ parameter: {} }).content }));
+    await page.exposeFunction('__apiFromPage', (body) => { calls++; return env.ctx.apiFromPage(body); });
+    await page.addInitScript(() => {
+      const run = (ok, no) => ({ withSuccessHandler: (f) => run(f, no), withFailureHandler: (f) => run(ok, f), apiFromPage: (b) => { window.__apiFromPage(b).then((r) => ok && ok(r), (e) => no && no(e)); } });
+      // 測試裡用真正的網址 # 來模擬 google.script.url／history，這樣原本檢查網址的斷言都能沿用
+      window.google = { script: { run: run(null, null),
+        url: { getLocation: (cb) => setTimeout(() => cb({ hash: location.hash.replace(/^#/, ''), parameter: {} }), 0) },
+        history: { replace: (a, b, h) => history.replaceState(null, '', location.pathname + (h ? '#' + h : '')) } } };
+    });
+  } else await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
   await page.route(GAS, (r) => {
     const req = r.request();
     assert.equal(req.method(), 'POST');
@@ -813,6 +826,6 @@ function seed(env) {
   await shot('46-public-notice'); await noHScroll('公開首頁公告');
 
   assert.deepEqual(errors, [], '頁面不可有 JavaScript 錯誤');
-  console.log(`前端端對端測試全部通過（共呼叫後端 ${calls} 次）`);
+  console.log(`前端端對端測試全部通過（${IN_GAS ? '由 GAS 提供的模式，' : ''}共呼叫後端 ${calls} 次）`);
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });

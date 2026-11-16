@@ -155,6 +155,7 @@ var Logic = (function () {
     { key: '每週備份', type: 'bool', def: true, desc: '是/否' },
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
     { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' },
+    { key: '允許外部網頁連線', type: 'bool', def: true, desc: '是：GitHub 等外部網頁也能連到後端（舊做法）。否：只有放在 GAS 上的網頁能用（鎖在 GAS）。請先確認 GAS 版網頁可以正常登入，再改成「否」' },
     { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
 
@@ -1282,6 +1283,7 @@ TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
+  MOVED: 'MOVED',
   SESSION_EXPIRED: 'SESSION_EXPIRED',
   BAD_LOGIN: 'BAD_LOGIN',
   LOCKED: 'LOCKED',
@@ -1744,11 +1746,40 @@ function checkAccountInput_(username, password, nickname, settings) {
  */
 function doGet() {
   try {
-    return HtmlService.createHtmlOutputFromFile('Index').setTitle('22團幼童軍')
+    var page = HtmlService.createHtmlOutputFromFile('Index').getContent();
+    // 把首頁要用的公開資料直接放進網頁（SPEC 附錄第 57 點）：開頁不用再向後端要四五次資料
+    var boot = '';
+    try { boot = '<script>window.__BOOT=' + JSON.stringify(bootData_()).replace(/</g, '\\u003c') + ';</script>'; } catch (e2) { console.error(e2); boot = ''; }
+    var mark = '<script id="boot"></script>', at = page.indexOf(mark);
+    if (boot && at >= 0) page = page.slice(0, at) + boot + page.slice(at + mark.length);
+    return HtmlService.createHtmlOutput(page).setTitle('22團幼童軍')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   } catch (e) {
     return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。（還沒有加入 Index 網頁檔）');
   }
+}
+
+/** 網頁一打開就需要的公開資料；章的圖片太大時不內嵌，由網頁自己再取 */
+function bootData_() {
+  DB_CACHE_ = {};
+  var images = apiUnitImages_().images;
+  if (JSON.stringify(images).length > 300000) images = null;
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url };
+}
+
+/** 公開資料快取（5 分鐘）：公佈欄、月曆與活動。後台任何動作之後由 clearPublicCache_ 清掉 */
+var PUBLIC_CACHE_KEYS = ['PUB_NOTICES', 'PUB_SITE'];
+function cachedPublic_(key, build) {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(key); if (hit) return JSON.parse(hit); } catch (e) { /* 快取壞了就重算 */ }
+  var out = build();
+  try { cache.put(key, JSON.stringify(out), 300); } catch (e2) { /* 太大就不快取 */ }
+  return out;
+}
+function clearPublicCache_() {
+  try { var c = CacheService.getScriptCache(); PUBLIC_CACHE_KEYS.forEach(function (k) { c.remove(k); }); } catch (e) { /* 不影響主要操作 */ }
 }
 
 /** 處理一個 API 請求（JSON 字串）→ 回傳結果物件；doPost 與 apiFromPage 共用 */
@@ -1777,7 +1808,12 @@ function doPost(e) {
     try { handleWebhook_(e); } catch (err) { console.error(err); }
     return ContentService.createTextOutput('OK');
   }
-  var out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
+  // 鎖在 GAS（SPEC 附錄第 57 點）：設定「允許外部網頁連線」為否時，外部網頁（含 GitHub 版）一律不能用
+  var out;
+  var open = true;
+  try { DB_CACHE_ = {}; open = loadSettings_().values['允許外部網頁連線'] !== false; } catch (e0) { open = true; }
+  if (open) out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
+  else out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + webUrl_() };
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -2313,7 +2349,7 @@ var DEFAULT_ADMIN_USERNAME = 'admin';
 function menuDefaultAdmin() {
   var ui = SpreadsheetApp.getUi();
   var r = ensureDefaultAdmin_();
-  ui.alert('團長預設帳號', '網址：' + (PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL) +
+  ui.alert('團長預設帳號', '網址：' + webUrl_() +
     '\n帳號：' + r.username + '\n密碼：' + r.password + '\n\n' + (r.created ? '已建立團長帳號。' : '已重設這個帳號的密碼（其他裝置已登出）。') +
     '\n請抄下密碼，登入後到「我的 → 修改密碼」改成自己的密碼。這個視窗關掉後就看不到密碼了。', ui.ButtonSet.OK);
 }
@@ -2415,6 +2451,7 @@ function registerAdmin_(name, permission, fn) {
   AUTHED_ACTIONS[name] = function (req, who) {
     requireRole_(who, permission);
     var out = fn(req, who);
+    clearPublicCache_(); // 後台任何動作之後，公開資料（公佈欄、月曆、活動）重新讀取
     // 階段 5：會影響達標的動作完成後，重算並推播（失敗不影響主要操作；等待確認的不算）
     if (Object.prototype.hasOwnProperty.call(NOTIFY_AFTER, name) && !(out && out.needConfirm)) notifySafely_(NOTIFY_AFTER[name]);
     return out;
@@ -3072,7 +3109,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
     updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
     purgeSessions_(acc.accountId);
     logOp_(who.account.accountId, '產生臨時碼', acc.username, '', ''); // 不記臨時碼
-    var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
+    var url = webUrl_();
     var msgText = acc.nickname + ' 您好，這是 22 團幼童軍進程系統的密碼重設臨時碼：\n' +
       '帳號：' + acc.username + '\n臨時碼：' + code + '\n' +
       '請打開 ' + url + ' →「忘記密碼？」→ 輸入帳號、臨時碼與新密碼。\n' +
@@ -3753,7 +3790,8 @@ function noticeMeetings_() {
 }
 
 /** 公開：顯示中的公告，置頂在前、新的在前，最多 30 則。只回標題、內容、日期與連結的集會 */
-function apiNotices_() {
+function apiNotices_() { return cachedPublic_('PUB_NOTICES', buildNotices_); }
+function buildNotices_() {
   var meetings = noticeMeetings_();
   var list = loadNotices_().filter(function (n) { return n.visible; })
     .sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.at - a.at; }).slice(0, 30);
@@ -3891,7 +3929,8 @@ function siteValues_() {
 }
 
 /** 公開：了解幼童軍、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
-function apiSiteInfo_() {
+function apiSiteInfo_() { return cachedPublic_('PUB_SITE', buildSiteInfo_); }
+function buildSiteInfo_() {
   var today = today_(), from = today.slice(0, 8) + '01';
   var v = siteValues_();
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
@@ -4616,7 +4655,13 @@ function scanCubs_(ctx, cubs) {
 }
 
 function unitLabel_(p) { return p.category === Logic.CATEGORY.PROGRESS ? (p.unit === Logic.NEWBIE ? p.unit : p.unit + '級') : p.unit + '技能章'; }
-function webUrl_() { return PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL; }
+/** 網站網址：指令碼屬性 WEB_URL → 這個專案的網頁應用程式網址（網頁放在 GAS 時就是它）→ 舊的 GitHub 網址 */
+function webUrl_() {
+  var p = PropertiesService.getScriptProperties().getProperty('WEB_URL');
+  if (p) return p;
+  try { var u = ScriptApp.getService().getUrl(); if (u) return u; } catch (e) { /* 取不到就用預設 */ }
+  return DEFAULT_WEB_URL;
+}
 function linkedLineIds_() { return loadAdmins_().map(function (a) { return a.lineUserId; }).filter(String); }
 
 /**

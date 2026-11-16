@@ -18,7 +18,9 @@ const { loadGas } = require('../gas-mock.js');
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   let calls = 0, fetches = 0;
-  await page.route('https://gas.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
+  env.html.Index = html;
+  // 頁面內容來自 doGet：首頁要用的公開資料已經內嵌在網頁裡
+  await page.route('https://gas.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: env.ctx.doGet({ parameter: {} }).content }));
   await page.route('https://script.google.com/**', (r) => { fetches++; r.abort(); });
   await page.exposeFunction('__apiFromPage', (body) => { calls++; return env.ctx.apiFromPage(body); });
   const open = async (loc) => {
@@ -39,7 +41,8 @@ const { loadGas } = require('../gas-mock.js');
   await page.locator('#noticeCard').waitFor();
   await page.locator('#calCard .cal-grid').waitFor();
   assert.equal(fetches, 0, '由 GAS 提供時不用 fetch');
-  assert.ok(calls >= 3);
+  assert.equal(calls, 0, '開首頁不用再向後端要資料（公佈欄、月曆、項目、章圖都已內嵌）');
+  assert.match(await page.locator('#noticeCard').innerText(), /目前沒有公告/);
   // 登入進後台
   await page.locator('nav.tabs button[data-v=login]').click();
   await page.fill('input[name=username]', 'leader01'); await page.fill('input[name=password]', 'leaderpass1');

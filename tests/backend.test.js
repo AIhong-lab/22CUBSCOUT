@@ -48,7 +48,7 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
   assert.equal(env.rows('進程細項').length, 375, '團自訂細項只匯入一次');
   assert.equal(env.rows('告知同意內容').length, 1);
   assert.match(env.rows('告知同意內容')[0][1], /我們會記錄哪些資料/);
-  assert.equal(env.rows('設定').length, 23);
+  assert.equal(env.rows('設定').length, 24);
   assert.match(r.firstLeaderInvite.code, /^[A-Z2-9]{8}$/);
   assert.ok(env.logs.some(([, m]) => String(m).includes(r.firstLeaderInvite.code)), '邀請碼印在執行紀錄');
   assert.ok(env.props.SPREADSHEET_ID && env.props.WEBHOOK_KEY);
@@ -536,4 +536,44 @@ test('網頁由 GAS 提供（附錄第 56 點）：doGet 回傳頁面；訪客�
   assert.equal(env.ss.getSheets().filter((s) => s.isSheetHidden()).length, hiddenBefore, '沒有被打開');
   assert.throws(() => env.ctx.menuDefaultAdmin());
   assert.ok(!env.rows('帳號').some((r) => r[1] === 'admin'), '沒有建立或重設 admin');
+});
+
+test('鎖在 GAS 與加快載入（附錄第 57 點）：關閉外部連線、網頁內嵌首頁資料、公開資料快取', () => {
+  const env = loadGas();
+  const r = env.ctx.setupCore_();
+  const L = env.api({ action: 'register', code: r.firstLeaderInvite.code, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' }).token;
+  const page = (body) => JSON.parse(env.ctx.apiFromPage(JSON.stringify(body)));
+  // 預設允許外部連線；關掉後 doPost 的 API 一律拒絕，GAS 網頁（apiFromPage）照常
+  assert.equal(env.api({ action: 'ping' }).ok, true);
+  assert.equal(page({ action: 'settingsSave', token: L, changes: { '允許外部網頁連線': '否' } }).ok, true);
+  const blocked = env.api({ action: 'ping' });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.code, 'MOVED');
+  assert.match(blocked.message, /已經停用/);
+  assert.equal(env.api({ action: 'login', username: 'leader01', password: 'leaderpass1' }).ok, false, '登入也不行');
+  assert.equal(page({ action: 'ping' }).ok, true);
+  assert.equal(page({ action: 'adminHome', token: L }).ok, true);
+  // LINE webhook 不受影響（走 key 參數）
+  assert.equal(env.ctx.doPost({ parameter: { key: 'x' }, postData: { contents: '{}' } }).t, 'OK');
+  // doGet 把首頁要用的公開資料直接放進網頁，開頁不用再多打幾次後端
+  env.html.Index = '<!doctype html><html><head><script id="boot"></script></head><body>$& $1</body></html>';
+  page({ action: 'noticeSave', token: L, title: '測試公告</script><b>', content: '內容' });
+  const out = env.ctx.doGet({ parameter: {} });
+  const m = /<script>window\.__BOOT=(.*?);<\/script>/.exec(out.content);
+  assert.ok(m, '有內嵌資料');
+  assert.ok(!/測試公告<\/script>/.test(out.content), '資料裡的 </script> 有跳脫，不會打斷網頁');
+  assert.ok(out.content.includes('<body>$& $1</body>'), '原本的內容不被取代字串影響');
+  const boot = JSON.parse(m[1]);
+  assert.deepEqual(Object.keys(boot).sort(), ['catalog', 'images', 'notices', 'site', 'webUrl']);
+  assert.equal(boot.notices[0].title, '測試公告</script><b>');
+  assert.ok(boot.catalog.units.length > 20);
+  assert.ok(Array.isArray(boot.site.meetings));
+  // 公開資料有快取：重複讀取不再讀試算表；後台一改就清掉
+  page({ action: 'notices' });
+  const reads = () => env.sheet('公告').reads;
+  const before = reads();
+  page({ action: 'notices' }); page({ action: 'notices' });
+  assert.equal(reads(), before, '快取期間不重讀');
+  page({ action: 'noticeSave', token: L, title: '第二則', content: '' });
+  assert.equal(page({ action: 'notices' }).notices.length, 2, '後台發布後馬上看得到');
 });

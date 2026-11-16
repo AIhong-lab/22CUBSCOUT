@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#1f4e9c">
 <title>22團幼童軍冒險</title>
+<script id="boot"></script>
 <!--
   幼童軍進程與技能章查詢系統：前端（查詢端與後台同一頁，依身分顯示）
   ⚠️ 本 repo 為公開：這個檔案只能放 GAS 網址，其他任何設定值、金鑰都不可以出現在這裡。
@@ -525,7 +526,8 @@ async function api(action, data) {
   const body = JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {}));
   let json;
   if (IN_GAS) {
-    try { json = JSON.parse(await new Promise((ok, no) => google.script.run.withSuccessHandler(ok).withFailureHandler(no).apiFromPage(body))); }
+    // 45 秒沒有回應就當作逾時，不讓畫面一直停在「載入中」
+    try { json = JSON.parse(await new Promise((ok, no) => { const t = setTimeout(() => no(new Error('timeout')), 45000); google.script.run.withSuccessHandler((r) => { clearTimeout(t); ok(r); }).withFailureHandler((e) => { clearTimeout(t); no(e); }).apiFromPage(body); })); }
     catch (e) { throw new ApiErr('NETWORK', '連線失敗或系統忙碌，請稍後再試一次。'); }
   } else {
     if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
@@ -535,10 +537,20 @@ async function api(action, data) {
     try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
   }
   if (!json.ok) {
+    if (json.code === 'MOVED') { showMoved(json.message); throw new ApiErr('SESSION_EXPIRED', json.message); }
     if (json.code === 'SESSION_EXPIRED') { onExpired(); throw new ApiErr('SESSION_EXPIRED', json.message); }
     throw new ApiErr(json.code, json.message);
   }
   return json;
+}
+
+/** 這個網址已經停用（團長把系統鎖在 GAS）：整頁換成搬家訊息與新網址 */
+function showMoved(message) {
+  const m = /(https:\/\/\S+)/.exec(message || '');
+  const nav = document.getElementById('tabs'); if (nav) nav.innerHTML = '';
+  $app.innerHTML = `<section class="card welcome"><div class="mascot">🚚</div><h2>網站搬家了</h2>
+    <p>這個網址已經停用，請改用新的網站網址。</p>
+    ${m ? `<p><a class="btn cta" href="${esc(m[1])}" style="display:inline-block;text-decoration:none">前往新網站</a></p><p class="muted small" style="word-break:break-all">${esc(m[1])}</p>` : '<p class="muted">請向團長索取新的網址。</p>'}</section>`;
 }
 
 /** 登入過期：清除憑證、回登入畫面，登入後回到原本的畫面 */
@@ -2956,10 +2968,20 @@ const ADMIN_PAGES = {
 };
 
 new MutationObserver(applyUnitImages).observe($app, { childList: true, subtree: true });
-api('unitImages').then((r) => { unitImgs = r.images || {}; applyUnitImages(); }).catch(() => { unitImgs = {}; });
+const BOOT = (typeof window.__BOOT === 'object' && window.__BOOT) || null;
+if (BOOT) {
+  // 由 GAS 提供時，首頁要用的公開資料已經放在網頁裡（SPEC 附錄第 57 點）
+  if (BOOT.catalog && BOOT.catalog.units) catalogData = BOOT.catalog;
+  if (Array.isArray(BOOT.notices)) noticeData = BOOT.notices;
+  if (BOOT.site && BOOT.site.meetings) siteData = BOOT.site;
+  if (BOOT.images) unitImgs = BOOT.images;
+  gasBase = BOOT.webUrl || '';
+}
+if (unitImgs) applyUnitImages();
+else api('unitImages').then((r) => { unitImgs = r.images || {}; applyUnitImages(); }).catch(() => { unitImgs = {}; });
 if (IN_GAS) {
   // 由 GAS 提供：先問清楚網址帶了什麼（#notices 或 ?p=notices，LINE 選單用），再開始
-  api('ping').then((r) => { gasBase = r.webUrl || ''; }).catch(() => {});
+  if (!gasBase) api('ping').then((r) => { gasBase = r.webUrl || ''; }).catch(() => {});
   const boot = (loc) => { const p = loc && loc.parameter && loc.parameter.p; gasHash = p ? '#' + p : (loc && loc.hash ? '#' + loc.hash : ''); start(); };
   try { google.script.url.getLocation(boot); } catch (e) { boot(null); }
 } else start();

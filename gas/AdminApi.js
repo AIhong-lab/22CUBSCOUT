@@ -17,6 +17,7 @@ function registerAdmin_(name, permission, fn) {
   AUTHED_ACTIONS[name] = function (req, who) {
     requireRole_(who, permission);
     var out = fn(req, who);
+    clearPublicCache_(); // 後台任何動作之後，公開資料（公佈欄、月曆、活動）重新讀取
     // 階段 5：會影響達標的動作完成後，重算並推播（失敗不影響主要操作；等待確認的不算）
     if (Object.prototype.hasOwnProperty.call(NOTIFY_AFTER, name) && !(out && out.needConfirm)) notifySafely_(NOTIFY_AFTER[name]);
     return out;
@@ -674,7 +675,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
     updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
     purgeSessions_(acc.accountId);
     logOp_(who.account.accountId, '產生臨時碼', acc.username, '', ''); // 不記臨時碼
-    var url = PropertiesService.getScriptProperties().getProperty('WEB_URL') || DEFAULT_WEB_URL;
+    var url = webUrl_();
     var msgText = acc.nickname + ' 您好，這是 22 團幼童軍進程系統的密碼重設臨時碼：\n' +
       '帳號：' + acc.username + '\n臨時碼：' + code + '\n' +
       '請打開 ' + url + ' →「忘記密碼？」→ 輸入帳號、臨時碼與新密碼。\n' +

@@ -140,7 +140,8 @@ function noticeMeetings_() {
 }
 
 /** 公開：顯示中的公告，置頂在前、新的在前，最多 30 則。只回標題、內容、日期與連結的集會 */
-function apiNotices_() {
+function apiNotices_() { return cachedPublic_('PUB_NOTICES', buildNotices_); }
+function buildNotices_() {
   var meetings = noticeMeetings_();
   var list = loadNotices_().filter(function (n) { return n.visible; })
     .sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.at - a.at; }).slice(0, 30);
@@ -278,7 +279,8 @@ function siteValues_() {
 }
 
 /** 公開：了解幼童軍、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
-function apiSiteInfo_() {
+function apiSiteInfo_() { return cachedPublic_('PUB_SITE', buildSiteInfo_); }
+function buildSiteInfo_() {
   var today = today_(), from = today.slice(0, 8) + '01';
   var v = siteValues_();
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })

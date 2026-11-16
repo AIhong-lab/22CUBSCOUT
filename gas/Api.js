@@ -14,11 +14,40 @@
  */
 function doGet() {
   try {
-    return HtmlService.createHtmlOutputFromFile('Index').setTitle('22團幼童軍')
+    var page = HtmlService.createHtmlOutputFromFile('Index').getContent();
+    // 把首頁要用的公開資料直接放進網頁（SPEC 附錄第 57 點）：開頁不用再向後端要四五次資料
+    var boot = '';
+    try { boot = '<script>window.__BOOT=' + JSON.stringify(bootData_()).replace(/</g, '\\u003c') + ';</script>'; } catch (e2) { console.error(e2); boot = ''; }
+    var mark = '<script id="boot"></script>', at = page.indexOf(mark);
+    if (boot && at >= 0) page = page.slice(0, at) + boot + page.slice(at + mark.length);
+    return HtmlService.createHtmlOutput(page).setTitle('22團幼童軍')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   } catch (e) {
     return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。（還沒有加入 Index 網頁檔）');
   }
+}
+
+/** 網頁一打開就需要的公開資料；章的圖片太大時不內嵌，由網頁自己再取 */
+function bootData_() {
+  DB_CACHE_ = {};
+  var images = apiUnitImages_().images;
+  if (JSON.stringify(images).length > 300000) images = null;
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url };
+}
+
+/** 公開資料快取（5 分鐘）：公佈欄、月曆與活動。後台任何動作之後由 clearPublicCache_ 清掉 */
+var PUBLIC_CACHE_KEYS = ['PUB_NOTICES', 'PUB_SITE'];
+function cachedPublic_(key, build) {
+  var cache = CacheService.getScriptCache();
+  try { var hit = cache.get(key); if (hit) return JSON.parse(hit); } catch (e) { /* 快取壞了就重算 */ }
+  var out = build();
+  try { cache.put(key, JSON.stringify(out), 300); } catch (e2) { /* 太大就不快取 */ }
+  return out;
+}
+function clearPublicCache_() {
+  try { var c = CacheService.getScriptCache(); PUBLIC_CACHE_KEYS.forEach(function (k) { c.remove(k); }); } catch (e) { /* 不影響主要操作 */ }
 }
 
 /** 處理一個 API 請求（JSON 字串）→ 回傳結果物件；doPost 與 apiFromPage 共用 */
@@ -47,7 +76,12 @@ function doPost(e) {
     try { handleWebhook_(e); } catch (err) { console.error(err); }
     return ContentService.createTextOutput('OK');
   }
-  var out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
+  // 鎖在 GAS（SPEC 附錄第 57 點）：設定「允許外部網頁連線」為否時，外部網頁（含 GitHub 版）一律不能用
+  var out;
+  var open = true;
+  try { DB_CACHE_ = {}; open = loadSettings_().values['允許外部網頁連線'] !== false; } catch (e0) { open = true; }
+  if (open) out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
+  else out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + webUrl_() };
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
