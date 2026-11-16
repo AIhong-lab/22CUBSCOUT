@@ -709,6 +709,14 @@ function seed(env) {
   assert.ok(await page.locator('.uic.has img').count() >= 1, '上傳後圖示換成圖片');
   await shot('53-unit-image');
 
+  // 管理員從後台打開公開頁面（公開查詢頁）時，導覽列回到上方，不是左側選單
+  await sideTab('pub');
+  await page.getByText('什麼是「進程」？').waitFor();
+  const pubNav = await page.locator('nav.tabs').boundingBox();
+  assert.ok(pubNav.height < 120 && pubNav.width > 400, '公開頁面的導覽列是橫的：' + JSON.stringify(pubNav));
+  await page.locator('#title').click();
+  await page.locator('#adminQuick').waitFor();
+
   // 最高權限鎖在 admin：一般團長看得到提示，admin 那一列沒有「管理」按鈕，指定時只能選服務員
   env.ctx.ensureDefaultAdmin_();
   await sideTab('admins');

@@ -547,7 +547,7 @@ window.addEventListener('beforeunload', (e) => { if (leaveGuard && leaveGuard.di
 
 function setTabs(list, cur, onPick) {
   const nav = document.getElementById('tabs');
-  document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me);
+  document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me && !list.some((t) => t[0] === 'login')) // 公開頁面（有「登入／我的頁面」分頁）不用後台的側邊選單版面;
   if (!list) { nav.hidden = true; return; }
   nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => (k === '#' ? `<div class="grp">${t}</div>` : `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`)).join('');
   $$('button', nav).forEach((b) => { b.onclick = () => { if (canLeave()) onPick(b.dataset.v); }; });
