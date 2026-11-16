@@ -34,10 +34,11 @@
 - 活動存檔試算表（SPEC 附錄第 51 點）：`syncEventSheet_`（另開試算表檔案，分頁「報名名單」「活動資訊」，整份重寫）、`afterSync_`（各動作回傳的 `_ev` 觸發，失敗不影響主要操作）、`eventSheetSync`、`eventFolder_`（`EVENT_FOLDER_ID`）、`safeCell_`（防公式）；`eventRegs.sheetUrl` 只給團長。這是系統唯一會寫到主試算表以外檔案的地方。
 - 活動報名對象與資料保留（SPEC 附錄第 52 點）：`canRegisterEvents_`（管理員或綁定在團／體驗孩子）、`eventList.eligible`；`purgeEndedEvents_`（`dailyJob` 呼叫；先 `syncEventSheet_` 成功才刪報名並寫「封存時間」），封存後 `eventSave`／`syncEventSheet_` 拒絕。
 - 章的內建圖與進程顯示範圍（SPEC 附錄第 53 點）：前端 `BADGES`（四級菱形 SVG）、`triBadge`（技能章三角形，顏色 `BADGE_COLOR` 依分類）、`iconOf`（有內建圖時加 `.art`）、`lvIcon`、`levelWindow(currentLevel)`（家長闖關、家長首頁、已登入家長的公開進程頁）。上傳的章圖仍優先（`applyUnitImages`）。
+- 網頁由 GAS 提供（SPEC 附錄第 56 點）：`npm run build` 另產生 `dist/Index.html`（＝`web/index.html`）；`doGet` 用 `HtmlService.createHtmlOutputFromFile('Index')`；前端 `IN_GAS` 時走 `google.script.run.apiFromPage`、`gasHash`／`google.script.url.getLocation`（`?p=` 或 `#`）、`gasBase`（`ping.webUrl`）。**公開函式（非底線結尾）訪客都呼叫得到**：`setup`→`setupCore_`、`dailyJob`→`runDaily_`、`weeklyBackup`→`runWeekly_`（`throttle_`），測試一律呼叫內部函式；`tests/web/gas-mode.js` 是 GAS 模式冒煙測試。
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 139 項、`npm run test:web` 全過）；團長已在正式環境試用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
-- 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，部署到 GitHub Pages（repo 為 Public）。查詢端與後台同一頁，依身分切換。
+- 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
 - 後端：Google Apps Script Web App（`gas/`，用 clasp 管理），資料庫是 Google 試算表。
 - 登入：家長、服務員、團長都用帳號密碼。註冊改為自己選身分送出申請、團長審核（SPEC 附錄第 31 點）；綁定碼仍可直接註冊；邀請碼已拿掉，只剩 setup() 的第一位團長邀請碼（附錄第 33 點）。密碼加鹽多次雜湊；登入後發隨機憑證，前端存瀏覽器，後端只存雜湊。忘記密碼由團長產生臨時碼。
 - LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。圖文選單是給所有人的六個網頁連結（附錄第 49 點），不經過後端。

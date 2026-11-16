@@ -1737,8 +1737,37 @@ function checkAccountInput_(username, password, nickname, settings) {
  * 回應：{ ok: true, ... } 或 { ok: false, code: 錯誤代碼, message: 給使用者看的訊息 }
  */
 
+/**
+ * 網頁由 GAS 直接提供（SPEC 附錄第 56 點）：專案裡有 HTML 檔「Index」就回傳它，沒有就回原本的文字。
+ * 注意：網頁一旦由 GAS 提供，訪客就能用 google.script.run 呼叫所有「名稱不是底線結尾」的函式，
+ * 所以這類函式一律不回傳內容、不做危險動作（見 setup、dailyJob、weeklyBackup、menu*）。
+ */
 function doGet() {
-  return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。');
+  try {
+    return HtmlService.createHtmlOutputFromFile('Index').setTitle('22團幼童軍')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+  } catch (e) {
+    return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。（還沒有加入 Index 網頁檔）');
+  }
+}
+
+/** 處理一個 API 請求（JSON 字串）→ 回傳結果物件；doPost 與 apiFromPage 共用 */
+function handleApiBody_(text) {
+  try {
+    var req = JSON.parse(text || '{}');
+    if (!req || typeof req !== 'object' || Array.isArray(req)) throw new ApiError(ERR.BAD_INPUT, '請求格式不正確。');
+    return dispatch_(req);
+  } catch (err) {
+    if (err instanceof ApiError) return { ok: false, code: err.code, message: err.message };
+    if (err instanceof SyntaxError) return { ok: false, code: ERR.BAD_INPUT, message: '請求格式不正確。' };
+    console.error(err && err.stack ? err.stack : err); // 只寫進 GAS 執行紀錄，不回給前端
+    return { ok: false, code: ERR.SERVER_ERROR, message: '系統暫時無法處理，請稍後再試。' };
+  }
+}
+
+/** 由 GAS 提供的網頁用 google.script.run 呼叫；和 doPost 完全同一套登入與權限檢查 */
+function apiFromPage(body) {
+  return JSON.stringify(handleApiBody_(typeof body === 'string' ? body : ''));
 }
 
 function doPost(e) {
@@ -1748,24 +1777,13 @@ function doPost(e) {
     try { handleWebhook_(e); } catch (err) { console.error(err); }
     return ContentService.createTextOutput('OK');
   }
-  var out;
-  try {
-    var req = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (!req || typeof req !== 'object' || Array.isArray(req)) throw new ApiError(ERR.BAD_INPUT, '請求格式不正確。');
-    out = dispatch_(req);
-  } catch (err) {
-    if (err instanceof ApiError) out = { ok: false, code: err.code, message: err.message };
-    else {
-      console.error(err && err.stack ? err.stack : err); // 只寫進 GAS 執行紀錄，不回給前端
-      out = { ok: false, code: ERR.SERVER_ERROR, message: '系統暫時無法處理，請稍後再試。' };
-    }
-  }
+  var out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
 /** 不需登入的動作 */
 var PUBLIC_ACTIONS = {
-  ping: function () { return { serverTime: new Date().toISOString() }; },
+  ping: function () { var url = ''; try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; } return { serverTime: new Date().toISOString(), webUrl: url }; },
   consentText: apiConsentText_,
   checkCode: apiCheckCode_,
   register: apiRegister_,
@@ -2374,8 +2392,8 @@ function setLeaderByUsername_(username) {
 }
 
 /** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
-function menuShowAllSheets() { organizeSheets_(false); SpreadsheetApp.getUi().alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
-function menuHideSystemSheets() { var n = organizeSheets_(true); SpreadsheetApp.getUi().alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
+function menuShowAllSheets() { var ui0 = SpreadsheetApp.getUi(); organizeSheets_(false); ui0.alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
+function menuHideSystemSheets() { var ui0 = SpreadsheetApp.getUi(); var n = organizeSheets_(true); ui0.alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
 
 // ════════════════ AdminApi.js ════════════════
 /**
@@ -4714,7 +4732,8 @@ function handleKeyword_(text, lineUserId, replyToken) {
 // ───────────── 每日排程 ─────────────
 
 /** 每天掃一次：抓「項目早就全過、今天剛滿晉級間隔」與再提醒 */
-function dailyJob() {
+function dailyJob() { if (throttle_('LAST_DAILY_RUN', 60)) runDaily_(); }
+function runDaily_() {
   DB_CACHE_ = {};
   try { purgeEndedEvents_(); } catch (e) { console.error('活動封存失敗：' + (e && e.message)); }
   DB_CACHE_ = {};
@@ -4831,10 +4850,23 @@ registerAdmin_('permCheck', 'backup', function (req, who) {
 // ───────────── 排程（在 Apps Script 編輯器手動執行一次） ─────────────
 
 /** 每週備份排程呼叫（依設定「每週備份」決定是否執行），同時做權限檢查 */
-function weeklyBackup() {
+function weeklyBackup() { if (throttle_('LAST_WEEKLY_RUN', 60)) runWeekly_(); }
+function runWeekly_() {
   DB_CACHE_ = {};
   if (loadSettings_().values['每週備份']) runBackup_();
   checkPermissions_();
+}
+
+/**
+ * 排程用的公開函式也可能被網頁訪客呼叫（google.script.run），所以限制頻率：
+ * 距離上次執行不到 minutes 分鐘就略過。回傳 true 表示可以執行。
+ */
+function throttle_(key, minutes) {
+  var props = PropertiesService.getScriptProperties(), now = Date.now();
+  var last = Number(props.getProperty(key)) || 0;
+  if (now - last < minutes * 60000) return false;
+  props.setProperty(key, String(now));
+  return true;
 }
 
 /** 備份資料夾名稱（setup 自動建立時使用） */
@@ -4933,7 +4965,10 @@ function lineReply_(replyToken, text) {
  * 可重複執行；任何分頁已有資料時一律不覆蓋、不重新匯入。
  * 請在 Apps Script 編輯器手動執行。
  */
-function setup() {
+/** 給人在 Apps Script 編輯器按「執行」用：結果看執行記錄。不回傳內容（公開函式會被網頁訪客呼叫到，回傳值不能帶邀請碼） */
+function setup() { setupCore_(); }
+
+function setupCore_() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

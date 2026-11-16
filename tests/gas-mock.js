@@ -1,5 +1,5 @@
 // 模擬 Google Apps Script 環境（記憶體中的試算表），只供 Node 測試使用。
-// 用法：const env = loadGas(); env.ctx.setup(); env.api({action:'ping'})
+// 用法：const env = loadGas(); env.ctx.setupCore_(); env.api({action:'ping'})
 'use strict';
 const crypto = require('crypto');
 const fs = require('fs');
@@ -110,6 +110,7 @@ function loadGas(opts = {}) {
   const drive = { files: [], sharing: { file: 'PRIVATE', folder: 'PRIVATE' }, failCopy: false, moved: [] };
   // 另外建立的試算表（每個活動一份存檔）：ext.books[id]；ext.fail = true 模擬建立失敗
   const ext = { books: {}, fail: false };
+  const html = {};
   drive.api = {
     Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
     getFileById: (id) => ({
@@ -133,13 +134,15 @@ function loadGas(opts = {}) {
       openById: (id) => { if (ext.books[id]) return ext.books[id]; if (String(id).startsWith('EXT-')) throw new Error('找不到檔案'); return ss; },
       create: (name) => { if (ext.fail) throw new Error('模擬建立試算表失敗'); const b = new Spreadsheet('EXT-' + (Object.keys(ext.books).length + 1), name); b.insertSheet('工作表1'); ext.books[b.getId()] = b; return b; },
       // 試算表選單的對話框：ui.answers 依序提供 prompt 的回答，ui.alerts 收集跳出的訊息
-      getUi: () => ui,
+      getUi: () => { if (ui.unavailable) throw new Error('Cannot call SpreadsheetApp.getUi() from this context.'); return ui; },
     },
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); },
       deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
     Logger: { log: (m) => logs.push(['log', m]) },
+    // 模擬 HtmlService：html[檔名] 有內容才找得到檔案
+    HtmlService: { XFrameOptionsMode: { DEFAULT: 'DEFAULT' }, createHtmlOutputFromFile: (name) => { if (!html[name]) throw new Error('找不到 HTML 檔案 ' + name); const o = { kind: 'html', content: html[name], meta: {}, setTitle(t) { o.title = t; return o; }, addMetaTag(k, v) { o.meta[k] = v; return o; } }; return o; } },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (t) => ({ t, setMimeType() { return this; } }) },
     Utilities: {
       getUuid: () => crypto.randomUUID(),
@@ -170,7 +173,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net, ext,
+    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net, ext, html,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

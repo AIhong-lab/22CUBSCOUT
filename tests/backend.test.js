@@ -10,7 +10,7 @@ const HOUR = 3600000;
 /** 建好系統、團長帳號、一位測試小狼 */
 function fresh(opts) {
   const env = loadGas(opts);
-  const report = env.ctx.setup();
+  const report = env.ctx.setupCore_();
   const invite = report.firstLeaderInvite.code;
   const leader = env.api({ action: 'register', code: invite, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
   assert.equal(leader.ok, true, JSON.stringify(leader));
@@ -29,7 +29,7 @@ function registerParent(env, username = 'parent01', code = 'AB2CDE', childName =
 
 test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀請碼', () => {
   const env = loadGas();
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   const names = Object.values(env.ctx.SHEET);
   assert.equal(names.length, 28);
   // 只顯示團長要編輯的 5 個分頁，排最前面；其他系統分頁隱藏
@@ -58,10 +58,10 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
 
 test('setup 可重複執行，已有資料一律不覆蓋、不重新匯入', () => {
   const env = loadGas();
-  const first = env.ctx.setup();
+  const first = env.ctx.setupCore_();
   env.sheet('項目總表').getRange(2, 5, 1, 1).setValues([['團長改過的文字']]);
   env.sheet('設定').getRange(2, 2, 1, 1).setValues([['8']]);
-  const second = env.ctx.setup();
+  const second = env.ctx.setupCore_();
   assert.equal(env.rows('項目總表').length, 168);
   assert.equal(env.rows('項目總表')[0][4], '團長改過的文字');
   assert.equal(String(env.rows('設定')[0][1]), '8');
@@ -73,10 +73,10 @@ test('setup 可重複執行，已有資料一律不覆蓋、不重新匯入', ()
 
 test('setup 只在最右邊補新欄，標題不符時不動', () => {
   const env = loadGas();
-  env.ctx.setup();
+  env.ctx.setupCore_();
   env.sheet('通知紀錄').getRange(1, 4, 1, 1).setValues([['']]); // 模擬舊版少一欄
   env.sheet('失敗紀錄').getRange(1, 1, 1, 1).setValues([['被改掉']]);
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   // 模擬環境內外的陣列分屬不同執行環境，先展開再比較
   assert.deepEqual([...r.headerFixed], ['通知紀錄']);
   assert.deepEqual([...r.headerMismatch], ['失敗紀錄']);
@@ -91,7 +91,7 @@ test('第一位團長用邀請碼註冊（小孩姓名留空），邀請碼只�
   const again = env.api({ action: 'register', code: report.firstLeaderInvite.code, username: 'leader02', password: 'leaderpass1', nickname: 'x' });
   assert.equal(again.code, 'CODE_INVALID');
   assert.equal(env.rows('管理員邀請')[0][6], '已使用');
-  assert.equal(env.ctx.setup().firstLeaderInvite, null, '已有管理員就不再產生');
+  assert.equal(env.ctx.setupCore_().firstLeaderInvite, null, '已有管理員就不再產生');
 });
 
 test('家長註冊：綁定碼＋小孩姓名都對、同意後才建立帳號', () => {
@@ -294,7 +294,7 @@ test('webhook：密鑰不符或格式錯誤都安全忽略', () => {
 
 test('合併檔 dist/Code.gs 可獨立運作', () => {
   const env = loadGas({ bundle: true });
-  env.ctx.setup();
+  env.ctx.setupCore_();
   assert.equal(env.api({ action: 'ping' }).ok, true);
   assert.equal(env.rows('項目總表').length, 168);
 });
@@ -310,7 +310,7 @@ test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄
 
 test('第一位團長邀請碼過期後不能使用', () => {
   const env = loadGas();
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   env.advance(73 * 3600000);
   assert.equal(env.api({ action: 'checkCode', code: r.firstLeaderInvite.code, childName: '' }).code, 'CODE_INVALID');
 });
@@ -416,7 +416,7 @@ test('分頁顯示切換：顯示全部再收起，只動顯示狀態不動資�
   // 隱藏中的分頁照常讀寫（系統功能不受影響）
   addCub(env, 'C2', '測試小狼乙', 'XY3ZWV', 3);
   assert.equal(env.rows('小狼名單').length, 2);
-  assert.equal(env.ctx.setup().hidden, 0, '重跑 setup 不重複處理');
+  assert.equal(env.ctx.setupCore_().hidden, 0, '重跑 setup 不重複處理');
 });
 
 test('試算表選單「把帳號設為團長」：自己註冊的帳號直接變團長（最高權限）', () => {
@@ -443,7 +443,7 @@ test('試算表選單「把帳號設為團長」：自己註冊的帳號直接�
 
 test('剛入團：已上線的系統重跑 setup 會補上剛入團，並把細項從羚羊改掛過來；只做一次', () => {
   const env = loadGas();
-  env.ctx.setup();
+  env.ctx.setupCore_();
   // 模擬舊版：刪掉剛入團的項目與說明，把細項改回掛在羚羊（舊的對照）
   const items = env.sheet('項目總表');
   const keep = env.rows('項目總表').filter((x) => x[2] !== '剛入團');
@@ -455,24 +455,24 @@ test('剛入團：已上線的系統重跑 setup 會補上剛入團，並把細�
   const old = { 1: 'P-羚羊-1', 2: 'P-羚羊-5', 3: 'P-羚羊-6', 4: 'P-羚羊-3', 5: 'P-羚羊-3' };
   det.data.forEach((r, i) => { if (i > 0 && /^P-剛入團-/.test(r[0])) r[0] = old[r[0].split('-')[2]]; });
   env.ctx.DB_CACHE_ = {};
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   assert.ok(r.seeded.some((x) => /新增剛入團 5 項/.test(x)));
   assert.ok(r.seeded.some((x) => /20 條改掛到剛入團/.test(x)));
   assert.equal(env.rows('進程細項').filter((x) => x[0].startsWith('P-剛入團-')).length, 20);
   assert.equal(env.rows('項目總表').filter((x) => x[2] === '剛入團').length, 5);
   assert.ok(env.rows('級別與章說明').some((x) => x[0] === '剛入團'));
-  const again = env.ctx.setup();
+  const again = env.ctx.setupCore_();
   assert.ok(!again.seeded.some((x) => /剛入團/.test(x)), '已補過就不再執行');
 });
 
 test('自動備份免設定：setup 建立備份資料夾並開啟每週備份；重跑不重複建立', () => {
   const env = loadGas();
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   assert.ok(env.props.BACKUP_FOLDER_ID, '已設定資料夾 ID');
   assert.ok(r.seeded.some((x) => /建立備份資料夾/.test(x)));
   assert.ok(r.seeded.some((x) => /每週日 03:00 自動備份/.test(x)));
   const id = env.props.BACKUP_FOLDER_ID;
-  const again = env.ctx.setup();
+  const again = env.ctx.setupCore_();
   assert.equal(env.props.BACKUP_FOLDER_ID, id, '不重建');
   assert.ok(!again.seeded.some((x) => /備份/.test(x)));
   assert.equal(env.ctx.runBackup_().ok, true, '可以直接備份');
@@ -500,4 +500,40 @@ test('團長預設帳號：選單一按就建立 admin（團長），密碼隨�
   assert.equal(env.api({ action: 'login', username: 'admin', password: pw1 }).code, 'BAD_LOGIN');
   assert.equal(env.api({ action: 'login', username: 'admin', password: pw2 }).ok, true);
   assert.equal(env.rows('帳號').filter((r) => r[1] === 'admin').length, 1, '不重複建立');
+});
+
+test('網頁由 GAS 提供（附錄第 56 點）：doGet 回傳頁面；訪客能呼叫的公開函式不洩漏資料、不能濫用', () => {
+  const env = loadGas();
+  // 還沒放 Index 檔時，doGet 維持原本的文字訊息
+  assert.match(env.ctx.doGet({ parameter: {} }).t, /後端運作中/);
+  env.html.Index = '<!doctype html><title>x</title>';
+  const out = env.ctx.doGet({ parameter: {} });
+  assert.equal(out.kind, 'html');
+  assert.equal(out.title, '22團幼童軍');
+  assert.match(out.meta.viewport, /width=device-width/);
+  // 頁面用 google.script.run 呼叫 apiFromPage：和 doPost 同一套處理，回傳 JSON 字串
+  assert.equal(JSON.parse(env.ctx.apiFromPage(JSON.stringify({ action: 'ping' }))).ok, true);
+  assert.equal(JSON.parse(env.ctx.apiFromPage('不是 JSON')).ok, false);
+  assert.equal(JSON.parse(env.ctx.apiFromPage(JSON.stringify({ action: 'adminList' }))).ok, false, '一樣要登入與權限');
+  // setup 的回傳值不能帶第一位團長邀請碼（網頁訪客呼叫得到公開函式）
+  assert.equal(env.ctx.setup(), undefined);
+  assert.ok(env.ctx.setupCore_().firstLeaderInvite.code, '內部函式才拿得到');
+  // 排程用的公開函式：短時間內重複呼叫會被略過，也不回傳內容
+  const copies = () => env.drive.files.length;
+  assert.equal(env.ctx.weeklyBackup(), undefined);
+  const n = copies();
+  assert.ok(n >= 1);
+  env.ctx.weeklyBackup(); env.ctx.weeklyBackup();
+  assert.equal(copies(), n, '一小時內重複呼叫不會一直產生備份');
+  env.advance(61 * 60000);
+  env.ctx.weeklyBackup();
+  assert.equal(copies(), n + 1);
+  assert.equal(env.ctx.dailyJob(), undefined);
+  // 選單函式在網頁情境（沒有試算表畫面）一律不動作
+  env.ui.unavailable = true;
+  const hiddenBefore = env.ss.getSheets().filter((s) => s.isSheetHidden()).length;
+  assert.throws(() => env.ctx.menuShowAllSheets());
+  assert.equal(env.ss.getSheets().filter((s) => s.isSheetHidden()).length, hiddenBefore, '沒有被打開');
+  assert.throws(() => env.ctx.menuDefaultAdmin());
+  assert.ok(!env.rows('帳號').some((r) => r[1] === 'admin'), '沒有建立或重設 admin');
 });

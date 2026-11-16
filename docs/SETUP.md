@@ -35,6 +35,18 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 
 > 進階：也可以用 clasp（`cd gas && clasp push`），兩種方式擇一，不要混用。
 
+## 4-1. 把網頁也放在 GAS（建議）
+這樣網頁和後端在同一個地方，更新一次就全部更新，不會再出現「不支援的操作」。
+1. Apps Script 左側「檔案」旁的「＋」→「HTML」→ 檔名輸入 `Index`（大寫 I，不用加 .html）。**只有第一次要建立。**
+2. 開 https://github.com/AIhong-lab/22CUBSCOUT/blob/main/dist/Index.html ，按右上角「複製」圖示 → 回 Apps Script 點 `Index.html` → 全選貼上（整份取代）→ 儲存。
+3. `程式碼.gs` 照第 4 節貼上最新的 Code.gs → 執行 `setup` → 「部署 → 管理部署作業 → 鉛筆 → 新版本 → 部署」。
+4. 網站網址就是部署作業畫面上的「網頁應用程式」網址（`https://script.google.com/macros/s/……/exec`）。把它存到指令碼屬性 `WEB_URL`，通知訊息裡的連結才會用新網址。
+5. 之後每次更新：`程式碼.gs` 和 `Index.html` 兩個都貼最新的，再部署新版本。
+- 分享某一頁：網址後面加 `?p=notices`（公佈欄）、`?p=progress`、`?p=badges`、`?p=about`、`?p=calendar`、`?p=events`。LINE 圖文選單改用這種網址。
+- 頁面最上方會有一條 Google 的灰色提示橫幅，這是 GAS 的規定，拿不掉。
+- 原本 GitHub Pages 的網址仍然可以用，兩邊連的是同一份資料。
+- ⚠️ 這個做法只在模擬環境測過，請用手機和電腦各實測一次（登入、列印簽核單、下載 CSV、上傳章的圖片）。
+
 ## 5. GitHub Pages
 已在階段 0B 完成（Settings → Pages → main / root）。正式網頁網址（階段 3 起）：`https://aihong-lab.github.io/22CUBSCOUT/web/`
 

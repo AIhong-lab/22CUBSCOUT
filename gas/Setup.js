@@ -3,7 +3,10 @@
  * 可重複執行；任何分頁已有資料時一律不覆蓋、不重新匯入。
  * 請在 Apps Script 編輯器手動執行。
  */
-function setup() {
+/** 給人在 Apps Script 編輯器按「執行」用：結果看執行記錄。不回傳內容（公開函式會被網頁訪客呼叫到，回傳值不能帶邀請碼） */
+function setup() { setupCore_(); }
+
+function setupCore_() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

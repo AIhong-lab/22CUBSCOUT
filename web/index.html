@@ -499,7 +499,7 @@ async function shrinkImage(file) {
 }
 const unitLabel = (u) => (u.category === '進程' ? lvName(u.unit) : u.unit);
 const STATUS_ORDER = { '已完成待頒發': 0, '進行中': 1, '已頒發': 2, '未開始': 3 };
-const webRoot = () => location.origin + location.pathname.replace(/web\/?[^/]*$/, '');
+const webRoot = () => (IN_GAS ? (gasBase || '（請向團長索取網址）') : location.origin + location.pathname.replace(/web\/?[^/]*$/, ''));
 
 // 瀏覽器儲存：無痕模式等可能失敗，失敗時不讓頁面壞掉
 const store = {
@@ -513,15 +513,27 @@ const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent
 class ApiErr extends Error { constructor(code, message) { super(message); this.code = code; } }
 
 /** 呼叫後端：text/plain + JSON，避免 CORS 預檢 */
+/**
+ * 這個網頁可以放在兩個地方（SPEC 附錄第 56 點）：
+ * ① GitHub Pages：用 fetch 呼叫 GAS_URL。② 直接由 GAS 提供（Apps Script 專案裡的 HTML 檔「Index」）：
+ *    用 google.script.run 呼叫同一個專案的 apiFromPage，網頁和後端永遠是同一版。
+ */
+const IN_GAS = typeof google !== 'undefined' && !!(google.script && google.script.run);
+let gasHash = '';  // 由 GAS 提供時，網址的 # 與 ?p= 要透過 google.script.url 取得
+let gasBase = '';  // 由 GAS 提供時的網站網址（給「複製給家長的說明」用）
 async function api(action, data) {
-  if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
-  let res;
-  try {
-    res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {})) });
-  } catch (e) { throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。'); }
+  const body = JSON.stringify(Object.assign({ action, token: store.get('token') || undefined }, data || {}));
   let json;
-  try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
+  if (IN_GAS) {
+    try { json = JSON.parse(await new Promise((ok, no) => google.script.run.withSuccessHandler(ok).withFailureHandler(no).apiFromPage(body))); }
+    catch (e) { throw new ApiErr('NETWORK', '連線失敗或系統忙碌，請稍後再試一次。'); }
+  } else {
+    if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
+    let res;
+    try { res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }); }
+    catch (e) { throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。'); }
+    try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
+  }
   if (!json.ok) {
     if (json.code === 'SESSION_EXPIRED') { onExpired(); throw new ApiErr('SESSION_EXPIRED', json.message); }
     throw new ApiErr(json.code, json.message);
@@ -1105,7 +1117,7 @@ const pendingAward = {
 };
 
 async function start() {
-  const h = location.hash;
+  const h = IN_GAS ? gasHash : location.hash;
   const am = /^#award=(.+)$/.exec(h);
   if (am) {
     try { pendingAward.set(decodeURIComponent(am[1])); } catch (e) {}
@@ -1536,7 +1548,10 @@ const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
 document.getElementById('title').onclick = () => { if (!canLeave()) return; if (state.me) { state.view = 'home'; state.admin = { tab: 'home', page: null }; route(); } else renderHome(); };
 
 /** 更新網址（方便分享），不重新載入頁面 */
-function setHash(h) { try { history.replaceState(null, '', location.pathname + location.search + (h || '')); } catch (e) {} }
+function setHash(h) {
+  if (IN_GAS) { gasHash = h || ''; try { google.script.history.replace(null, {}, gasHash.replace(/^#/, '')); } catch (e) {} return; }
+  try { history.replaceState(null, '', location.pathname + location.search + (h || '')); } catch (e) {}
+}
 
 function onPublicTab(v) {
   if (v === 'login') { setHash(''); return state.me ? route() : renderLogin(); }
@@ -2942,7 +2957,12 @@ const ADMIN_PAGES = {
 
 new MutationObserver(applyUnitImages).observe($app, { childList: true, subtree: true });
 api('unitImages').then((r) => { unitImgs = r.images || {}; applyUnitImages(); }).catch(() => { unitImgs = {}; });
-start();
+if (IN_GAS) {
+  // 由 GAS 提供：先問清楚網址帶了什麼（#notices 或 ?p=notices，LINE 選單用），再開始
+  api('ping').then((r) => { gasBase = r.webUrl || ''; }).catch(() => {});
+  const boot = (loc) => { const p = loc && loc.parameter && loc.parameter.p; gasHash = p ? '#' + p : (loc && loc.hash ? '#' + loc.hash : ''); start(); };
+  try { google.script.url.getLocation(boot); } catch (e) { boot(null); }
+} else start();
 </script>
 </body>
 </html>

@@ -9,7 +9,7 @@ const DAY = 86400000;
 /** 建好系統：團長、服務員、一位家長；回傳各自的 token */
 function world() {
   const env = loadGas();
-  const r = env.ctx.setup();
+  const r = env.ctx.setupCore_();
   const L = env.api({ action: 'register', code: r.firstLeaderInvite.code, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
   const call = (token, action, data = {}) => env.api({ action, token, ...data });
   // 服務員：自己註冊選「服務員」，團長核准（邀請碼功能已拿掉）
@@ -675,7 +675,7 @@ test('LINE 通知：新達標推播一次（Flex＋前往頒章）、不重複�
   assert.equal(pushes(env).length, 0, '沒有人連結 LINE：不推播');
   assert.equal(env.rows('通知紀錄').length, 0, '也不寫紀錄，之後連結了才通知');
   linkLine(env, call, L, 'Uleader');
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   assert.equal(pushes(env).length, 1);
   const m = pushes(env)[0].body;
   assert.deepEqual(m.to, ['Uleader']);
@@ -684,7 +684,7 @@ test('LINE 通知：新達標推播一次（Flex＋前往頒章）、不重複�
   assert.match(json, /測試小狼甲/); assert.match(json, /嚮導技能章/); assert.match(json, /前往頒章/);
   assert.match(json, new RegExp('#award=' + encodeURIComponent(cubId + ',嚮導')));
   assert.deepEqual(env.rows('通知紀錄').map((r) => [r[0], r[1], r[2]]), [[cubId, '嚮導', '達標']]);
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   call(A, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
   assert.equal(pushes(env).length, 1, '同一小狼同一章只通知一次');
   // 撤銷 → 清除紀錄；重新簽核 → 再通知
@@ -709,7 +709,7 @@ test('LINE 通知：多位合併一則、再提醒只一次、推播失敗記錄
   assert.equal(call(L, 'adminHome').alerts.notifyFailed, 1);
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '通知未送達'));
   env.net.code = 200;
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   const ok = pushes(env).at(-1).body;
   assert.deepEqual([...ok.to].sort(), ['Uhelper', 'Uleader'], '只發給已連結的管理員');
   assert.equal(ok.messages.length, 1);
@@ -718,12 +718,12 @@ test('LINE 通知：多位合併一則、再提醒只一次、推播失敗記錄
   assert.equal(call(L, 'adminHome').alerts.notifyFailed, 0);
   // 再提醒：預設 14 天後一次
   const n = pushes(env).length;
-  env.advance(13 * DAY); env.ctx.dailyJob();
+  env.advance(13 * DAY); env.ctx.runDaily_();
   assert.equal(pushes(env).length, n);
-  env.advance(2 * DAY); env.ctx.dailyJob();
+  env.advance(2 * DAY); env.ctx.runDaily_();
   assert.equal(pushes(env).length, n + 1);
   assert.match(JSON.stringify(pushes(env).at(-1).body), /還沒頒章的提醒/);
-  env.advance(30 * DAY); env.ctx.dailyJob();
+  env.advance(30 * DAY); env.ctx.runDaily_();
   assert.equal(pushes(env).length, n + 1, '之後不再提醒');
 });
 
@@ -751,7 +751,7 @@ test('每日排程：setup 自動安裝；改設定的時間會重裝；不重�
   const { env, call, L } = world();
   const daily = () => env.triggers.filter((t) => t.getHandlerFunction() === 'dailyJob').length;
   assert.equal(daily(), 1);
-  env.ctx.setup();
+  env.ctx.setupCore_();
   assert.equal(daily(), 1);
   call(L, 'settingsSave', { changes: { '每日排程時間（幾點）': '20' } });
   assert.equal(daily(), 1);
@@ -1151,11 +1151,11 @@ test('活動結束後，網站上的報名資料自動清除，存檔試算表�
   const list = () => { const sh = book.getSheetByName('報名名單'); return sh.getRange(1, 1, sh.getLastRow(), 6).getValues(); };
   // 活動最後一天還不清
   env.setNow(Date.parse('2026-12-13T10:00:00Z'));
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   assert.equal(env.rows('活動報名').length, 2);
   // 結束後隔天清除；存檔還在
   env.setNow(Date.parse('2026-12-14T10:00:00Z'));
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   assert.equal(env.rows('活動報名').length, 0, '網站上的報名資料清掉');
   assert.equal(list().length, 3, '存檔試算表的名單還在');
   assert.deepEqual(list()[1].slice(3, 5), [500, '是'], '沒有自訂題目時：姓名、身分別、報名人、金額、已繳');
@@ -1173,9 +1173,9 @@ test('活動結束後，網站上的報名資料自動清除，存檔試算表�
   const P2 = env.api({ action: 'login', username: 'parent01', password: 'parentpass1' }).token;
   assert.equal(call(P2, 'eventRegister', { eventId: id2, people: [{ name: '測試小狼甲', identity: '小狼', answers: {} }] }).added, 1);
   env.setNow(Date.parse('2026-12-22T10:00:00Z'));
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   assert.equal(env.rows('活動報名').length, 1, '沒有存檔就不清除');
   env.ext.fail = false;
-  env.ctx.dailyJob();
+  env.ctx.runDaily_();
   assert.equal(env.rows('活動報名').length, 0, '存檔補建成功後才清除');
 });

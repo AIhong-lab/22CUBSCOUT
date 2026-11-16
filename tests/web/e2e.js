@@ -14,7 +14,7 @@ const PAGE = 'https://pages.test/web/';
 const SHOT = process.env.SHOT_DIR;
 
 function seed(env) {
-  env.ctx.setup();
+  env.ctx.setupCore_();
   const invite = env.ctx.loadInvites_()[0].code;
   env.api({ action: 'register', code: invite, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' });
   const leaderId = env.rows('管理員')[0][0];

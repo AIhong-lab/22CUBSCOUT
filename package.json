@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node tools/build.js && node --test tests/*.test.js",
     "build": "node tools/build.js",
-    "test:web": "node tools/build.js && node tests/web/e2e.js"
+    "test:web": "node tools/build.js && node tests/web/e2e.js && node tests/web/gas-mode.js"
   },
   "engines": {
     "node": ">=18"

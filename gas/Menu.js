@@ -108,5 +108,5 @@ function setLeaderByUsername_(username) {
 }
 
 /** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
-function menuShowAllSheets() { organizeSheets_(false); SpreadsheetApp.getUi().alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
-function menuHideSystemSheets() { var n = organizeSheets_(true); SpreadsheetApp.getUi().alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
+function menuShowAllSheets() { var ui0 = SpreadsheetApp.getUi(); organizeSheets_(false); ui0.alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
+function menuHideSystemSheets() { var ui0 = SpreadsheetApp.getUi(); var n = organizeSheets_(true); ui0.alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }

@@ -45,7 +45,9 @@ function main() {
     ' * 部署：整份複製貼到 Apps Script 的「程式碼.gs」（取代原內容）後儲存。\n */\n\n' + parts.join('\n');
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist/Code.gs'), bundle);
-  console.log('已產生 gas/SeedData.js 與 dist/Code.gs');
+  // 網頁也可以直接由 GAS 提供：把 web/index.html 原樣複製成 dist/Index.html，貼到 Apps Script 的 HTML 檔「Index」
+  fs.writeFileSync(path.join(root, 'dist/Index.html'), read('web/index.html'));
+  console.log('已產生 gas/SeedData.js、dist/Code.gs 與 dist/Index.html');
 }
 
 if (require.main === module) main();

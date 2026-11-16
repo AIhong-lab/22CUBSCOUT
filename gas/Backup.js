@@ -89,10 +89,23 @@ registerAdmin_('permCheck', 'backup', function (req, who) {
 // ───────────── 排程（在 Apps Script 編輯器手動執行一次） ─────────────
 
 /** 每週備份排程呼叫（依設定「每週備份」決定是否執行），同時做權限檢查 */
-function weeklyBackup() {
+function weeklyBackup() { if (throttle_('LAST_WEEKLY_RUN', 60)) runWeekly_(); }
+function runWeekly_() {
   DB_CACHE_ = {};
   if (loadSettings_().values['每週備份']) runBackup_();
   checkPermissions_();
+}
+
+/**
+ * 排程用的公開函式也可能被網頁訪客呼叫（google.script.run），所以限制頻率：
+ * 距離上次執行不到 minutes 分鐘就略過。回傳 true 表示可以執行。
+ */
+function throttle_(key, minutes) {
+  var props = PropertiesService.getScriptProperties(), now = Date.now();
+  var last = Number(props.getProperty(key)) || 0;
+  if (now - last < minutes * 60000) return false;
+  props.setProperty(key, String(now));
+  return true;
 }
 
 /** 備份資料夾名稱（setup 自動建立時使用） */
