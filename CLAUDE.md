@@ -33,6 +33,7 @@
 - 活動報名、繳費紀錄與章的圖片（SPEC 附錄第 50 點）：`gas/EventApi.js`——`eventAdminList`／`eventSave`／`eventRegs`／`eventPay`／`eventRegRemove`（權限 `manageEvents`，團長）、登入後 `eventList`／`eventRegister`／`eventCancel`、`publicEvents_`（併入 `siteInfo.events`）、`deleteRegsOfAccount_`；`Logic.validateEvent`（擋機敏題目）／`validateEventPeople`／`EVENT_IDENTITIES`；時間用 `'YYYY-MM-DDTHH:mm'` 字串（`nowStamp_`）。章圖：`unitImages`（公開）／`unitImageSave`、`Logic.isUnitImage`。前端 `ADMIN_PAGES.events`、`renderInfo('events')`、`renderEventForm`、`pendingEvent`、`iconOf` 回傳 `.uic` 容器＋`applyUnitImages`（MutationObserver）、`shrinkImage`。
 - 活動存檔試算表（SPEC 附錄第 51 點）：`syncEventSheet_`（另開試算表檔案，分頁「報名名單」「活動資訊」，整份重寫）、`afterSync_`（各動作回傳的 `_ev` 觸發，失敗不影響主要操作）、`eventSheetSync`、`eventFolder_`（`EVENT_FOLDER_ID`）、`safeCell_`（防公式）；`eventRegs.sheetUrl` 只給團長。這是系統唯一會寫到主試算表以外檔案的地方。
 - 活動報名對象與資料保留（SPEC 附錄第 52 點）：`canRegisterEvents_`（管理員或綁定在團／體驗孩子）、`eventList.eligible`；`purgeEndedEvents_`（`dailyJob` 呼叫；先 `syncEventSheet_` 成功才刪報名並寫「封存時間」），封存後 `eventSave`／`syncEventSheet_` 拒絕。
+- 章的內建圖與進程顯示範圍（SPEC 附錄第 53 點）：前端 `BADGES`（四級菱形 SVG）、`triBadge`（技能章三角形，顏色 `BADGE_COLOR` 依分類）、`iconOf`（有內建圖時加 `.art`）、`lvIcon`、`levelWindow(currentLevel)`（家長闖關、家長首頁、已登入家長的公開進程頁）。上傳的章圖仍優先（`applyUnitImages`）。
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 139 項、`npm run test:web` 全過）；團長已在正式環境試用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構

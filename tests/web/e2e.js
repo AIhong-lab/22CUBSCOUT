@@ -183,15 +183,15 @@ function seed(env) {
   // 闖關地圖
   await tab('progress');
   await page.locator('.stage').first().waitFor();
-  assert.equal(await page.locator('.stage').count(), 5);
-  assert.match(await page.locator('.stage[data-unit=剛入團]').getAttribute('class'), /done/, '已拿到羚羊，視為通過剛入團');
-  assert.match(await page.locator('.stage[data-unit=剛入團]').innerText(), /已晉級/, '沒有頒發日期時不顯示空白日期');
+  // 只顯示目前這一級（羚羊）和下一級（狼）（附錄第 53 點）
+  assert.deepEqual(await page.locator('.stage').evaluateAll((els) => els.map((e) => e.dataset.unit)), ['羚羊', '狼']);
+  assert.ok(await page.locator('.stage[data-unit=羚羊] .uic.art svg').count() === 1, '羚羊用內建的菱形 Q 版圖');
   // 手機版：所有分頁都看得到，最後一個不會被切掉
   const last = await page.locator('nav.tabs button').last().boundingBox();
   assert.ok(last.x + last.width <= 391, '最後一個分頁沒有被切掉：' + JSON.stringify(last));
   assert.match(await page.locator('.stage[data-unit=羚羊]').getAttribute('class'), /done/);
   assert.match(await page.locator('.stage[data-unit=狼]').getAttribute('class'), /active/);
-  assert.match(await page.locator('.stage[data-unit=鹿]').getAttribute('class'), /locked/);
+  assert.equal(await page.locator('.stage[data-unit=鹿]').count(), 0, '下下一級不顯示');
   const panel = await page.locator('#lvPanel').innerText();
   assert.match(panel, /狼級任務/, '預設打開正在挑戰的那一關');
   assert.match(panel, /晉級條件：參與羚羊級幼童軍6個月以上/);
