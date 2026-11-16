@@ -142,7 +142,7 @@
 
 ## 前端（web/index.html）
 - 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
-- 版面（SPEC 附錄第 44 點）：`#tabs` 在 `header.top` 內，<760px 用 CSS 固定在螢幕下方；`setTabs()` 清單可含分組標題 `['#','',標題]`（只在電腦版後台側欄顯示）；寬螢幕（`isWide()`，≥1000px）後台用 `adminSideTabs()` 左側分組選單，手機用 `ADMIN_TABS`＋分組的「更多」。家長 `PARENT_TABS` 三個分頁，「進度」內用 `state.seg`（map/badges/attendance）切換。簽核是 `st.step` 1～3 的精靈。小狼頁 `params.tab`（prog/badges/bind）。樣式集中在 CSS 的「2026-11 改版」區塊。未登入預設 `renderHome()`。e2e 另有一段 1280px 寬螢幕檢查。
+- 版面（SPEC 附錄第 44 點）：`#tabs` 在 `header.top` 內，<760px 用 CSS 固定在螢幕下方；`setTabs()` 清單可含分組標題 `['#','',標題]`（只在電腦版後台側欄顯示）；寬螢幕（`isWide()`，≥1000px）後台用 `adminSideTabs()` 左側分組選單，手機用 `ADMIN_TABS`＋分組的「更多」。家長 `PARENT_TABS` 四個分頁（首頁、公佈欄、進度、我的；公開 `PUBLIC_TABS` 也有公佈欄，附錄第 55 點），「進度」內用 `state.seg`（map/badges/attendance）切換。簽核是 `st.step` 1～3 的精靈。小狼頁 `params.tab`（prog/badges/bind）。樣式集中在 CSS 的「2026-11 改版」區塊。未登入預設 `renderHome()`。e2e 另有一段 1280px 寬螢幕檢查。
 - 結構：工具函式 → 登入／註冊 → 家長畫面（`viewHome` 首頁、`viewMap` 闖關、`viewBadges` 徽章、`viewStamps` 出席、`renderMine`）→ `printSheets` → 後台（`ADMIN_PAGES` 物件，每個鍵是一頁；`goAdmin(頁名, 參數)` 切換）。
 - 後台需要確認的操作（頒章、修改頒章）用 `withConfirm()`：後端回 `needConfirm` 時跳確認視窗再帶 `confirm:true` 重送。
 - 登入憑證：勾「記住我」存 localStorage，否則存 sessionStorage（關閉瀏覽器即登出）。

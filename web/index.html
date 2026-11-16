@@ -653,7 +653,7 @@ const eventCardHtml = (e) => `<h2>🎪 ${esc(e.title)} <span class="pill ${EV_PI
 async function renderInfo(kind) {
   document.getElementById('title').textContent = '🐾 22團幼童軍';
   setHeader(''); setHash('#' + kind);
-  setTabs(PUBLIC_TABS(), 'home', onPublicTab);
+  setTabs(PUBLIC_TABS(), kind === 'notices' ? 'notices' : 'home', onPublicTab);
   scrollTop(); loading();
   const back = '<button class="back" id="infoBack">← 首頁</button>';
   try {
@@ -1154,7 +1154,7 @@ async function logout() {
 // ═════════════ 家長畫面：闖關冒險 ═════════════
 
 // 三個分頁：首頁、進度（闖關｜徽章｜出席 用上方切換）、我的（SPEC 附錄第 44 點）
-const PARENT_TABS = [['home', '🏠', '首頁'], ['progress', '🗺️', '進度'], ['mine', '👤', '我的']];
+const PARENT_TABS = [['home', '🏠', '首頁'], ['notices', '📣', '公佈欄'], ['progress', '🗺️', '進度'], ['mine', '👤', '我的']];
 const PARENT_SEGS = [['map', '🗺️ 闖關'], ['badges', '🎖️ 徽章'], ['attendance', '🐾 出席']];
 
 function renderParentHeader() {
@@ -1177,6 +1177,12 @@ async function renderParent(keep) {
   if (state.view === 'badges' || state.view === 'attendance') { state.seg = state.view; state.view = 'progress'; }
   setTabs(PARENT_TABS, state.view, (v) => { state.view = v; renderParent(true); });
   scrollTop();
+  if (state.view === 'notices') {
+    loading();
+    try { const list = await loadNotices(true); $app.innerHTML = noticesHtml(list, 30) || '<section class="card" id="noticeCard"><h2>📣 公佈欄</h2><p class="muted" style="margin:0">目前沒有公告。</p></section>'; }
+    catch (e) { if (e.code !== 'SESSION_EXPIRED') $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div></section>`; }
+    return;
+  }
   if (state.view === 'mine') return renderMine();
   if (!state.cubId) return renderNoCub();
   if (!keep || !state.detail || state.detail.cub.cubId !== state.cubId) {
@@ -1525,7 +1531,7 @@ async function renderMine() {
 // ═════════════ 公開頁面：首頁、進程查詢、技能章查詢（不用登入，不含任何孩子的資料） ═════════════
 
 let catalogData = null;
-const PUBLIC_TABS = () => [['home', '🏠', '首頁'], ['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '技能章查詢'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
+const PUBLIC_TABS = () => [['home', '🏠', '首頁'], ['notices', '📣', '公佈欄'], ['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '技能章查詢'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
 const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
 document.getElementById('title').onclick = () => { if (!canLeave()) return; if (state.me) { state.view = 'home'; state.admin = { tab: 'home', page: null }; route(); } else renderHome(); };
 
@@ -1535,6 +1541,7 @@ function setHash(h) { try { history.replaceState(null, '', location.pathname + l
 function onPublicTab(v) {
   if (v === 'login') { setHash(''); return state.me ? route() : renderLogin(); }
   if (v === 'home') return renderHome();
+  if (v === 'notices') return renderInfo('notices');
   return renderCatalog(v);
 }
 

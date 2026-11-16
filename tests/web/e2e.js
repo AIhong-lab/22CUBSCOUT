@@ -90,6 +90,16 @@ function seed(env) {
   assert.match(hp, /家長、團長、服務員都從這裡登入[\s\S]*直接進入管理員後台/);
   assert.equal(new URL(page.url()).hash, '#home');
   await shot('00-home'); await noHScroll('公開首頁');
+  // 公佈欄是導覽列上的一個分頁（附錄第 55 點）
+  await tab('notices');
+  await page.locator('#noticeCard, #infoBack').first().waitFor();
+  assert.equal(new URL(page.url()).hash, '#notices');
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'notices');
+  const lastPub = await page.locator('nav.tabs button').last().boundingBox();
+  assert.ok(lastPub.x + lastPub.width <= 391, '五個分頁在手機上放得下：' + JSON.stringify(lastPub));
+  await shot('00n-notices-tab');
+  await tab('home');
+  await page.getByText('什麼是「進程」？').waitFor();
 
   await tab('progress');
   await page.locator('.stage').first().waitFor();
@@ -214,7 +224,13 @@ function seed(env) {
   assert.match(await page.locator('#lvPanel').innerText(), /羚羊級任務[\s\S]*6 月團集會/);
 
   // 徽章收藏冊（進度 → 徽章）
-  assert.equal(await page.locator('nav.tabs button').count(), 3, '家長只有三個分頁：首頁、進度、我的');
+  assert.equal(await page.locator('nav.tabs button').count(), 4, '家長四個分頁：首頁、公佈欄、進度、我的');
+  await tab('notices');
+  await page.locator('#noticeCard').waitFor();
+  assert.match(await text(), /公佈欄/);
+  await noHScroll('家長公佈欄');
+  await tab('home');
+  await page.getByText('下一步挑戰').waitFor();
   await seg('badges');
   await page.getByText('我的徽章收藏冊').waitFor();
   const b = await text();
