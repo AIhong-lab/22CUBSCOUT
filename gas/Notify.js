@@ -152,6 +152,8 @@ function handleKeyword_(text, lineUserId, replyToken) {
 /** 每天掃一次：抓「項目早就全過、今天剛滿晉級間隔」與再提醒 */
 function dailyJob() {
   DB_CACHE_ = {};
+  try { purgeEndedEvents_(); } catch (e) { console.error('活動封存失敗：' + (e && e.message)); }
+  DB_CACHE_ = {};
   notifySafely_(false);
 }
 

@@ -148,7 +148,7 @@ function loadGas(opts = {}) {
       formatDate: (d, tz, fmt) => {
         const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
           .formatToParts(d).map((x) => [x.type, x.value]));
-        return fmt.replace('yyyy', p.year).replace('MM', p.month).replace('dd', p.day).replace('HH', p.hour).replace('mm', p.minute);
+        return fmt.replace('yyyy', p.year).replace('MM', p.month).replace('dd', p.day).replace('HH', p.hour).replace('mm', p.minute).replace(/'/g, ''); // 和 GAS 一樣：單引號內是原樣文字（例如 'T'）
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
     },

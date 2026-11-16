@@ -1120,3 +1120,62 @@ test('技能章改名後，上傳過的圖片跟著新名字（附錄第 50 點�
   call(L, 'unitSave', { category: '技能章', unit: '露營', group: '技巧類', newName: '野營' });
   assert.deepEqual(Object.keys(env.api({ action: 'unitImages' }).images), ['技能章|野營'], '改名後圖片還在');
 });
+
+test('活動報名只開放 22 團（附錄第 52 點）：管理員、有在團或體驗中孩子的家長；其他帳號不行', () => {
+  const { env, call, L, A, P, cubId } = world();
+  const id = call(L, 'eventSave', { title: '團內健行', date: '2026-12-20', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59', fee: 0 }).id;
+  const one = (name, identity) => ({ eventId: id, people: [{ name, identity, answers: {} }] });
+  // 還沒審核（或被退回）的帳號
+  const v = env.api({ action: 'consentText' }).version;
+  const O = env.api({ action: 'register', identity: '家長', childNames: ['外團孩子'], username: 'other01', password: 'otherpass1', nickname: '外團家長', consentVersion: v, agree: true }).token;
+  assert.equal(call(O, 'eventList').eligible, false);
+  assert.equal(call(O, 'eventList').events[0].questions, undefined, '不能報名的人看不到題目');
+  assert.match(call(O, 'eventRegister', one('外團孩子', '小狼')).message, /只開放 22 團/);
+  // 團長、服務員、在團孩子的家長可以
+  assert.equal(call(L, 'eventList').eligible, true);
+  assert.equal(call(A, 'eventRegister', one('陳服務員', '服務員')).added, 1);
+  assert.equal(call(P, 'eventRegister', one('測試小狼甲', '小狼')).added, 1);
+  // 孩子離團後，家長就不能再報名
+  call(L, 'cubLeave', { cubId, leftDate: '2026-11-14' });
+  assert.equal(call(P, 'eventList').eligible, false);
+  assert.match(call(P, 'eventRegister', one('測試小狼甲媽媽', '家長')).message, /只開放 22 團/);
+});
+
+test('活動結束後，網站上的報名資料自動清除，存檔試算表保留（附錄第 52 點）', () => {
+  const { env, call, L, P } = world();
+  const id = call(L, 'eventSave', { title: '冬季露營', date: '2026-12-12', endDate: '2026-12-13', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59', fee: 500 }).id;
+  call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: {} }, { name: '測試小狼甲媽媽', identity: '家長', answers: {} }] });
+  const regs = call(L, 'eventRegs', { eventId: id }).regs;
+  call(L, 'eventPay', { updates: [{ regId: regs[0].regId, amount: 500, paid: true }] });
+  const book = Object.values(env.ext.books)[0];
+  const list = () => { const sh = book.getSheetByName('報名名單'); return sh.getRange(1, 1, sh.getLastRow(), 6).getValues(); };
+  // 活動最後一天還不清
+  env.setNow(Date.parse('2026-12-13T10:00:00Z'));
+  env.ctx.dailyJob();
+  assert.equal(env.rows('活動報名').length, 2);
+  // 結束後隔天清除；存檔還在
+  env.setNow(Date.parse('2026-12-14T10:00:00Z'));
+  env.ctx.dailyJob();
+  assert.equal(env.rows('活動報名').length, 0, '網站上的報名資料清掉');
+  assert.equal(list().length, 3, '存檔試算表的名單還在');
+  assert.deepEqual(list()[1].slice(3, 5), [500, '是'], '沒有自訂題目時：姓名、身分別、報名人、金額、已繳');
+  const L2 = env.api({ action: 'login', username: 'leader01', password: 'leaderpass1' }).token;
+  const ev = call(L2, 'eventAdminList').events.find((e) => e.id === id);
+  assert.equal(ev.archived, true);
+  assert.equal(call(L2, 'eventRegs', { eventId: id }).sheetUrl, book.getUrl(), '還拿得到存檔連結');
+  // 封存後不會再改寫存檔，也不能修改活動
+  assert.match(call(L2, 'eventSheetSync', { eventId: id }).message, /已經封存/);
+  assert.match(call(L2, 'eventSave', { id, title: '改名', date: '2026-12-12', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59' }).message, /已經結束並封存/);
+  assert.equal(list().length, 3);
+  // 存檔建立失敗的活動不清除（避免資料不見）
+  env.ext.fail = true;
+  const id2 = call(L2, 'eventSave', { title: '沒有存檔的活動', date: '2026-12-20', regStart: '2026-12-14T08:00', regEnd: '2026-12-18T23:59' }).id;
+  const P2 = env.api({ action: 'login', username: 'parent01', password: 'parentpass1' }).token;
+  assert.equal(call(P2, 'eventRegister', { eventId: id2, people: [{ name: '測試小狼甲', identity: '小狼', answers: {} }] }).added, 1);
+  env.setNow(Date.parse('2026-12-22T10:00:00Z'));
+  env.ctx.dailyJob();
+  assert.equal(env.rows('活動報名').length, 1, '沒有存檔就不清除');
+  env.ext.fail = false;
+  env.ctx.dailyJob();
+  assert.equal(env.rows('活動報名').length, 0, '存檔補建成功後才清除');
+});

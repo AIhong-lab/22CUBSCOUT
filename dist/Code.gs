@@ -1243,7 +1243,7 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
-HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID'];
+HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間'];
 HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
@@ -1314,7 +1314,7 @@ var SEED = {
   "鹿": "參與狼級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成鹿級進程，經公開晉級儀式頒授佩戴鹿章。",
   "豹": "參與鹿級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成豹級進程，經公開晉級儀式頒授佩戴豹章。"
  },
- "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在幼童軍團的進程，本團使用「幼童軍進程查詢系統」。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別（小狼、稚齡、童軍、家長、服務員）、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。每個活動的報名名單會另外存一份在團長的雲端硬碟作為存檔，只有團長看得到。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 本團團長與服務員看得到全團資料，用來簽核、點名與頒章。\n\n四、資料放在哪裡\n存放在本團團長管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡團長：【請填寫：團長稱呼與聯絡方式，例如 LINE 官方帳號「22團幼童軍進程系統」】。"
+ "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在幼童軍團的進程，本團使用「幼童軍進程查詢系統」。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別（小狼、稚齡、童軍、家長、服務員）、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，只有團長看得到，由團長負責保管。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 本團團長與服務員看得到全團資料，用來簽核、點名與頒章。\n\n四、資料放在哪裡\n存放在本團團長管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡團長：【請填寫：團長稱呼與聯絡方式，例如 LINE 官方帳號「22團幼童軍進程系統」】。"
 };
 
 // ════════════════ Db.js ════════════════
@@ -3919,7 +3919,7 @@ function loadEvents_() {
     return {
       id: Logic.clean(r[0]), title: Logic.clean(r[1]), desc: String(r[2] === undefined || r[2] === null ? '' : r[2]),
       date: dateStr_(r[3]), endDate: dateStr_(r[4]), regStart: Logic.clean(r[5]), regEnd: Logic.clean(r[6]),
-      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', sheetId: Logic.clean(r[12]), _row: r._row, _raw: r
+      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', sheetId: Logic.clean(r[12]), archived: !!Logic.clean(r[13]), _row: r._row, _raw: r
     };
   });
 }
@@ -3951,15 +3951,24 @@ function publicEvents_() {
 
 // ───────────── 報名（要登入；家長、服務員、團長都可以） ─────────────
 
+/** 可以報名的人：團長、服務員，或有綁定「在團／體驗中」孩子的帳號（SPEC 附錄第 52 點） */
+function canRegisterEvents_(who) {
+  if (who.admin) return true;
+  var active = {};
+  loadCubs_().forEach(function (c) { if (c.status === '在團' || c.status === Logic.TRIAL) active[c.cubId] = true; });
+  return loadBindings_().some(function (b) { return b.accountId === who.account.accountId && active[b.cubId]; });
+}
+var EVENT_NOT_ELIGIBLE = '活動報名只開放 22 團的家長、團長與服務員。如果你是 22 團的家長，請等團長審核通過後再報名。';
+
 function apiEventList_(req, who) {
-  var now = nowStamp_(), today = now.slice(0, 10);
+  var now = nowStamp_(), today = now.slice(0, 10), eligible = canRegisterEvents_(who);
   var events = loadEvents_().filter(function (e) { return e.enabled && (e.endDate || e.date) >= today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   var mine = loadRegs_().filter(function (r) { return r.accountId === who.account.accountId && r.active; });
   return {
-    identities: Logic.EVENT_IDENTITIES,
+    identities: Logic.EVENT_IDENTITIES, eligible: eligible, notice: eligible ? '' : EVENT_NOT_ELIGIBLE,
     events: events.map(function (e) {
       var v = eventView_(e, now);
-      v.questions = e.questions;
+      if (eligible) v.questions = e.questions;
       v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid }; });
       return v;
     })
@@ -3969,6 +3978,7 @@ AUTHED_ACTIONS.eventList = apiEventList_;
 
 function apiEventRegister_(req, who) {
   return afterSync_(withLock_(function () {
+    if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
     if (!ev || !ev.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
     var st = regState_(ev, nowStamp_());
@@ -4017,7 +4027,7 @@ registerAdmin_('eventAdminList', 'manageEvents', function () {
     events: loadEvents_().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).map(function (e) {
       var mine = regs.filter(function (r) { return r.eventId === e.id; });
       var v = eventView_(e, now);
-      v.questions = e.questions; v.enabled = e.enabled;
+      v.questions = e.questions; v.enabled = e.enabled; v.archived = e.archived;
       v.count = mine.length; v.paidCount = mine.filter(function (r) { return r.paid; }).length;
       return v;
     })
@@ -4034,6 +4044,7 @@ registerAdmin_('eventSave', 'manageEvents', function (req, who) {
     if (req.id) {
       var cur = list.filter(function (x) { return x.id === Logic.clean(req.id); })[0];
       if (!cur) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+      if (cur.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經結束並封存，不能再修改；資料請看存檔試算表。');
       var row = cur._raw.slice(0, HEADERS[SHEET.EVENTS].length);
       cells.forEach(function (c, i) { row[i + 1] = c; });
       updateRows_(SHEET.EVENTS, [{ row: cur._row, values: row }]);
@@ -4052,7 +4063,7 @@ registerAdmin_('eventRegs', 'manageEvents', function (req) {
   if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
   var acc = accountsById_();
   var v = eventView_(ev, nowStamp_());
-  v.questions = ev.questions; v.enabled = ev.enabled;
+  v.questions = ev.questions; v.enabled = ev.enabled; v.archived = ev.archived;
   return {
     event: v, sheetUrl: ev.sheetId ? EVENT_SHEET_URL + ev.sheetId : '',
     regs: loadRegs_().filter(function (r) { return r.eventId === ev.id && r.active; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
@@ -4126,6 +4137,7 @@ function syncEventSheet_(eventId) {
   DB_CACHE_ = {};
   var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
   if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+  if (ev.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經封存，存檔試算表不會再更新。');
   var book = null;
   if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
   if (!book) {
@@ -4169,6 +4181,33 @@ registerAdmin_('eventSheetSync', 'manageEvents', function (req) {
   try { return { sheetUrl: syncEventSheet_(id) }; }
   catch (e) { if (e instanceof ApiError) throw e; throw new ApiError(ERR.BAD_INPUT, '存檔試算表建立或更新失敗，請稍後再試一次。'); }
 });
+
+/**
+ * 活動結束後（結束日的隔天起）清除網站上的報名資料；存檔試算表保留，由團長自己封存（SPEC 附錄第 52 點）。
+ * 先做最後一次同步，同步成功才清除並標記封存；同步失敗就留到下次再試，避免資料不見。每日排程呼叫。
+ */
+function purgeEndedEvents_() {
+  var today = today_(), done = 0;
+  var ended = loadEvents_().filter(function (e) { return !e.archived && Logic.isDateStr(e.endDate || e.date) && (e.endDate || e.date) < today; });
+  ended.forEach(function (e0) {
+    try {
+      withLock_(function () {
+        syncEventSheet_(e0.id);
+        DB_CACHE_ = {};
+        var ev = loadEvents_().filter(function (x) { return x.id === e0.id; })[0];
+        if (!ev || !ev.sheetId) return;
+        var rows = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).map(function (r) { return r._row; });
+        if (rows.length) deleteRows_(SHEET.EVENT_REGS, rows);
+        var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
+        row[13] = new Date();
+        updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
+        logOp_('每日排程', '活動封存', ev.id, rows.length + ' 筆報名', '已移到存檔試算表');
+        done++;
+      });
+    } catch (err) { console.error('活動封存失敗（明天再試）：' + (err && err.message)); }
+  });
+  return done;
+}
 
 /** 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資） */
 function deleteRegsOfAccount_(accountId) {
@@ -4676,6 +4715,8 @@ function handleKeyword_(text, lineUserId, replyToken) {
 
 /** 每天掃一次：抓「項目早就全過、今天剛滿晉級間隔」與再提醒 */
 function dailyJob() {
+  DB_CACHE_ = {};
+  try { purgeEndedEvents_(); } catch (e) { console.error('活動封存失敗：' + (e && e.message)); }
   DB_CACHE_ = {};
   notifySafely_(false);
 }
