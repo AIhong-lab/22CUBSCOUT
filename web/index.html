@@ -630,8 +630,13 @@ function drawCalendar(el, site, ym) {
     <div class="cal-head"><button data-cal="${step(-1)}" aria-label="上個月" ${ym <= first ? 'disabled' : ''}>‹</button><b>${y} 年 ${m} 月</b><button data-cal="${step(1)}" aria-label="下個月">›</button></div>
     <div class="cal-grid">${WEEKDAYS.map((w) => `<span class="wd">${w}</span>`).join('')}${cells.join('')}</div>
     <div class="cal-legend"><i style="background:var(--blue);margin-left:0"></i>團集會<i style="background:var(--yellow,#f5b82e)"></i>大活動${(site.events || []).length ? '<i style="background:#2e9e5b"></i>開始報名<i style="background:#d64545"></i>報名截止' : ''}</div>
-    ${inMonth.length ? inMonth.map((x) => `<div class="list-row"><span class="grow"><span class="t">${+x.date.slice(5, 7)}/${+x.date.slice(8)}（${WEEKDAYS[new Date(+x.date.slice(0, 4), +x.date.slice(5, 7) - 1, +x.date.slice(8)).getDay()]}）</span>　${esc(x.name)}${x.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${x.note ? `<br><span class="s">${esc(x.note)}</span>` : ''}</span></div>`).join('') : (evMonth.length ? '' : '<p class="muted" style="margin:8px 0 0">這個月沒有排定的集會。</p>')}
-    ${evMonth.filter((x, i, a) => a.findIndex((y) => y[1] === x[1] && y[3] === x[3]) === i).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map((x) => `<div class="list-row tap" data-info="events"><span class="grow"><span class="t">${+x[0].slice(5, 7)}/${+x[0].slice(8)}</span>　${x[2]} ${esc(x[3])}</span></div>`).join('')}`;
+    ${(() => {
+      const wd = (ds) => WEEKDAYS[new Date(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8)).getDay()];
+      const day = (ds) => `<span class="t">${+ds.slice(5, 7)}/${+ds.slice(8)}（${wd(ds)}）</span>`;
+      const rows = inMonth.map((x) => [x.date, `<div class="list-row"><span class="grow">${day(x.date)}　${esc(x.name)}${x.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${x.note ? `<br><span class="s">${esc(x.note)}</span>` : ''}</span></div>`])
+        .concat(evMonth.filter((x, i, arr) => arr.findIndex((y) => y[1] === x[1] && y[3] === x[3]) === i).map((x) => [x[0], `<div class="list-row tap" data-info="events"><span class="grow">${day(x[0])}　${x[2]} ${esc(x[3])}</span></div>`]));
+      return rows.length ? rows.sort((p, q) => (p[0] < q[0] ? -1 : p[0] > q[0] ? 1 : 0)).map((r) => r[1]).join('') : '<p class="muted" style="margin:8px 0 0">這個月沒有排定的集會。</p>';
+    })()}`;
   el.querySelectorAll('[data-info=events]').forEach((b) => { b.onclick = () => renderInfo('events'); });
   el.querySelectorAll('[data-cal]').forEach((b) => { b.onclick = () => drawCalendar(el, site, b.dataset.cal); });
 }
@@ -662,7 +667,9 @@ async function renderInfo(kind) {
         $app.innerHTML = back + (evs.length ? evs.map((e) => `<section class="card" data-ev="${esc(e.id)}">${eventCardHtml(e)}
           ${e.state === '報名中' ? `<button class="btn cta" data-reg="${esc(e.id)}">✍️ 我要報名${state.me ? '' : '（先登入）'}</button>` : `<p class="muted small" style="margin-bottom:0">${e.state === '尚未開始' ? '還沒開始報名。' : '報名已經截止，有問題請聯絡團長。'}${state.me ? ' <button class="linkbtn" data-reg="' + esc(e.id) + '">看我的報名</button>' : ''}</p>`}</section>`).join('')
           : '<section class="card"><h2>🎪 活動報名</h2><p class="muted">目前沒有開放報名的活動。</p></section>');
-        $$('[data-reg]').forEach((b) => { b.onclick = () => { if (state.me) return renderEventForm(b.dataset.reg); pendingEvent.set(b.dataset.reg); renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' }); }; });
+        $$('[data-reg]').forEach((b) => { b.onclick = () => { if (state.me) return renderEventForm(b.dataset.reg); pendingEvent.set(b.dataset.reg);
+          if (store.get('token')) { setHash(''); return start(); } // 瀏覽器裡還有登入憑證：直接帶進報名表
+          renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' }); }; });
       } else if (kind === 'calendar') {
         $app.innerHTML = `${back}${site.activity ? `<section class="card"><h2>🕘 活動時間</h2><p class="prose">${esc(site.activity)}</p></section>` : ''}<section class="card" id="calCard"></section>
           <p class="muted small center">實際時間以公佈欄的通知為準。</p>`;
@@ -729,11 +736,17 @@ async function renderEventForm(eventId) {
 
 /** 在 $app 最前面（或指定元素後面）補上公告；載入失敗就不顯示 */
 function mountNotices(max, afterSel) {
-  loadNotices().then((list) => {
-    if ($('#noticeCard') || !list.length) return;
-    const html = noticesHtml(list, max), ref = afterSel && $(afterSel);
+  // 沒有公告、或載入失敗時也顯示公佈欄（原本會整塊不見，看起來像功能壞了）
+  const put = (html) => {
+    if ($('#noticeCard')) return;
+    const ref = afterSel && $(afterSel);
+    if (afterSel && !ref) return; // 已經換頁了
     if (ref) ref.insertAdjacentHTML('afterend', html); else $app.insertAdjacentHTML('afterbegin', html);
-  }).catch(() => {});
+  };
+  const box = (inner) => `<section class="card" id="noticeCard"><h2>📣 公佈欄</h2>${inner}</section>`;
+  const isAdmin = () => !!(state.me && state.me.role);
+  loadNotices().then((list) => put(noticesHtml(list, max) || box(`<p class="muted" style="margin:0">目前沒有公告。${isAdmin() ? '到後台「📣 公佈欄」就可以發布。' : ''}</p>`)))
+    .catch((e) => { if (e.code !== 'SESSION_EXPIRED') put(box(`<p class="muted small" style="margin:0">公佈欄暫時無法顯示（${esc(e.message)}）。${isAdmin() ? '如果一直這樣，請確認後端已貼上最新程式並部署新版本。' : ''}</p>`)); });
 }
 /** 我負責的小隊（小隊輔）：點名、簽核預設帶這一隊 */
 const mySquad = (list) => ((state.me && state.me.mySquads) || []).find((q) => (list || []).includes(q));

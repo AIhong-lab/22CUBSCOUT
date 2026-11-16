@@ -70,6 +70,8 @@ function seed(env) {
   await page.goto(PAGE);
   await page.getByText('什麼是「進程」？').waitFor();
   assert.equal(new URL(page.url()).hash, '#home', '沒登入時打開網站是首頁');
+  await page.locator('#noticeCard').waitFor();
+  assert.match(await page.locator('#noticeCard').innerText(), /公佈欄[\s\S]*目前沒有公告/, '沒有公告時公佈欄也要看得到');
   assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'home', '導覽列第一個是首頁');
   assert.match(await page.locator('nav.tabs button').first().innerText(), /首頁/);
   // 按標題「22團幼童軍」回首頁
@@ -756,7 +758,7 @@ function seed(env) {
   assert.ok(await page.locator('#calCard .d.today').count() === 1, '月曆標出今天');
   for (let i = 0; i < 3 && !(await page.locator('#calCard').innerText()).includes('12/6 團集會'); i++) await page.locator('#calCard [data-cal]').last().click();
   assert.match(await page.locator('#calCard').innerText(), /12\/6（日）[\s\S]*12\/6 團集會/, '月曆下方列出當月集會');
-  assert.match(await page.locator('#calCard').innerText(), /🔴 報名截止：冬季露營[\s\S]*🎪 冬季露營（12\/12～12\/13）/, '月曆列出活動與報名截止');
+  assert.match(await page.locator('#calCard').innerText(), /12\/5（六）[\s\S]*報名截止：冬季露營[\s\S]*12\/6（日）[\s\S]*12\/6 團集會[\s\S]*12\/12（六）[\s\S]*冬季露營（12\/12～12\/13）/, '月曆列出活動與報名截止');
   assert.ok(await page.locator('#calCard .d.ev').count() === 2 && await page.locator('#calCard .d.regend').count() === 1, '月曆標出活動日與截止日');
   assert.ok(await page.locator('#homeLinks [data-info=events]').count() === 1);
   await shot('50-home-calendar'); await noHScroll('首頁月曆');
