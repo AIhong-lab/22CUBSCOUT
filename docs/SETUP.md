@@ -35,8 +35,8 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 
 > 進階：也可以用 clasp（`cd gas && clasp push`），兩種方式擇一，不要混用。
 
-## 4-1. 把網頁也放在 GAS（建議）
-這樣網頁和後端在同一個地方，更新一次就全部更新，不會再出現「不支援的操作」。
+## 4-1. 把網頁也放在 GAS（目前不使用）
+⚠️ 2026-11-17 實測時 GAS 版一直停在「載入中」，正式網站維持 GitHub Pages（SPEC 附錄第 59 點）。以下步驟保留給之後想再試的人；**「允許外部網頁連線」一定要維持「是」**。
 1. Apps Script 左側「檔案」旁的「＋」→「HTML」→ 檔名輸入 `Index`（大寫 I，不用加 .html）。**只有第一次要建立。**
 2. 開 https://github.com/AIhong-lab/22CUBSCOUT/blob/main/dist/Index.html ，按右上角「複製」圖示 → 回 Apps Script 點 `Index.html` → 全選貼上（整份取代）→ 儲存。
 3. `程式碼.gs` 照第 4 節貼上最新的 Code.gs → 執行 `setup` → 「部署 → 管理部署作業 → 鉛筆 → 新版本 → 部署」。

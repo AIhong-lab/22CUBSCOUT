@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
+<!-- 資安（SPEC 附錄第 59 點）：只允許連到 Google 的後端、不載入任何外部程式或圖片，表單不會被送到別的網站。由 GAS 提供時建置會拿掉這一行 -->
+<meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#1f4e9c">
 <title>22團幼童軍冒險</title>
 <script id="boot"></script>
@@ -520,6 +522,12 @@ class ApiErr extends Error { constructor(code, message) { super(message); this.c
  *    用 google.script.run 呼叫同一個專案的 apiFromPage，網頁和後端永遠是同一版。
  */
 const IN_GAS = typeof google !== 'undefined' && !!(google.script && google.script.run);
+// 不讓別的網站把這個網頁包在框框裡騙人點擊（GitHub Pages 無法設定防護標頭，所以用程式擋）；由 GAS 提供時本來就在框框裡，不擋
+if (!IN_GAS && window.top !== window.self) {
+  // 瀏覽器不允許框框裡的網頁把整頁跳走，所以直接不顯示任何內容，只給一個在新視窗開啟的連結，然後停止執行
+  document.body.innerHTML = '<p style="padding:24px;font-size:18px">為了安全，請在新視窗開啟：<a href="' + location.href.replace(/"/g, '') + '" target="_blank" rel="noopener">22團幼童軍</a></p>';
+  throw new Error('這個網頁不能被放在別的網站的框框裡');
+}
 let gasHash = '';  // 由 GAS 提供時，網址的 # 與 ?p= 要透過 google.script.url 取得
 let gasBase = '';  // 由 GAS 提供時的網站網址（給「複製給家長的說明」用）
 async function api(action, data) {

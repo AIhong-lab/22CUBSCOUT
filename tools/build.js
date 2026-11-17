@@ -46,7 +46,8 @@ function main() {
   fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist/Code.gs'), bundle);
   // 網頁也可以直接由 GAS 提供：把 web/index.html 原樣複製成 dist/Index.html，貼到 Apps Script 的 HTML 檔「Index」
-  fs.writeFileSync(path.join(root, 'dist/Index.html'), read('web/index.html'));
+  // 由 GAS 提供時拿掉內容安全政策那一行（GAS 自己的框架需要載入 Google 的程式）
+  fs.writeFileSync(path.join(root, 'dist/Index.html'), read('web/index.html').split('\n').filter((l) => !l.includes('http-equiv="Content-Security-Policy"')).join('\n'));
   console.log('已產生 gas/SeedData.js、dist/Code.gs 與 dist/Index.html');
 }
 
