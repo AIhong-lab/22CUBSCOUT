@@ -112,6 +112,7 @@ function loadGas(opts = {}) {
   // 另外建立的試算表（每個活動一份存檔）：ext.books[id]；ext.fail = true 模擬建立失敗
   const ext = { books: {}, fail: false };
   const html = {};
+  const flags = { sheetCache: false };
   const mkHtml = (content) => { const o = { kind: 'html', content, meta: {}, getContent: () => o.content, setTitle(t) { o.title = t; return o; }, addMetaTag(k, v) { o.meta[k] = v; return o; } }; return o; };
   drive.api = {
     Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
@@ -160,7 +161,8 @@ function loadGas(opts = {}) {
     UrlFetchApp: { fetch: (url, o) => { sent.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => net.code }; } },
     CacheService: { getScriptCache: () => ({
       get: (k) => (cache[k] && cache[k].exp > clock ? cache[k].v : null),
-      put: (k, v, sec) => { cache[k] = { v: String(v), exp: clock + sec * 1000 }; },
+      // 分頁暫存（SHEET_）預設關閉：很多測試直接改試算表內容，真實環境由 onEdit 清掉暫存，模擬環境沒有 onEdit。要測暫存時設 env.flags.sheetCache = true
+      put: (k, v, sec) => { if (String(k).startsWith('SHEET_') && !flags.sheetCache) return; cache[k] = { v: String(v), exp: clock + sec * 1000 }; },
       remove: (k) => { delete cache[k]; } }) },
     DriveApp: drive.api,
     ScriptApp: { getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/TEST/exec' }), getProjectTriggers: () => [...triggers], deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
@@ -175,7 +177,7 @@ function loadGas(opts = {}) {
   const sheet = (name) => ss.getSheetByName(name);
   const rows = (name) => sheet(name).getRange(1, 1, sheet(name).getLastRow() || 1, 20).getValues().slice(1).filter((r) => r.some((v) => v !== ''));
   return {
-    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net, ext, html,
+    ctx, ss, props, logs, api, sheet, rows, ui, sent, drive, triggers, net, ext, html, flags,
     advance: (ms) => { clock += ms; },
     setNow: (t) => { clock = t; },
   };

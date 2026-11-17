@@ -7,6 +7,7 @@
 function setup() { setupCore_(); }
 
 function setupCore_() {
+  clearAllCaches_();
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

@@ -36,7 +36,8 @@
 - 章的內建圖與進程顯示範圍（SPEC 附錄第 53 點）：前端 `BADGES`（四級菱形 SVG）、`triBadge`（技能章三角形，顏色 `BADGE_COLOR` 依分類）、`iconOf`（有內建圖時加 `.art`）、`lvIcon`、`levelWindow(currentLevel)`（家長闖關、家長首頁、已登入家長的公開進程頁）。上傳的章圖仍優先（`applyUnitImages`）。
 - 網頁由 GAS 提供（SPEC 附錄第 56 點）：`npm run build` 另產生 `dist/Index.html`（＝`web/index.html`）；`doGet` 用 `HtmlService.createHtmlOutputFromFile('Index')`；前端 `IN_GAS` 時走 `google.script.run.apiFromPage`、`gasHash`／`google.script.url.getLocation`（`?p=` 或 `#`）、`gasBase`（`ping.webUrl`）。**公開函式（非底線結尾）訪客都呼叫得到**：`setup`→`setupCore_`、`dailyJob`→`runDaily_`、`weeklyBackup`→`runWeekly_`（`throttle_`），測試一律呼叫內部函式；`tests/web/gas-mode.js` 是 GAS 模式冒煙測試。
 - 鎖在 GAS 與加速（SPEC 附錄第 57 點）：設定「允許外部網頁連線」＝否時 `doPost` API 回 `ERR.MOVED`（前端 `showMoved`）；`doGet` 用 `bootData_()` 把公開資料內嵌進 `<script id="boot"></script>`（前端 `window.__BOOT`）；`cachedPublic_`／`clearPublicCache_`（`registerAdmin_` 每次動作後清）；`webUrl_()` 預設用專案自己的網址。`npm run test:web` 會跑三段：一般、`E2E_GAS=1`、`gas-mode.js`。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 141 項、`npm run test:web` 全過）；團長決定正式網站改由 GAS 提供（附錄第 56、57 點），待團長在 Apps Script 建立 `Index` 並實測。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- 加速（SPEC 附錄第 58 點）：`ss_()` 快取試算表（`SS_CACHE_`／`SHEET_CACHE_`）；`readAll_` 對項目總表、級別與章說明、進程細項、設定使用 CacheService（`sheetCacheKey_`，`invalidate_` 與 `onEdit`／`clearAllCaches_` 清除；模擬環境預設關閉，`env.flags.sheetCache`）；`startup` API（me＋第一個畫面，前端 `state.prefetch`）。
+- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 144 項、`npm run test:web` 全過）；團長決定正式網站改由 GAS 提供（附錄第 56、57 點），待團長在 Apps Script 建立 `Index` 並實測。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。

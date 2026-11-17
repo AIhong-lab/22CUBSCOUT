@@ -577,3 +577,41 @@ test('鎖在 GAS 與加快載入（附錄第 57 點）：關閉外部連線、�
   page({ action: 'noticeSave', token: L, title: '第二則', content: '' });
   assert.equal(page({ action: 'notices' }).notices.length, 2, '後台發布後馬上看得到');
 });
+
+test('加速：同一次請求只開一次試算表（附錄第 58 點）', () => {
+  const env = loadGas();
+  const r = env.ctx.setupCore_();
+  const L = env.api({ action: 'register', code: r.firstLeaderInvite.code, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' }).token;
+  env.props.SPREADSHEET_ID = 'TEST-SPREADSHEET';
+  let opens = 0;
+  const orig = env.ctx.SpreadsheetApp.openById;
+  env.ctx.SpreadsheetApp.openById = (id) => { opens++; return orig(id); };
+  env.api({ action: 'adminHome', token: L });
+  assert.ok(opens <= 1, '後台首頁開了 ' + opens + ' 次試算表');
+  opens = 0;
+  env.html.Index = '<script id="boot"></script>';
+  env.ctx.doGet({ parameter: {} });
+  assert.ok(opens <= 1, '網頁開了 ' + opens + ' 次試算表');
+});
+
+test('加速：很少變動的分頁暫存起來，修改後立刻更新（附錄第 58 點）', () => {
+  const env = loadGas();
+  env.flags.sheetCache = true;
+  const r = env.ctx.setupCore_();
+  const L = env.api({ action: 'register', code: r.firstLeaderInvite.code, childName: '', username: 'leader01', password: 'leaderpass1', nickname: '團長' }).token;
+  const items = env.sheet('項目總表'), settings = env.sheet('設定');
+  env.api({ action: 'adminHome', token: L });
+  const i0 = items.reads, s0 = settings.reads;
+  env.api({ action: 'adminHome', token: L });
+  env.api({ action: 'me', token: L });
+  assert.equal(items.reads, i0, '項目總表不用再讀');
+  assert.equal(settings.reads, s0, '設定不用再讀');
+  // 經由後台修改：立刻看到新值
+  env.api({ action: 'settingsSave', token: L, changes: { '晉級間隔月數': '3' } });
+  assert.equal(env.api({ action: 'settingsGet', token: L }).settings.find((x) => x.key === '晉級間隔月數').value, '3');
+  // 直接在試算表修改：onEdit 會清掉暫存
+  const row = env.rows('設定').findIndex((x) => x[0] === '晉級間隔月數') + 2;
+  settings.getRange(row, 2).setValues([[5]]);
+  env.ctx.onEdit({ range: { getSheet: () => settings } });
+  assert.equal(env.api({ action: 'settingsGet', token: L }).settings.find((x) => x.key === '晉級間隔月數').value, '5');
+});

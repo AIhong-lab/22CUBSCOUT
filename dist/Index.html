@@ -1141,7 +1141,11 @@ async function start() {
   if (INFO_PAGES[h.slice(1)]) return renderInfo(h.slice(1)); // LINE 圖文選單的連結
   if (!store.get('token')) return renderHome(); // 沒登入：先看首頁（SPEC 附錄第 34 點）
   loading();
-  try { state.me = await api('me'); }
+  try {
+    // 一趟拿到登入資料和第一個畫面要用的資料（SPEC 附錄第 58 點）；舊後端沒有 startup 時退回 me
+    try { const st = await api('startup'); state.me = st.me; state.prefetch = st.prefetch || {}; }
+    catch (e0) { if (e0.code === 'SESSION_EXPIRED') throw e0; state.prefetch = {}; state.me = await api('me'); }
+  }
   catch (e) {
     if (e.code === 'SESSION_EXPIRED') return;
     $app.innerHTML = `<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="re">再試一次</button></section>`;
@@ -1211,7 +1215,9 @@ async function renderParent(keep) {
   if (!state.cubId) return renderNoCub();
   if (!keep || !state.detail || state.detail.cub.cubId !== state.cubId) {
     loading('正在打開冒險地圖……');
-    try { state.detail = await api('cubDetail', { cubId: state.cubId }); }
+    const pre = state.prefetch && state.prefetch.cubDetail;
+    if (pre && pre.cub && pre.cub.cubId === state.cubId) { state.detail = pre; state.prefetch = {}; }
+    else try { state.detail = await api('cubDetail', { cubId: state.cubId }); }
     catch (e) {
       if (e.code === 'SESSION_EXPIRED') return;
       if (e.code === 'NEED_CONSENT') return renderReconsent();
@@ -1830,7 +1836,9 @@ function onSquad(cb) { $$('#squads .chip').forEach((b) => { b.onclick = () => { 
 const ADMIN_PAGES = {
   // ───── 首頁 ─────
   async home() {
-    const [h, ml] = await Promise.all([api('adminHome'), api('meetingList')]);
+    const pre = state.prefetch || {};
+    const [h, ml] = pre.adminHome && pre.meetingList ? [pre.adminHome, pre.meetingList] : await Promise.all([api('adminHome'), api('meetingList')]);
+    state.prefetch = {}; // 只用一次，之後回首頁就重新拿最新的
     const today = ml.today, open = ml.meetings.filter((m) => m.enabled);
     const todayM = open.find((m) => m.date === today);
     const nextM = open.find((m) => m.date > today);

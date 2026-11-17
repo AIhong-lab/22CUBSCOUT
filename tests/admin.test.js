@@ -1179,3 +1179,19 @@ test('活動結束後，網站上的報名資料自動清除，存檔試算表�
   env.ctx.runDaily_();
   assert.equal(env.rows('活動報名').length, 0, '存檔補建成功後才清除');
 });
+
+test('startup：一次取得登入資料與第一個畫面（附錄第 58 點）', () => {
+  const { call, L, P, A, cubId } = world();
+  const a = call(L, 'startup');
+  assert.equal(a.me.role, '團長');
+  assert.ok(a.prefetch.adminHome.alerts, '團長：後台首頁資料');
+  assert.ok(Array.isArray(a.prefetch.meetingList.meetings));
+  const s = call(A, 'startup');
+  assert.equal(s.me.role, '服務員');
+  assert.ok(s.prefetch.adminHome);
+  const p = call(P, 'startup');
+  assert.equal(p.me.role, null);
+  assert.equal(p.prefetch.adminHome, undefined, '家長拿不到後台資料');
+  assert.equal(p.prefetch.cubDetail.cub.cubId, cubId, '家長：第一個孩子的資料');
+  assert.equal(call('bad-token', 'startup').code, 'SESSION_EXPIRED');
+});

@@ -1327,34 +1327,75 @@ var SEED = {
 
 var DB_CACHE_ = {};
 
+// 同一次執行只開一次試算表、每個分頁只找一次（openById 很慢，原本每讀一個分頁就開一次；SPEC 附錄第 58 點）
+var SS_CACHE_ = null, SHEET_CACHE_ = {};
 function ss_() {
+  if (SS_CACHE_) return SS_CACHE_;
   var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  return id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  SS_CACHE_ = id ? SpreadsheetApp.openById(id) : SpreadsheetApp.getActiveSpreadsheet();
+  SHEET_CACHE_ = {};
+  return SS_CACHE_;
 }
 
 function sheet_(name) {
-  var sh = ss_().getSheetByName(name);
+  var book = ss_();
+  if (SHEET_CACHE_[name]) return SHEET_CACHE_[name];
+  var sh = book.getSheetByName(name);
+  if (sh) SHEET_CACHE_[name] = sh;
   if (!sh) throw new Error('找不到分頁：' + name + '（請先執行 setup）');
   return sh;
 }
 
 /** 讀整個分頁（含標題列），欄數以標題定義為準 */
+/**
+ * 很少變動的分頁暫存在 CacheService（10 分鐘），省掉每次請求都讀試算表的時間（SPEC 附錄第 58 點）。
+ * 經由程式寫入時 invalidate_ 會清掉；直接在試算表編輯時由 onEdit 清掉。這些分頁沒有日期欄，存成 JSON 不會變型。
+ */
+var SHEET_CACHE_SECONDS = 600;
+function sheetCacheKey_(name) {
+  return [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].indexOf(name) >= 0 ? 'SHEET_' + name : '';
+}
 function readAll_(name) {
   if (DB_CACHE_[name]) return DB_CACHE_[name];
+  var key = sheetCacheKey_(name);
+  if (key) {
+    try { var hit = CacheService.getScriptCache().get(key); if (hit) { DB_CACHE_[name] = JSON.parse(hit); return DB_CACHE_[name]; } } catch (e) { /* 暫存壞了就讀試算表 */ }
+  }
   var sh = sheet_(name);
   var last = sh.getLastRow();
   var width = HEADERS[name].length;
   var rows = last > 0 ? sh.getRange(1, 1, last, width).getValues() : [];
   DB_CACHE_[name] = rows;
+  if (key) {
+    try { var text = JSON.stringify(rows); if (text.length < 95000) CacheService.getScriptCache().put(key, text, SHEET_CACHE_SECONDS); } catch (e2) { /* 太大就不暫存 */ }
+  }
   return rows;
 }
+
+/** 清掉所有暫存（setup、直接編輯試算表時） */
+function clearAllCaches_() {
+  DB_CACHE_ = {};
+  try {
+    var c = CacheService.getScriptCache();
+    [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].forEach(function (n) { c.remove('SHEET_' + n); });
+    c.remove('CATALOG2');
+  } catch (e) { /* 不影響主要操作 */ }
+  clearPublicCache_();
+}
+
+/** 簡易觸發器：有人直接在試算表編輯時清掉暫存。只清暫存、不讀不寫資料，網頁訪客呼叫也無害 */
+function onEdit(e) { clearAllCaches_(); }
 
 /** 讀資料列（不含標題），每列附上試算表列號 _row */
 function readRows_(name) {
   return readAll_(name).slice(1).map(function (r, i) { r = r.slice(); r._row = i + 2; return r; });
 }
 
-function invalidate_(name) { delete DB_CACHE_[name]; }
+function invalidate_(name) {
+  delete DB_CACHE_[name];
+  var key = sheetCacheKey_(name);
+  if (key) { try { CacheService.getScriptCache().remove(key); } catch (e) { /* 不影響寫入 */ } }
+}
 
 function appendRows_(name, rows) {
   if (!rows.length) return;
@@ -1831,6 +1872,7 @@ var PUBLIC_ACTIONS = {
 /** 需要登入的動作（第二個參數為 requireAccount_ 的結果） */
 var AUTHED_ACTIONS = {
   me: apiMe_,
+  startup: apiStartup_,
   logout: apiLogout_,
   cubDetail: apiCubDetail_,
   bind: apiBind_,
@@ -2191,6 +2233,23 @@ function requestRows_(accountId, names, version, existing, now) {
   var rows = [];
   names.forEach(function (n) { rows.push(requestRow_(accountId, '孩子', n, version, existing.concat(rowsToIds_(rows)), now)); });
   return rows;
+}
+
+/**
+ * 登入後的第一趟（SPEC 附錄第 58 點）：一次回傳 me 與第一個畫面要用的資料，少等一趟後端。
+ * 管理員：後台首頁＋行事曆；家長：第一個孩子的進度。附帶資料取不到就略過，網頁會自己再要。
+ */
+function apiStartup_(req, who) {
+  var me = apiMe_(req, who), pre = {};
+  try {
+    if (who.admin) {
+      pre.adminHome = Object.assign({ ok: true }, AUTHED_ACTIONS.adminHome({}, who));
+      pre.meetingList = Object.assign({ ok: true }, AUTHED_ACTIONS.meetingList({}, who));
+    } else if (me.cubs && me.cubs.length && !me.needsConsent) {
+      pre.cubDetail = Object.assign({ ok: true }, apiCubDetail_({ cubId: me.cubs[0].cubId }, who));
+    }
+  } catch (e) { pre = {}; }
+  return { me: me, prefetch: pre };
 }
 
 function apiMe_(req, who) {
@@ -5014,6 +5073,7 @@ function lineReply_(replyToken, text) {
 function setup() { setupCore_(); }
 
 function setupCore_() {
+  clearAllCaches_();
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {

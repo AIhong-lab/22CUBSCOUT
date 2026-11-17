@@ -99,6 +99,7 @@ var PUBLIC_ACTIONS = {
 /** 需要登入的動作（第二個參數為 requireAccount_ 的結果） */
 var AUTHED_ACTIONS = {
   me: apiMe_,
+  startup: apiStartup_,
   logout: apiLogout_,
   cubDetail: apiCubDetail_,
   bind: apiBind_,
@@ -459,6 +460,23 @@ function requestRows_(accountId, names, version, existing, now) {
   var rows = [];
   names.forEach(function (n) { rows.push(requestRow_(accountId, '孩子', n, version, existing.concat(rowsToIds_(rows)), now)); });
   return rows;
+}
+
+/**
+ * 登入後的第一趟（SPEC 附錄第 58 點）：一次回傳 me 與第一個畫面要用的資料，少等一趟後端。
+ * 管理員：後台首頁＋行事曆；家長：第一個孩子的進度。附帶資料取不到就略過，網頁會自己再要。
+ */
+function apiStartup_(req, who) {
+  var me = apiMe_(req, who), pre = {};
+  try {
+    if (who.admin) {
+      pre.adminHome = Object.assign({ ok: true }, AUTHED_ACTIONS.adminHome({}, who));
+      pre.meetingList = Object.assign({ ok: true }, AUTHED_ACTIONS.meetingList({}, who));
+    } else if (me.cubs && me.cubs.length && !me.needsConsent) {
+      pre.cubDetail = Object.assign({ ok: true }, apiCubDetail_({ cubId: me.cubs[0].cubId }, who));
+    }
+  } catch (e) { pre = {}; }
+  return { me: me, prefetch: pre };
 }
 
 function apiMe_(req, who) {
