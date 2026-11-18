@@ -555,8 +555,12 @@ async function api(action, data) {
   } else {
     if (!GAS_URL) throw new ApiErr('NO_URL', '網站尚未設定後端網址，請聯絡團長。');
     let res;
-    try { res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }); }
-    catch (e) { throw new ApiErr('NETWORK', '連線失敗，請確認網路後再試一次。'); }
+    // 後端太久沒回應就當作逾時（SPEC 附錄第 66 點），不讓畫面一直停在「載入中」
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), window.__apiTimeout || 45000) : 0;
+    try { res = await fetch(GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body, signal: ctl ? ctl.signal : undefined }); }
+    catch (e) { clearTimeout(timer); throw new ApiErr('NETWORK', e && e.name === 'AbortError' ? '系統回應太慢，請稍後再試一次（重新整理頁面）。' : '連線失敗，請確認網路後再試一次。'); }
+    clearTimeout(timer);
     try { json = await res.json(); } catch (e) { throw new ApiErr('NETWORK', '系統暫時無法使用，請稍後再試。'); }
   }
   if (!json.ok) {
@@ -697,42 +701,51 @@ const eventCardHtml = (e) => `<h2>🎪 ${esc(e.title)} <span class="pill ${EV_PI
   <div class="list-row"><span class="grow">報名時間</span><b>${fmtStamp(e.regStart)}<br>～ ${fmtStamp(e.regEnd)}</b></div>
   <div class="list-row"><span class="grow">每人費用</span><b>${e.fee ? e.fee + ' 元' : '免費'}</b></div>
   ${e.desc ? `<p class="prose" style="margin-top:10px">${esc(e.desc)}</p>` : ''}`;
+let infoSeq = 0;
 async function renderInfo(kind) {
   document.getElementById('title').textContent = '🐾 22團幼童軍';
   setHeader(''); setHash('#' + kind);
   setTabs(PUBLIC_TABS(), kind === 'notices' ? 'notices' : 'home', onPublicTab);
-  scrollTop(); loading();
-  const back = '<button class="back" id="infoBack">← 首頁</button>';
-  try {
+  scrollTop();
+  const seq = ++infoSeq;
+  const back = `<button class="back" id="infoBack" data-seq="${seq}">← 首頁</button>`;
+  const draw = (data) => {
     if (kind === 'notices') {
-      const list = await loadNotices(true);
-      $app.innerHTML = back + (noticesHtml(list, 30) || '<section class="card"><h2>📣 公佈欄</h2><p class="muted">目前沒有公告。</p></section>');
+      $app.innerHTML = back + (noticesHtml(data, 30) || '<section class="card"><h2>📣 公佈欄</h2><p class="muted">目前沒有公告。</p></section>');
+    } else if (kind === 'events') {
+      const evs = data.events || [];
+      $app.innerHTML = back + (evs.length ? evs.map((e) => `<section class="card" data-ev="${esc(e.id)}">${eventCardHtml(e)}
+        ${e.state === '報名中' ? `<button class="btn cta" data-reg="${esc(e.id)}">✍️ 我要報名${state.me ? '' : '（先登入）'}</button>` : `<p class="muted small" style="margin-bottom:0">${e.state === '尚未開始' ? '還沒開始報名。' : '報名已經截止，有問題請聯絡團長。'}${state.me ? ' <button class="linkbtn" data-reg="' + esc(e.id) + '">看我的報名</button>' : ''}</p>`}</section>`).join('')
+        : '<section class="card"><h2>🎪 活動報名</h2><p class="muted">目前沒有開放報名的活動。</p></section>');
+      $$('[data-reg]').forEach((b) => { b.onclick = () => { if (state.me) return renderEventForm(b.dataset.reg); pendingEvent.set(b.dataset.reg);
+        if (store.get('token')) { setHash(''); return start(); } // 瀏覽器裡還有登入憑證：直接帶進報名表
+        renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' }); }; });
+    } else if (kind === 'calendar') {
+      $app.innerHTML = `${back}${data.activity ? `<section class="card"><h2>🕘 活動時間</h2><p class="prose">${esc(data.activity)}</p></section>` : ''}<section class="card" id="calCard"></section>
+        <p class="muted small center">實際時間以公佈欄的通知為準。</p>`;
+      drawCalendar($('#calCard'), data);
     } else {
-      const site = await loadSite(true);
-      if (kind === 'events') {
-        const evs = site.events || [];
-        $app.innerHTML = back + (evs.length ? evs.map((e) => `<section class="card" data-ev="${esc(e.id)}">${eventCardHtml(e)}
-          ${e.state === '報名中' ? `<button class="btn cta" data-reg="${esc(e.id)}">✍️ 我要報名${state.me ? '' : '（先登入）'}</button>` : `<p class="muted small" style="margin-bottom:0">${e.state === '尚未開始' ? '還沒開始報名。' : '報名已經截止，有問題請聯絡團長。'}${state.me ? ' <button class="linkbtn" data-reg="' + esc(e.id) + '">看我的報名</button>' : ''}</p>`}</section>`).join('')
-          : '<section class="card"><h2>🎪 活動報名</h2><p class="muted">目前沒有開放報名的活動。</p></section>');
-        $$('[data-reg]').forEach((b) => { b.onclick = () => { if (state.me) return renderEventForm(b.dataset.reg); pendingEvent.set(b.dataset.reg);
-          if (store.get('token')) { setHash(''); return start(); } // 瀏覽器裡還有登入憑證：直接帶進報名表
-          renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' }); }; });
-      } else if (kind === 'calendar') {
-        $app.innerHTML = `${back}${site.activity ? `<section class="card"><h2>🕘 活動時間</h2><p class="prose">${esc(site.activity)}</p></section>` : ''}<section class="card" id="calCard"></section>
-          <p class="muted small center">實際時間以公佈欄的通知為準。</p>`;
-        drawCalendar($('#calCard'), site);
-      } else {
-        $app.innerHTML = `${back}<section class="card"><h2>🧭 了解幼童軍</h2><p class="prose">${esc(site.about)}</p></section>
-          <div class="quick" style="grid-template-columns:repeat(2,1fr)"><button data-info="calendar"><span class="ic">📅</span>活動時間</button>${site.fb ? `<button data-fb="1"><span class="ic">👍</span>22 團 FB</button>` : '<button data-go2="progress"><span class="ic">🗺️</span>進程查詢</button>'}</div>`;
-        const fb = $('[data-fb]'); if (fb) fb.onclick = () => window.open(site.fb, '_blank', 'noopener');
-        const g2 = $('[data-go2]'); if (g2) g2.onclick = () => onPublicTab('progress');
-        $$('[data-info]').forEach((b) => { b.onclick = () => renderInfo(b.dataset.info); });
-      }
+      $app.innerHTML = `${back}<section class="card"><h2>🧭 了解幼童軍</h2><p class="prose">${esc(data.about)}</p></section>
+        <div class="quick" style="grid-template-columns:repeat(2,1fr)"><button data-info="calendar"><span class="ic">📅</span>活動時間</button>${data.fb ? `<button data-fb="1"><span class="ic">👍</span>22 團 FB</button>` : '<button data-go2="progress"><span class="ic">🗺️</span>進程查詢</button>'}</div>`;
+      const fb = $('[data-fb]'); if (fb) fb.onclick = () => window.open(data.fb, '_blank', 'noopener');
+      const g2 = $('[data-go2]'); if (g2) g2.onclick = () => onPublicTab('progress');
+      $$('[data-info]').forEach((b) => { b.onclick = () => renderInfo(b.dataset.info); });
     }
+    $('#infoBack').onclick = () => (state.me ? route() : renderHome());
+  };
+  // 還停在這一頁嗎？（等後端回應的時候使用者可能已經換頁）
+  const stillHere = () => seq === infoSeq && (!$('#infoBack') || $('#infoBack').dataset.seq === String(seq)) && (IN_GAS ? gasHash : location.hash) === '#' + kind;
+  const cached = kind === 'notices' ? noticeData : (siteData && siteData.meetings ? siteData : null);
+  if (cached) draw(cached); else loading();
+  try {
+    const fresh = kind === 'notices' ? await loadNotices(true) : await loadSite(true);
+    if (stillHere() && JSON.stringify(fresh) !== JSON.stringify(cached)) draw(fresh);
   } catch (e) {
-    $app.innerHTML = `${back}<section class="card"><div class="msg err">${esc(e.message)}</div></section>`;
+    if (e.code === 'SESSION_EXPIRED' || cached || !stillHere()) return;
+    $app.innerHTML = `${back}<section class="card"><div class="msg err">${esc(e.message)}</div><button class="btn" id="infoRetry">再試一次</button></section>`;
+    $('#infoBack').onclick = () => (state.me ? route() : renderHome());
+    $('#infoRetry').onclick = () => renderInfo(kind);
   }
-  $('#infoBack').onclick = () => (state.me ? route() : renderHome());
 }
 
 /** 報名表（要登入）：一次可以填多位；每位填姓名、身分別和團長自訂的題目 */
