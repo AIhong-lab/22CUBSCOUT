@@ -1,7 +1,8 @@
 /**
- * 產生 LINE 圖文選單圖片 docs/line-richmenu.jpg（2500×1686，三欄兩列六格，SPEC 附錄第 49、60 點）
+ * 產生 LINE 圖文選單的「程式版」圖片（2500×1686，三欄兩列六格，SPEC 附錄第 49、60 點）
+ * 正式使用的 docs/line-richmenu.jpg 是團長提供的設計圖（2026-11-18），這支只在需要重新產生時當備案。
  * 章的圖直接取自 web/index.html（BADGES、triBadge），和網站長得一樣。
- * 用法：node tools/richmenu.js [輸出路徑]
+ * 用法：node tools/richmenu.js 輸出路徑（一定要指定，避免蓋掉團長的圖）
  * 六格的位置要和 gas/RichMenu.js 的 RICH_MENU_AREAS 一致（左上 → 右上 → 左下 → 右下）。
  */
 const fs = require('fs');
@@ -10,7 +11,8 @@ const vm = require('vm');
 const { chromium } = require('playwright');
 
 const root = path.join(__dirname, '..');
-const out = process.argv[2] || path.join(root, 'docs/line-richmenu.jpg');
+const out = process.argv[2];
+if (!out) { console.error('請指定輸出路徑，例如 node tools/richmenu.js /tmp/menu.jpg'); process.exit(1); }
 
 // 從網站取出章的 SVG 產生器
 const web = fs.readFileSync(path.join(root, 'web/index.html'), 'utf8');

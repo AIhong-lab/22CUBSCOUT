@@ -38,7 +38,7 @@
 - 鎖在 GAS 與加速（SPEC 附錄第 57 點）：設定「允許外部網頁連線」＝否時 `doPost` API 回 `ERR.MOVED`（前端 `showMoved`）；`doGet` 用 `bootData_()` 把公開資料內嵌進 `<script id="boot"></script>`（前端 `window.__BOOT`）；`cachedPublic_`／`clearPublicCache_`（`registerAdmin_` 每次動作後清）；`webUrl_()` 預設改回 GitHub（附錄第 60 點）。`npm run test:web` 會跑三段：一般、`E2E_GAS=1`、`gas-mode.js`。
 - 加速（SPEC 附錄第 58 點）：`ss_()` 快取試算表（`SS_CACHE_`／`SHEET_CACHE_`）；`readAll_` 對項目總表、級別與章說明、進程細項、設定使用 CacheService（`sheetCacheKey_`，`invalidate_` 與 `onEdit`／`clearAllCaches_` 清除；模擬環境預設關閉，`env.flags.sheetCache`）；`startup` API（me＋第一個畫面，前端 `state.prefetch`）。
 - 正式網站維持 GitHub Pages（SPEC 附錄第 59 點）：`web/index.html` 有 CSP meta（connect-src 只允許 script.google.com／script.googleusercontent.com；建置 `dist/Index.html` 時拿掉這行）、`referrer` no-referrer、被框住時不顯示內容（`!IN_GAS && window.top !== window.self`）。**之後網頁若要載入任何外部資源，必須同時更新 CSP**，e2e 會把 CSP 阻擋當成錯誤。「允許外部網頁連線」必須維持「是」。
-- LINE 圖文選單改版（SPEC 附錄第 60 點）：`tools/richmenu.js` 產生 `docs/line-richmenu.jpg`（章圖取自 web/index.html 的 `BADGES`／`triBadge`）；試算表選單「📱 安裝 LINE 圖文選單」（`gas/RichMenu.js`，建立→上傳圖→設預設→刪舊的同名選單，失敗會清掉半成品）；`webUrl_()` 預設改回 GitHub（WEB_URL → `DEFAULT_WEB_URL`）。
+- LINE 圖文選單改版（SPEC 附錄第 60 點）：`docs/line-richmenu.jpg` 是團長提供的設計圖（放大成 2500×1686；換圖時六格位置要對齊三欄兩列）；`tools/richmenu.js` 是程式版備案（需指定輸出路徑）；試算表選單「📱 安裝 LINE 圖文選單」（`gas/RichMenu.js`，建立→上傳圖→設預設→刪舊的同名選單，失敗會清掉半成品）；`webUrl_()` 預設改回 GitHub（WEB_URL → `DEFAULT_WEB_URL`）。
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 145 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
@@ -130,7 +130,7 @@
 | `Auth.js` | 亂數（取自 UUID）、HMAC 雜湊、失敗紀錄與鎖定、登入憑證 |
 | `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
-| `RichMenu.js` | LINE 圖文選單一鍵安裝（附錄第 60 點）：`richMenuAreas_`、`installRichMenu_`、試算表選單 `menuInstallRichMenu`；圖片由 `tools/richmenu.js` 產生 |
+| `RichMenu.js` | LINE 圖文選單一鍵安裝（附錄第 60 點）：`richMenuAreas_`、`installRichMenu_`、試算表選單 `menuInstallRichMenu`；圖片 `docs/line-richmenu.jpg`（團長的設計圖） |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `TeamApi.js` | 小隊輔、正副小隊長與職務紀錄、公告欄（含公開 API `notices`）、批次匯入名單、家長線上請假（SPEC 附錄第 45 點） |
 | `EventApi.js` | 活動報名與繳費紀錄、章的圖片（SPEC 附錄第 50 點） |

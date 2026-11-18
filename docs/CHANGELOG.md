@@ -62,3 +62,4 @@
 - 2026-11-17 GAS 版加速（SPEC 附錄第 58 點）：同一次執行只開一次試算表、登入後一趟拿齊資料（startup）、少變動的分頁暫存 10 分鐘並由 onEdit 清除。
 - 2026-11-17 正式網站維持 GitHub Pages（SPEC 附錄第 59 點）：網頁加上內容安全政策、不送 referrer、防止被放進別的網站框框；檢查程式庫無個資與金鑰。
 - 2026-11-18 LINE 圖文選單改版（SPEC 附錄第 60 點）：新圖 docs/line-richmenu.jpg（tools/richmenu.js 產生，用網站的章圖與自繪圖示）；試算表選單「📱 安裝 LINE 圖文選單」一鍵建立並設為預設（gas/RichMenu.js）；webUrl_() 預設改回 GitHub 正式網站。145 項測試全過。
+- 2026-11-18 LINE 圖文選單圖片換成團長提供的設計圖（放大成 2500×1686）；tools/richmenu.js 改為必須指定輸出路徑。
