@@ -136,8 +136,8 @@ var Logic = (function () {
     { key: '臨時碼有效小時數', type: 'int', def: 24, min: 1, max: 168, desc: '重設密碼用的臨時碼有效時間' },
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
-    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
-    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（大活動不算；請假不算）' },
+    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（遲到算、請假不算、設為不計入進程的集會不算）；填 0 表示不要求' },
+    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（遲到算；大活動、請假、不計入進程的集會不算）' },
     { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
     { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
@@ -468,12 +468,12 @@ var Logic = (function () {
   function isUnitImage(s) { return typeof s === 'string' && s.length <= 45000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/]+=*$/.test(s); }
 
   /**
-   * 體驗者的進度：只算「一般」團集會的出席（大活動、請假不算）。
+   * 體驗者的進度：只算「一般」且「計入進程」的團集會出席（遲到算出席；大活動、請假不算）。
    * @param {Array<{date, status, type}>} records
    * @return {{count: number, need: number, ready: boolean, readyDate: string|null}}
    */
   function trialProgress(records, need) {
-    var dates = (records || []).filter(function (a) { return a.status === '出席' && (a.type || '一般') === '一般' && isDateStr(a.date); })
+    var dates = (records || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && (a.type || '一般') === '一般' && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
     return { count: dates.length, need: need, ready: dates.length >= need, readyDate: dates.length >= need ? dates[need - 1] : null };
   }
@@ -533,8 +533,8 @@ var Logic = (function () {
       // 同一項目若有多筆，取最早日期
       if (!done[c.itemId] || c.date < done[c.itemId].date) done[c.itemId] = c;
     });
-    // 出席（請假不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
-    var attended = (p.attendance || []).filter(function (a) { return a.status === '出席' && isDateStr(a.date); })
+    // 出席（含遲到；請假不算；集會設為「不計入進程」的不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
+    var attended = (p.attendance || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
     // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）
     if (p.autoItemId && p.autoCount > 0 && attended.length >= p.autoCount) {
@@ -640,11 +640,15 @@ var Logic = (function () {
     return out;
   }
 
-  /** 出席統計：出席與請假分開計算 */
+  /** 點名狀態（SPEC 附錄第 61 點）：遲到算出席，只是多一個標記；空白＝沒有紀錄，不記缺席 */
+  var ATTEND_MARKS = ['出席', '遲到', '請假'];
+  function isPresent(status) { return status === '出席' || status === '遲到'; }
+
+  /** 出席統計：出席（含遲到）與請假分開計算；late 是其中遲到的次數。不看「計入進程」（出席率照算） */
   function attendanceCounts(records) {
-    var r = { attended: 0, leave: 0 };
+    var r = { attended: 0, leave: 0, late: 0 };
     (records || []).forEach(function (a) {
-      if (a.status === '出席') r.attended++;
+      if (isPresent(a.status)) { r.attended++; if (a.status === '遲到') r.late++; }
       else if (a.status === '請假') r.leave++;
     });
     return r;
@@ -1144,7 +1148,7 @@ var Logic = (function () {
     parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, validateSettingValue: validateSettingValue, parseList: parseList, changeSquads: changeSquads,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed, buildDetailSeed: buildDetailSeed, parseDetails: parseDetails,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
-    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
+    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, ATTEND_MARKS: ATTEND_MARKS, isPresent: isPresent, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,

@@ -143,8 +143,8 @@ var Logic = (function () {
     { key: '臨時碼有效小時數', type: 'int', def: 24, min: 1, max: 168, desc: '重設密碼用的臨時碼有效時間' },
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
     { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
-    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（請假不算）；填 0 表示不要求' },
-    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（大活動不算；請假不算）' },
+    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（遲到算、請假不算、設為不計入進程的集會不算）；填 0 表示不要求' },
+    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（遲到算；大活動、請假、不計入進程的集會不算）' },
     { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
     { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
@@ -475,12 +475,12 @@ var Logic = (function () {
   function isUnitImage(s) { return typeof s === 'string' && s.length <= 45000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/]+=*$/.test(s); }
 
   /**
-   * 體驗者的進度：只算「一般」團集會的出席（大活動、請假不算）。
+   * 體驗者的進度：只算「一般」且「計入進程」的團集會出席（遲到算出席；大活動、請假不算）。
    * @param {Array<{date, status, type}>} records
    * @return {{count: number, need: number, ready: boolean, readyDate: string|null}}
    */
   function trialProgress(records, need) {
-    var dates = (records || []).filter(function (a) { return a.status === '出席' && (a.type || '一般') === '一般' && isDateStr(a.date); })
+    var dates = (records || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && (a.type || '一般') === '一般' && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
     return { count: dates.length, need: need, ready: dates.length >= need, readyDate: dates.length >= need ? dates[need - 1] : null };
   }
@@ -540,8 +540,8 @@ var Logic = (function () {
       // 同一項目若有多筆，取最早日期
       if (!done[c.itemId] || c.date < done[c.itemId].date) done[c.itemId] = c;
     });
-    // 出席（請假不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
-    var attended = (p.attendance || []).filter(function (a) { return a.status === '出席' && isDateStr(a.date); })
+    // 出席（含遲到；請假不算；集會設為「不計入進程」的不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
+    var attended = (p.attendance || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
     // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）
     if (p.autoItemId && p.autoCount > 0 && attended.length >= p.autoCount) {
@@ -647,11 +647,15 @@ var Logic = (function () {
     return out;
   }
 
-  /** 出席統計：出席與請假分開計算 */
+  /** 點名狀態（SPEC 附錄第 61 點）：遲到算出席，只是多一個標記；空白＝沒有紀錄，不記缺席 */
+  var ATTEND_MARKS = ['出席', '遲到', '請假'];
+  function isPresent(status) { return status === '出席' || status === '遲到'; }
+
+  /** 出席統計：出席（含遲到）與請假分開計算；late 是其中遲到的次數。不看「計入進程」（出席率照算） */
   function attendanceCounts(records) {
-    var r = { attended: 0, leave: 0 };
+    var r = { attended: 0, leave: 0, late: 0 };
     (records || []).forEach(function (a) {
-      if (a.status === '出席') r.attended++;
+      if (isPresent(a.status)) { r.attended++; if (a.status === '遲到') r.late++; }
       else if (a.status === '請假') r.leave++;
     });
     return r;
@@ -1151,7 +1155,7 @@ var Logic = (function () {
     parseSettings: parseSettings, defaultSettingsRows: defaultSettingsRows, validateSettingValue: validateSettingValue, parseList: parseList, changeSquads: changeSquads,
     parseItems: parseItems, nextItemId: nextItemId, buildSeed: buildSeed, buildDetailSeed: buildDetailSeed, parseDetails: parseDetails,
     isCountedCompletion: isCountedCompletion, computeCubProgress: computeCubProgress, nextChallenge: nextChallenge,
-    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
+    isNearlyDone: isNearlyDone, attendanceCounts: attendanceCounts, ATTEND_MARKS: ATTEND_MARKS, isPresent: isPresent, attendanceRate: attendanceRate, periodOf: periodOf, statusTextForParents: statusTextForParents,
     planBatchSignoff: planBatchSignoff, completionToRow: completionToRow, rowToCompletion: rowToCompletion,
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
@@ -1235,7 +1239,7 @@ HEADERS[SHEET.UNITS] = ['名稱', '類別', '分類', '說明', '晉級條件', 
 HEADERS[SHEET.DETAILS] = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
 HEADERS[SHEET.COMPLETIONS] = ['小狼ID', '項目ID', '完成日期', '簽核人', '備註', '回報人', '回報狀態'];
 HEADERS[SHEET.AWARDS] = ['小狼ID', '級別或章名', '頒發日期', '頒發場合', '備註', '簽核人', '登錄時間'];
-HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型'];
+HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型', '計入進程'];
 HEADERS[SHEET.ATTENDANCE] = ['集會ID', '小狼ID', '狀態', '點名人', '點名時間'];
 HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席總數', '備註'];
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
@@ -1579,7 +1583,7 @@ function loadAwards_() {
 
 function loadMeetings_() {
   return readRows_(SHEET.MEETINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', _row: r._row };
+    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', counts: Logic.clean(r[8]) !== '否', _row: r._row };
   });
 }
 
@@ -2311,7 +2315,7 @@ function buildCubView_(cub, today) {
   var mById = {};
   meetings.forEach(function (m) { mById[m.meetingId] = m; });
   var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
-  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type }; });
+  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type, counts: mById[a.meetingId].counts }; });
 
   var progress = Logic.computeCubProgress({
     cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
@@ -2345,7 +2349,7 @@ function buildCubView_(cub, today) {
   var inTeam = meetings.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
   var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   // 今天（含）以後的集會：家長可以先請假
-  var upcoming = inTeam.filter(function (m) { return m.date >= today && statusOf[m.meetingId] !== '出席'; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
+  var upcoming = inTeam.filter(function (m) { return m.date >= today && !Logic.isPresent(statusOf[m.meetingId]); }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
   var period = Logic.periodOf(loadPeriods_(), today);
   var rate = null;
   if (period) {
@@ -2546,7 +2550,7 @@ function progressCtx_() {
   var attByCub = {};
   loadAttendance_().forEach(function (a) {
     if (!meetings[a.meetingId]) return;
-    (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: meetings[a.meetingId].type });
+    (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: meetings[a.meetingId].type, counts: meetings[a.meetingId].counts });
   });
   var trialEnd = {};
   loadCubs_().forEach(function (c) { if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate; });
@@ -3396,9 +3400,9 @@ registerAdmin_('requestReject', 'reviewRequests', function (req, who) {
 
 registerAdmin_('meetingList', 'attendance', function () {
   var count = {};
-  loadAttendance_().forEach(function (a) { if (a.status === '出席') count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
+  loadAttendance_().forEach(function (a) { if (Logic.isPresent(a.status)) count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
   var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date); }).map(function (m) {
-    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, attended: count[m.meetingId] || 0 };
+    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0 };
   }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()) };
 });
@@ -3426,14 +3430,16 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       if (!m) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
       var raw = readRows_(SHEET.MEETINGS).filter(function (r) { return r._row === m._row; })[0];
       var row = raw.slice(0, HEADERS[SHEET.MEETINGS].length);
-      var before = [m.date, m.name, m.enabled ? '是' : '否'].join('／');
+      var before = [m.date, m.name, m.enabled ? '是' : '否'].join('／') + '／' + m.type + '／' + (m.counts ? '計入' : '不計入');
       if (req.date !== undefined) row[1] = requireDate_(Logic.clean(req.date));
       if (req.name !== undefined) row[2] = Logic.clean(req.name).slice(0, 40) || '團集會';
       if (req.note !== undefined) row[3] = Logic.clean(req.note).slice(0, 100);
       if (req.enabled !== undefined) row[4] = req.enabled ? '是' : '否';
       if (req.type !== undefined) { if (Logic.MEETING_TYPES.indexOf(Logic.clean(req.type)) < 0) throw new ApiError(ERR.BAD_INPUT, '類型只能是一般或大活動。'); row[7] = Logic.clean(req.type); }
+      // 計入進程（SPEC 附錄第 61 點）：「否」的集會出席不算晉級、自動完成與體驗次數；出席率照算
+      if (req.counts !== undefined) row[8] = req.counts === false ? '否' : '是';
       updateRows_(SHEET.MEETINGS, [{ row: m._row, values: row }]);
-      logOp_(who.account.accountId, '修改集會', m.meetingId, before + '／' + m.type, [row[1], row[2], row[4], row[7] || '一般'].join('／'));
+      logOp_(who.account.accountId, '修改集會', m.meetingId, before, [row[1], row[2], row[4], row[7] || '一般', row[8] === '否' ? '不計入' : '計入'].join('／'));
       return { updated: 1 };
     }
     var ids = meetings.map(function (x) { return x.meetingId; });
@@ -3448,7 +3454,7 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       ids.push(id);
       // 名稱裡有「大活動」就標成大活動（體驗者不算、點名不列體驗者）
       var nm = (mm[4] || '').trim().slice(0, 40) || '團集會';
-      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般']);
+      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般', '是']);
     });
     if (!add.length) throw new ApiError(ERR.BAD_INPUT, '沒有可新增的集會。每行格式：2026-11-22 團集會' + (bad.length ? '\n看不懂的行：\n' + bad.join('\n') : ''));
     appendRows_(SHEET.MEETINGS, add);
@@ -3482,7 +3488,7 @@ registerAdmin_('attendanceSave', 'attendance', function (req, who) {
   var marks = req.marks || {};
   var ids = Object.keys(marks).slice(0, 500);
   if (!ids.length) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的點名。');
-  ids.forEach(function (k) { if (['出席', '請假', ''].indexOf(marks[k]) < 0) throw new ApiError(ERR.BAD_INPUT, '點名狀態只能是出席、請假或空白。'); });
+  ids.forEach(function (k) { if (marks[k] !== '' && Logic.ATTEND_MARKS.indexOf(marks[k]) < 0) throw new ApiError(ERR.BAD_INPUT, '點名狀態只能是出席、遲到、請假或空白。'); });
   return withLock_(function () {
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
@@ -3528,7 +3534,7 @@ registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
   if (period) loadExtra_().forEach(function (x) { if (x.period === period.name) extra[x.cubId] = (extra[x.cubId] || 0) + x.count; });
   var rows = loadCubs_().filter(function (c) { return c.status === '在團' || c.status === Logic.TRIAL; }).map(function (c) {
     var cells = meetings.map(function (m) { return st[c.cubId + '|' + m.meetingId] || ''; });
-    var counts = { attended: cells.filter(function (x) { return x === '出席'; }).length, leave: cells.filter(function (x) { return x === '請假'; }).length };
+    var counts = Logic.attendanceCounts(cells.map(function (x) { return { status: x }; }));
     var rate = period ? Logic.attendanceRate(allAtt[c.cubId] || [], period, extra[c.cubId] || 0) : null;
     return { cubId: c.cubId, name: c.name, squad: c.squad, trial: c.status === Logic.TRIAL, cells: cells, counts: counts, extra: extra[c.cubId] || 0, rate: rate ? rate.text : '' };
   });
@@ -3952,7 +3958,7 @@ function apiParentLeave_(req, who) {
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
     if (!cubsOnDate_(m.date, m.type).some(function (c) { return c.cubId === cubId; })) throw new ApiError(ERR.BAD_INPUT, '這場集會不需要請假。');
     var cur = loadAttendance_().filter(function (a) { return a.meetingId === m.meetingId && a.cubId === cubId; })[0];
-    if (cur && cur.status === '出席') throw new ApiError(ERR.BAD_INPUT, '這場集會已經點名為出席，要修改請聯絡團長或服務員。');
+    if (cur && Logic.isPresent(cur.status)) throw new ApiError(ERR.BAD_INPUT, '這場集會已經點名為' + cur.status + '，要修改請聯絡團長或服務員。');
     var want = req.leave !== false;
     if (want && !cur) appendRows_(SHEET.ATTENDANCE, [[m.meetingId, cubId, '請假', who.account.accountId, new Date()]]);
     if (!want && cur) deleteRows_(SHEET.ATTENDANCE, [cur._row]);

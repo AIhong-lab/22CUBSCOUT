@@ -225,7 +225,7 @@ test('查詢：簽核人顯示管理員姓名；已完成待頒發用固定文�
   assert.equal(d.attendance.meetings.length, 5, '未來的集會不列入');
   assert.equal(d.attendance.meetings[0].date, '2026-10-03', '新到舊');
   assert.deepEqual(d.attendance.upcoming.map((m) => m.date), ['2026-12-05']);
-  assert.deepEqual(d.attendance.counts, { attended: 4, leave: 1 });
+  assert.deepEqual(d.attendance.counts, { attended: 4, leave: 1, late: 0 });
   assert.equal(d.attendance.rate.text, '100%', '(4+1)/4 最多 100%');
   assert.equal(d.attendance.rate.period, '115學年度');
 });

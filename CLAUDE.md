@@ -39,7 +39,8 @@
 - 加速（SPEC 附錄第 58 點）：`ss_()` 快取試算表（`SS_CACHE_`／`SHEET_CACHE_`）；`readAll_` 對項目總表、級別與章說明、進程細項、設定使用 CacheService（`sheetCacheKey_`，`invalidate_` 與 `onEdit`／`clearAllCaches_` 清除；模擬環境預設關閉，`env.flags.sheetCache`）；`startup` API（me＋第一個畫面，前端 `state.prefetch`）。
 - 正式網站維持 GitHub Pages（SPEC 附錄第 59 點）：`web/index.html` 有 CSP meta（connect-src 只允許 script.google.com／script.googleusercontent.com；建置 `dist/Index.html` 時拿掉這行）、`referrer` no-referrer、被框住時不顯示內容（`!IN_GAS && window.top !== window.self`）。**之後網頁若要載入任何外部資源，必須同時更新 CSP**，e2e 會把 CSP 阻擋當成錯誤。「允許外部網頁連線」必須維持「是」。
 - LINE 圖文選單改版（SPEC 附錄第 60 點）：`docs/line-richmenu.jpg` 是團長提供的設計圖（放大成 2500×1686；換圖時六格位置要對齊三欄兩列）；`tools/richmenu.js` 是程式版備案（需指定輸出路徑）；試算表選單「📱 安裝 LINE 圖文選單」（`gas/RichMenu.js`，建立→上傳圖→設預設→刪舊的同名選單，失敗會清掉半成品）；`webUrl_()` 預設改回 GitHub（WEB_URL → `DEFAULT_WEB_URL`）。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 145 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- 點名與請假再整理（SPEC 附錄第 61 點）：`Logic.ATTEND_MARKS`／`isPresent`（遲到算出席；判斷出席一律用 `isPresent`，不要寫 `=== '出席'`）、`attendanceCounts` 多回傳 `late`；集會 `counts`（「計入進程」欄，`counts === false` 的出席不算晉級、自動完成與 `trialProgress`，出席率照算）；`meetingSave` 收 `counts`；前端 `MARK_LABEL`／`MARK_ICON`、行事曆 `[data-ct]`、`.list-row.mrow`。不收請假原因；團部ID 在 ROADMAP。
+- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 147 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -88,8 +89,8 @@
 | 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間 |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |
-| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動） |
-| 出席紀錄 | 集會ID、小狼ID、狀態（出席/請假；空白＝無此列）、點名人、點名時間 |
+| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動）、計入進程（是/否，空白＝是） |
+| 出席紀錄 | 集會ID、小狼ID、狀態（出席/遲到/請假；空白＝無此列）、點名人、點名時間 |
 | 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註 |
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |
 | 失敗紀錄 | 類型（登入/綁定）、對象（帳號名稱、帳號ID 或「未登入」）、時間 |

@@ -241,7 +241,7 @@ function apiParentLeave_(req, who) {
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
     if (!cubsOnDate_(m.date, m.type).some(function (c) { return c.cubId === cubId; })) throw new ApiError(ERR.BAD_INPUT, '這場集會不需要請假。');
     var cur = loadAttendance_().filter(function (a) { return a.meetingId === m.meetingId && a.cubId === cubId; })[0];
-    if (cur && cur.status === '出席') throw new ApiError(ERR.BAD_INPUT, '這場集會已經點名為出席，要修改請聯絡團長或服務員。');
+    if (cur && Logic.isPresent(cur.status)) throw new ApiError(ERR.BAD_INPUT, '這場集會已經點名為' + cur.status + '，要修改請聯絡團長或服務員。');
     var want = req.leave !== false;
     if (want && !cur) appendRows_(SHEET.ATTENDANCE, [[m.meetingId, cubId, '請假', who.account.accountId, new Date()]]);
     if (!want && cur) deleteRows_(SHEET.ATTENDANCE, [cur._row]);

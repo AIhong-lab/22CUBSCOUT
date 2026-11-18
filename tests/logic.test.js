@@ -597,8 +597,23 @@ test('晉級所需出席次數：上一級頒發日之後（不含當天）出�
   assert.equal(late.eligibleDate, '2026-08-15', '達標日期取第 N 次出席日與滿間隔日較晚者');
 });
 
-test('出席與請假分開計算', () => {
-  assert.deepEqual(L.attendanceCounts([att('a'), att('b', '請假'), att('c'), att('d', '')]), { attended: 2, leave: 1 });
+test('出席與請假分開計算；遲到算出席，另外計數（附錄第 61 點）', () => {
+  assert.deepEqual(L.attendanceCounts([att('a'), att('b', '請假'), att('c'), att('d', '')]), { attended: 2, leave: 1, late: 0 });
+  assert.deepEqual(L.attendanceCounts([att('a'), att('b', '遲到'), att('c', '請假')]), { attended: 2, leave: 1, late: 1 });
+  assert.equal(L.isPresent('遲到'), true);
+  assert.equal(L.isPresent('請假'), false);
+  assert.deepEqual(L.ATTEND_MARKS, ['出席', '遲到', '請假']);
+});
+
+test('遲到算晉級出席；集會設為「不計入進程」時不算晉級、自動完成與體驗次數，但出席率照算（附錄第 61 點）', () => {
+  const four = [att('2026-09-05'), att('2026-09-12', '遲到'), att('2026-09-19'), att('2026-09-26')];
+  assert.equal(itemOf(progressA(four), 'P-羚羊-7').done, true, '遲到算出席');
+  four[3].counts = false;
+  assert.equal(itemOf(progressA(four), 'P-羚羊-7').done, false, '不計入進程的集會不算');
+  const recs = [{ date: '2026-09-05', status: '遲到', type: '一般' }, { date: '2026-09-12', status: '出席', type: '一般', counts: false }];
+  assert.equal(L.trialProgress(recs, 4).count, 1, '體驗：遲到算、不計入的不算');
+  const r = L.attendanceRate(recs, { start: '2026-09-01', end: '2026-12-31', total: 2 }, 0);
+  assert.equal(r.count, 2, '出席率不受「計入進程」影響');
 });
 
 test('出席相關設定的預設與格式檢查', () => {

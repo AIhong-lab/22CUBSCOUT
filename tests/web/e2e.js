@@ -361,6 +361,11 @@ function seed(env) {
   await page.click('form#f button[type=submit]');
   await page.getByText('露營').first().waitFor();
   assert.equal(env.rows('集會行事曆').length, 8);
+  // 計入進程開關（附錄第 61 點）
+  await page.locator('[data-ct]').first().click();
+  await page.getByText('🚫 不計入進程').first().waitFor();
+  await page.getByText('改為計入').first().click();
+  await page.waitForFunction(() => !document.body.innerText.includes('🚫 不計入進程'));
 
   // 點名：預設今天的集會、切換狀態、儲存
   await tab('roll');
@@ -368,6 +373,9 @@ function seed(env) {
   assert.match(await page.locator('#mSel option:checked').innerText(), /2026\/11\/14/, '預設今天的集會');
   await page.locator('.roll-btn[data-id=C1]').click();
   await page.locator('.roll-btn[data-id=C2]').click();
+  await page.locator('.roll-btn[data-id=C2]').click();
+  assert.equal(await page.locator('.roll-btn[data-id=C2]').innerText(), '⏰ 遲到', '出席之後是遲到（附錄第 61 點）');
+  assert.match(await page.locator('#sum').innerText(), /出席 2 人（遲到 1）・請假 0 人/);
   await page.locator('.roll-btn[data-id=C2]').click();
   assert.match(await page.locator('#sum').innerText(), /出席 1 人・請假 1 人・尚未儲存 2 筆/);
   await shot('11-roll'); await noHScroll('點名');
@@ -381,7 +389,8 @@ function seed(env) {
   await page.waitForFunction(() => !/尚未儲存/.test(document.querySelector('#sum').textContent));
   assert.equal(env.rows('出席紀錄').length, 6);
   // 全部出席：空白的變出席、請假的不變
-  await page.locator('.roll-btn[data-id=C1]').click(); // 出席 → 請假
+  await page.locator('.roll-btn[data-id=C1]').click(); // 出席 → 遲到
+  await page.locator('.roll-btn[data-id=C1]').click(); // 遲到 → 請假
   await page.locator('.roll-btn[data-id=C1]').click(); // 請假 → 空白
   await page.locator('#allIn').click();
   assert.equal(await page.locator('.roll-btn[data-id=C1]').innerText(), '🐾 出席');

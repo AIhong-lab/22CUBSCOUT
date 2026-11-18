@@ -538,7 +538,7 @@ function buildCubView_(cub, today) {
   var mById = {};
   meetings.forEach(function (m) { mById[m.meetingId] = m; });
   var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
-  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type }; });
+  var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type, counts: mById[a.meetingId].counts }; });
 
   var progress = Logic.computeCubProgress({
     cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
@@ -572,7 +572,7 @@ function buildCubView_(cub, today) {
   var inTeam = meetings.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
   var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   // 今天（含）以後的集會：家長可以先請假
-  var upcoming = inTeam.filter(function (m) { return m.date >= today && statusOf[m.meetingId] !== '出席'; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
+  var upcoming = inTeam.filter(function (m) { return m.date >= today && !Logic.isPresent(statusOf[m.meetingId]); }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
   var period = Logic.periodOf(loadPeriods_(), today);
   var rate = null;
   if (period) {

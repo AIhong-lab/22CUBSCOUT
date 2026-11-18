@@ -215,6 +215,7 @@
   .stamp .sp { width: 62px; height: 62px; margin: 0 auto 4px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; border: 3px dashed #d5dbe6; background: #fff; }
   .stamp.出席 .sp { border: 3px solid var(--green); background: var(--green-soft); transform: rotate(-8deg); }
   .stamp.請假 .sp { border: 3px solid #b39ddb; background: #f3eefc; }
+  .stamp.遲到 .sp { border: 3px solid #f0a020; background: #fff4dc; transform: rotate(-8deg); }
   .counts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
   .counts span { background: var(--gray-soft); border-radius: 999px; padding: 4px 12px; font-weight: 800; font-size: 15px; }
 
@@ -233,10 +234,13 @@
   .list-row { display: flex; gap: 10px; align-items: center; padding: 12px 4px; border-bottom: 2px solid var(--gray-soft); }
   .list-row:last-child { border-bottom: 0; }
   .list-row.tap { cursor: pointer; }
+  /* 按鈕很多的列（行事曆）：手機上按鈕換到第二行 */
+  @media (max-width: 759px) { .list-row.mrow { flex-wrap: wrap; } .list-row.mrow .grow { flex: 1 1 100%; } }
   .list-row .t { font-weight: 900; }
   .roll-btn { min-width: 96px; min-height: 50px; border-radius: 14px; border: 3px solid var(--gray-line); background: #fff; font-weight: 900; font-size: 17px; cursor: pointer; }
   .roll-btn.出席 { background: var(--green); border-color: var(--green); color: #fff; }
   .roll-btn.請假 { background: #ede7f6; border-color: #b39ddb; color: #4a2c8a; }
+  .roll-btn.遲到 { background: #fff4dc; border-color: #f0a020; color: #7a4a00; }
   .roll-btn.changed { box-shadow: 0 0 0 4px var(--yellow); }
   .savebar { position: sticky; bottom: 8px; z-index: 5; background: #fff; border-radius: 18px; padding: 8px 12px 12px; box-shadow: 0 -2px 16px rgba(0,0,0,.12); margin-top: 12px; }
   .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -425,6 +429,9 @@ const fmtDate = (d) => (d ? String(d).replace(/^(\d{4})-(\d{2})-(\d{2})$/, (m, y
 const shortDate = (d) => (d ? String(d).replace(/^\d{4}-(\d{2})-(\d{2})$/, (m, mo, da) => `${+mo}/${+da}`) : '');
 const fmtTime = (ms) => (ms ? new Date(ms).toLocaleString('zh-TW', { hour12: false }) : '－');
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+/** 點名狀態的顯示（SPEC 附錄第 61 點）：遲到算出席 */
+const MARK_LABEL = { '出席': '🐾 出席', '遲到': '⏰ 遲到', '請假': '🌙 請假' };
+const MARK_ICON = { '出席': '🐾', '遲到': '⏰', '請假': '🌙' };
 const LEVELS = ['剛入團', '羚羊', '狼', '鹿', '豹']; // 剛入團：本團在羚羊前加的一級（頒黃領巾，SPEC 附錄第 37 點）
 /** 級別名稱：剛入團不加「級」 */
 const lvName = (l) => (l === '剛入團' ? l : l + '級');
@@ -1446,17 +1453,17 @@ function viewStamps(d) {
   $app.innerHTML = `
     <section class="card center"><h2 style="justify-content:center">🐾 出席集點卡</h2>
       ${r ? `<div class="ring" style="--p:${pct}"><div class="in"><div><b>${esc(r.text)}</b><div class="small muted">${esc(r.period)}<br>出席率</div></div></div></div>
-        <div class="counts"><span>🐾 出席 ${r.attended}</span><span>🌙 請假 ${r.leave}</span>${r.extra ? `<span>✨ 額外出席 ${r.extra}</span>` : ''}<span>📅 本年度 ${r.total} 次</span></div>
+        <div class="counts"><span>🐾 出席 ${r.attended}</span>${a.counts.late ? `<span>⏰ 其中遲到 ${a.counts.late}</span>` : ''}<span>🌙 請假 ${r.leave}</span>${r.extra ? `<span>✨ 額外出席 ${r.extra}</span>` : ''}<span>📅 本年度 ${r.total} 次</span></div>
         <p class="muted small">出席率 =（出席 ＋ 額外出席）÷ 本年度總次數，請假不算出席。</p>`
-      : `<div class="counts"><span>🐾 出席 ${a.counts.attended}</span><span>🌙 請假 ${a.counts.leave}</span></div>`}
+      : `<div class="counts"><span>🐾 出席 ${a.counts.attended}</span>${a.counts.late ? `<span>⏰ 其中遲到 ${a.counts.late}</span>` : ''}<span>🌙 請假 ${a.counts.leave}</span></div>`}
     </section>
     ${a.upcoming.length ? `<section class="card"><h2>📅 接下來的集會</h2>
       <p class="muted small">不能來的話，先按「請假」，點名時服務員就會看到。已經請假的可以取消。</p>
       ${a.upcoming.map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span>　${esc(m.name)}${m.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${m.note ? `<br><span class="s">${esc(m.note)}</span>` : ''}</span>
         ${m.leave ? `<span class="pill st-未開始">🌙 已請假</span> <button class="btn ghost small" data-leave="${esc(m.meetingId)}" data-on="0" style="margin-top:0">取消</button>` : `<button class="btn ghost small" data-leave="${esc(m.meetingId)}" data-on="1" style="margin-top:0">請假</button>`}</div>`).join('')}</section>` : ''}
     <section class="card"><h2>🗓️ 集點紀錄</h2>
-      ${a.meetings.length ? `<div class="stamps">${a.meetings.map((m) => `<div class="stamp ${esc(m.status)}" title="${esc(m.name)}"><div class="sp">${m.status === '出席' ? '🐾' : m.status === '請假' ? '🌙' : ''}</div>${shortDate(m.date)}<br>${esc(m.status === '－' ? '' : m.status)}</div>`).join('')}</div>
-        <p class="muted small">🐾 出席　🌙 請假　空白：當天沒有點名紀錄</p>` : '<p class="muted">還沒有集會紀錄。</p>'}
+      ${a.meetings.length ? `<div class="stamps">${a.meetings.map((m) => `<div class="stamp ${esc(m.status)}" title="${esc(m.name)}"><div class="sp">${MARK_ICON[m.status] || ''}</div>${shortDate(m.date)}<br>${esc(m.status === '－' ? '' : m.status)}</div>`).join('')}</div>
+        <p class="muted small">🐾 出席　⏰ 遲到（算出席）　🌙 請假　空白：當天沒有點名紀錄</p>` : '<p class="muted">還沒有集會紀錄。</p>'}
     </section>`;
   $$('[data-leave]').forEach((b) => {
     b.onclick = () => act(b, async () => {
@@ -2259,12 +2266,12 @@ const ADMIN_PAGES = {
     const marks = {};
     sheet.cubs.forEach((c) => { marks[c.cubId] = c.status; });
     const orig = Object.assign({}, marks);
-    const NEXT = { '': '出席', '出席': '請假', '請假': '' };
+    const NEXT = { '': '出席', '出席': '遲到', '遲到': '請假', '請假': '' };
     $app.innerHTML = `
       <section class="card"><h2>📋 點名</h2>
         <select class="full" id="mSel">${meetings.map((m) => `<option value="${esc(m.meetingId)}" ${m.meetingId === mid ? 'selected' : ''}>${fmtDate(m.date)}　${esc(m.name)}</option>`).join('')}</select>
         ${squadChips(sheet.squads, squad)}
-        <p class="muted small">點一下切換：空白 → 🐾 出席 → 🌙 請假 → 空白${sheet.meeting.type === '大活動' ? '<br>🏕️ 這場是大活動：不列體驗者。' : ''}</p>
+        <p class="muted small">點一下切換：空白 → 🐾 出席 → ⏰ 遲到 → 🌙 請假 → 空白（遲到也算出席）${sheet.meeting.type === '大活動' ? '<br>🏕️ 這場是大活動：不列體驗者。' : ''}</p>
         <button class="btn alt small" id="allIn">✅ 全部出席（請假的不變）</button>
         <div id="rows"></div>
         <div class="savebar"><div class="muted small" id="sum"></div><button class="btn green" id="save">儲存點名</button></div>
@@ -2272,10 +2279,10 @@ const ADMIN_PAGES = {
     const draw = () => {
       const show = sheet.cubs.filter((c) => squad === '全團' || c.squad === squad);
       $('#rows').innerHTML = show.length ? show.map((c) => `<div class="list-row"><span class="grow"><span class="t">${esc(c.name)}</span>${c.trial ? ' <span class="pill st-已完成待頒發">🧪 體驗</span>' : ''} <span class="s">${esc(c.squad || '')}</span></span>
-        <button class="roll-btn ${esc(marks[c.cubId])} ${marks[c.cubId] !== orig[c.cubId] ? 'changed' : ''}" data-id="${esc(c.cubId)}">${marks[c.cubId] === '出席' ? '🐾 出席' : marks[c.cubId] === '請假' ? '🌙 請假' : '　－　'}</button></div>`).join('') : '<p class="muted">這個小隊沒有小狼。</p>';
+        <button class="roll-btn ${esc(marks[c.cubId])} ${marks[c.cubId] !== orig[c.cubId] ? 'changed' : ''}" data-id="${esc(c.cubId)}">${MARK_LABEL[marks[c.cubId]] || '　－　'}</button></div>`).join('') : '<p class="muted">這個小隊沒有小狼。</p>';
       const vals = Object.values(marks);
       const changed = Object.keys(marks).filter((k) => marks[k] !== orig[k]).length;
-      $('#sum').textContent = `出席 ${vals.filter((v) => v === '出席').length} 人・請假 ${vals.filter((v) => v === '請假').length} 人${changed ? `・尚未儲存 ${changed} 筆` : ''}`;
+      $('#sum').textContent = `出席 ${vals.filter((v) => v === '出席' || v === '遲到').length} 人${vals.includes('遲到') ? `（遲到 ${vals.filter((v) => v === '遲到').length}）` : ''}・請假 ${vals.filter((v) => v === '請假').length} 人${changed ? `・尚未儲存 ${changed} 筆` : ''}`;
       $$('.roll-btn').forEach((b) => { b.onclick = () => { marks[b.dataset.id] = NEXT[marks[b.dataset.id]]; draw(); }; });
     };
     draw();
@@ -2539,7 +2546,7 @@ const ADMIN_PAGES = {
         <div class="grow"><div class="name">${esc(c.name)}</div><div class="sub">${esc(c.squad || '未分小隊')}${c.role ? '・' + esc(c.role) : ''}・${c.status === '體驗' ? '體驗者（' + fmtDate(c.trialStart) + ' 開始）' : '入團 ' + fmtDate(c.joinDate) + '（' + esc(c.tenure) + '）'}</div>
         ${(c.squadStaff || []).length ? `<div class="sub">小隊輔：${esc(c.squadStaff.join('、'))}</div>` : ''}
         <span class="levelchip">${c.currentLevel ? esc(lvName(c.currentLevel)) : '尚未頒發剛入團'}・${esc(c.status)}</span></div></div>
-        <div class="stats3"><div><b>🐾 ${att.counts.attended}</b>出席</div><div><b>🌙 ${att.counts.leave}</b>請假</div><div><b>${att.rate ? esc(att.rate.text) : '－'}</b>出席率</div></div></section>
+        <div class="stats3"><div><b>🐾 ${att.counts.attended}</b>出席${att.counts.late ? `（遲到 ${att.counts.late}）` : ''}</div><div><b>🌙 ${att.counts.leave}</b>請假</div><div><b>${att.rate ? esc(att.rate.text) : '－'}</b>出席率</div></div></section>
       <div class="row-flex" style="margin-bottom:14px">
         <div class="seg grow" id="cseg" style="margin:0">${tabs.map(([k, t]) => `<button data-seg="${k}" class="${k === tab ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="more-menu"><button class="btn ghost small" id="moreBtn" style="margin-top:0" aria-label="更多操作">⋯</button>
@@ -2761,7 +2768,7 @@ const ADMIN_PAGES = {
     const draw = () => {
       const rows = d.rows.filter((r) => squad === '全團' || r.squad === squad);
       $('#t').innerHTML = `<table class="tbl"><thead><tr><th>小狼</th><th>出席</th><th>請假</th><th>額外</th><th>出席率</th>${d.meetings.map((m) => `<th title="${esc(m.name)}">${shortDate(m.date)}</th>`).join('')}</tr></thead><tbody>
-        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b>${r.trial ? " 🧪" : ""}</td><td>${r.counts.attended}</td><td>${r.counts.leave}</td><td>${r.extra}</td><td>${esc(r.rate || '－')}</td>${r.cells.map((c) => `<td>${c === '出席' ? '🐾' : c === '請假' ? '🌙' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+        ${rows.map((r) => `<tr><td><b>${esc(r.name)}</b>${r.trial ? " 🧪" : ""}</td><td>${r.counts.attended}</td><td>${r.counts.leave}</td><td>${r.extra}</td><td>${esc(r.rate || '－')}</td>${r.cells.map((c) => `<td>${MARK_ICON[c] || ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
     };
     onSquad((s) => { squad = s; draw(); });
     $('#go').onclick = () => goAdmin('attOverview', { from: $('#from').value, to: $('#to').value });
@@ -2773,9 +2780,10 @@ const ADMIN_PAGES = {
     $app.innerHTML = `${backBtn()}<section class="card"><h2>📅 集會行事曆</h2>
       <form id="f"><label>一次新增多筆（每行一場：日期 名稱）</label>
         <textarea name="lines" placeholder="2026-11-22 團集會&#10;2026-11-29 露營&#10;2026-12-06"></textarea>
-        <p class="muted small">名稱可省略，預設為「團集會」。名稱裡有「大活動」三個字會自動標成大活動（體驗者不算、點名不列體驗者），也可以在下方逐場切換。</p>
+        <p class="muted small">名稱可省略，預設為「團集會」。名稱裡有「大活動」三個字會自動標成大活動（體驗者不算、點名不列體驗者），也可以在下方逐場切換。<br>「不計入進程」：這場的出席不算晉級、羚羊自動完成與體驗次數，但出席率照算。</p>
         <button class="btn" type="submit">新增</button><div class="out"></div></form></section>
-      <section class="card"><h2>📋 全部集會</h2>${d.meetings.slice().reverse().map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span> ${esc(m.name)}${m.type === '大活動' ? ' <span class="pill st-已頒發">🏕️ 大活動</span>' : ''}<br><span class="s">${m.enabled ? '出席 ' + m.attended + ' 人' : '已取消'}</span></span>
+      <section class="card"><h2>📋 全部集會</h2>${d.meetings.slice().reverse().map((m) => `<div class="list-row mrow"><span class="grow"><span class="t">${fmtDate(m.date)}</span> ${esc(m.name)}${m.type === '大活動' ? ' <span class="pill st-已頒發">🏕️ 大活動</span>' : ''}${m.counts === false ? ' <span class="pill st-未開始">🚫 不計入進程</span>' : ''}<br><span class="s">${m.enabled ? '出席 ' + m.attended + ' 人' : '已取消'}</span></span>
+        <button class="btn ghost small" data-ct="${esc(m.meetingId)}" data-to="${m.counts === false ? 1 : 0}">${m.counts === false ? '改為計入' : '不計入進程'}</button>
         <button class="btn ghost small" data-ty="${esc(m.meetingId)}" data-to="${m.type === '大活動' ? '一般' : '大活動'}">${m.type === '大活動' ? '改為一般' : '設為大活動'}</button>
         <button class="btn ghost small" data-ed="${esc(m.meetingId)}">修改</button><button class="btn ${m.enabled ? 'danger' : 'green'} small" data-tg="${esc(m.meetingId)}" data-en="${m.enabled ? 0 : 1}">${m.enabled ? '取消' : '恢復'}</button></div>`).join('') || '<p class="muted">還沒有集會。</p>'}</section>`;
     wireBack();
@@ -2786,6 +2794,7 @@ const ADMIN_PAGES = {
       goAdmin('calendar');
     });
     $$('[data-ty]').forEach((b) => { b.onclick = () => act(b, async () => { await api('meetingSave', { meetingId: b.dataset.ty, type: b.dataset.to }); goAdmin('calendar'); }); });
+    $$('[data-ct]').forEach((b) => { b.onclick = () => act(b, async () => { await api('meetingSave', { meetingId: b.dataset.ct, counts: b.dataset.to === '1' }); goAdmin('calendar'); }); });
     $$('[data-tg]').forEach((b) => { b.onclick = () => { if (b.dataset.en === '1' || confirm('取消這場集會？（不會刪除，已點名的紀錄保留，但不再列入出席統計）')) act(b, async () => { await api('meetingSave', { meetingId: b.dataset.tg, enabled: b.dataset.en === '1' }); goAdmin('calendar'); }); }; });
     $$('[data-ed]').forEach((b) => {
       b.onclick = () => {
