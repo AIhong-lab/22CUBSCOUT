@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <!-- 資安（SPEC 附錄第 59 點）：只允許連到 Google 的後端、不載入任何外部程式或圖片，表單不會被送到別的網站。由 GAS 提供時建置會拿掉這一行 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; manifest-src 'self'; worker-src 'self'; connect-src https://script.google.com https://script.googleusercontent.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#1f4e9c">
+<!-- 可以「加入主畫面」變成像 App 的圖示（PWA，SPEC 附錄第 62 點）；由 GAS 提供時這幾行沒有作用 -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="22團幼童軍">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>22團幼童軍冒險</title>
 <script id="boot"></script>
 <!--
@@ -3011,6 +3018,10 @@ if (IN_GAS) {
   const boot = (loc) => { const p = loc && loc.parameter && loc.parameter.p; gasHash = p ? '#' + p : (loc && loc.hash ? '#' + loc.hash : ''); start(); };
   try { google.script.url.getLocation(boot); } catch (e) { boot(null); }
 } else start();
+// PWA（SPEC 附錄第 62 點）：GitHub 版註冊 Service Worker，網頁存在手機裡、可以加入主畫面。由 GAS 提供時不做
+if (!IN_GAS && 'serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
 </script>
 </body>
 </html>

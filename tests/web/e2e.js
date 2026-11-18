@@ -41,7 +41,8 @@ function seed(env) {
   seed(env);
   const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8').replace(/^const GAS_URL = '[^']*';/m, `const GAS_URL = '${GAS}';`);
   const browser = await chromium.launch();
-  const context = await browser.newContext({ ...devices['iPhone 13'] });
+  // Service Worker 另外在 tests/web/pwa.js 測；這裡封鎖，避免攔截測試用的假網址
+  const context = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -64,7 +65,13 @@ function seed(env) {
         url: { getLocation: (cb) => setTimeout(() => cb({ hash: location.hash.replace(/^#/, ''), parameter: {} }), 0) },
         history: { replace: (a, b, h) => history.replaceState(null, '', location.pathname + (h ? '#' + h : '')) } } };
     });
-  } else await page.route('https://pages.test/**', (r) => r.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
+  } else await page.route('https://pages.test/**', (r) => {
+    // web/ 底下的其他檔案（manifest、圖示）照實提供，其餘一律回網頁
+    const rel = new URL(r.request().url()).pathname.replace(/^\/web\//, '');
+    const file = path.join(ROOT, 'web', rel);
+    if (rel && !rel.includes('..') && rel !== 'index.html' && fs.existsSync(file) && fs.statSync(file).isFile()) return r.fulfill({ path: file });
+    return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
+  });
   await page.route(GAS, (r) => {
     const req = r.request();
     assert.equal(req.method(), 'POST');

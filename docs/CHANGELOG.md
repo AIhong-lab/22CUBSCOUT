@@ -64,3 +64,4 @@
 - 2026-11-18 LINE 圖文選單改版（SPEC 附錄第 60 點）：新圖 docs/line-richmenu.jpg（tools/richmenu.js 產生，用網站的章圖與自繪圖示）；試算表選單「📱 安裝 LINE 圖文選單」一鍵建立並設為預設（gas/RichMenu.js）；webUrl_() 預設改回 GitHub 正式網站。145 項測試全過。
 - 2026-11-18 LINE 圖文選單圖片換成團長提供的設計圖（放大成 2500×1686）；tools/richmenu.js 改為必須指定輸出路徑。
 - 2026-11-18 點名與請假再整理（SPEC 附錄第 61 點）：點名新增「遲到」（算出席）；集會行事曆新增「計入進程」欄（不計入的集會不算晉級／自動完成／體驗次數，出席率照算）；家長請假沿用系統內功能、不收原因；團部ID 記入 ROADMAP。147 項測試、網頁測試全過。
+- 2026-11-18 網站可安裝成手機 App（PWA，SPEC 附錄第 62 點）：web/manifest.json、web/sw.js（只快取網頁與圖示）、web/icons/（tools/appicon.js 產生）；CSP 加 manifest-src／worker-src；新增 tests/web/pwa.js；三份手冊加「加入主畫面」說明。離線點名記入 ROADMAP。
