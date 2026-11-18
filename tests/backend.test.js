@@ -212,6 +212,7 @@ test('查詢：簽核人顯示管理員姓名；已完成待頒發用固定文�
   const att = env.sheet('出席紀錄');
   att.getRange(2, 1, 5, 5).setValues([['M0', 'C1', '出席', leaderId, ''], ['M1', 'C1', '請假', leaderId, ''], ['M2', 'C1', '出席', leaderId, ''], ['M3', 'C1', '出席', leaderId, ''], ['M4', 'C1', '出席', leaderId, '']]);
   env.sheet('年度出席設定').getRange(2, 1, 1, 5).setValues([['115學年度', '2026-08-01', '2027-07-31', 4, '']]);
+  env.sheet('頒章紀錄').getRange(2, 1, 1, 7).setValues([['C1', '剛入團', '2026-09-01', '', '', leaderId, '']]); // 羚羊第 7 項從剛入團頒發後算（附錄第 64 點）
   env.sheet('額外出席').getRange(2, 1, 1, 6).setValues([['115學年度', 'C1', 1, '', leaderId, '']]);
   const d = env.api({ action: 'cubDetail', token, cubId: 'C1' });
   const eco = d.units.find((u) => u.unit === '環保');

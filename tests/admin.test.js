@@ -214,6 +214,8 @@ test('行事曆與點名：多筆新增、只列當天在團、同時點名不�
   assert.equal(call(A, 'meetingList').meetings.find((m) => m.meetingId === today.meetingId).attended, 2, '遲到算出席人數');
   call(A, 'attendanceSave', { meetingId: today.meetingId, marks: { [c2]: '' } });
   ms.meetings.slice(0, 3).forEach((m) => call(A, 'attendanceSave', { meetingId: m.meetingId, marks: { [cubId]: '出席' } }));
+  assert.equal(call(L, 'cubAdminDetail', { cubId }).units.find((u) => u.unit === '羚羊').items[6].done, false, '還沒頒剛入團：不自動完成（附錄第 64 點）');
+  call(L, 'backfill', { cubId, unit: '剛入團', date: '2026-09-01' });
   const lion7 = call(L, 'cubAdminDetail', { cubId }).units.find((u) => u.unit === '羚羊').items[6];
   assert.equal(lion7.done, true);
   assert.equal(lion7.date, '2026-11-14', '第 4 次出席');
@@ -1266,6 +1268,7 @@ test('LINE 圖文選單一鍵安裝（附錄第 60 點）：建立、上傳圖�
 test('集會「計入進程」開關與遲到（附錄第 61 點）', () => {
   const { env, call, L, A, cubId } = world();
   call(L, 'meetingSave', { lines: '2026-09-05\n2026-09-12\n2026-09-19\n2026-09-26' });
+  call(L, 'backfill', { cubId, unit: '剛入團', date: '2026-09-01' });
   const ms = call(L, 'meetingList').meetings;
   assert.ok(ms.every((m) => m.counts === true), '新增的集會預設計入');
   assert.equal(env.rows('集會行事曆')[0][8], '是');

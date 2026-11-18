@@ -542,7 +542,7 @@ test('CSV 解析與輸出互通', () => {
 // ───── 出席與進程 ─────
 
 const att = (date, status = '出席') => ({ date, status });
-function progressA(attendance, completions = [], awards = [], opts = {}) {
+function progressA(attendance, completions = [], awards = [award('C1', '剛入團', '2026-01-01')], opts = {}) {
   const rows = itemsTable([['P-羚羊-7', '進程', '羚羊', '－', '參加幼童軍團集會至少4次', 25, '是']]);
   return L.computeCubProgress({
     cubId: 'C1', items: L.parseItems(rows).items, completions, awards, attendance,
@@ -561,6 +561,16 @@ test('出席滿 4 次自動完成羚羊「參加團集會至少4次」，日期�
   assert.equal(it.date, '2026-10-03', '依日期排序取第 4 次');
   assert.equal(it.auto, true);
   assert.equal(it.signer, '出席自動計算');
+});
+
+test('羚羊「參加團集會至少4次」只算剛入團頒發日之後的出席（附錄第 64 點）', () => {
+  const four = [att('2026-09-05'), att('2026-09-12'), att('2026-09-19'), att('2026-09-26'), att('2026-10-03')];
+  assert.equal(itemOf(progressA(four, [], []), 'P-羚羊-7').done, false, '還沒頒剛入團：不自動完成');
+  const after = itemOf(progressA(four, [], [award('C1', '剛入團', '2026-09-05')]), 'P-羚羊-7');
+  assert.equal(after.done, true, '頒發當天不算，之後 4 次');
+  assert.equal(after.date, '2026-10-03');
+  assert.equal(itemOf(progressA(four, [], [award('C1', '剛入團', '2026-09-12')]), 'P-羚羊-7').done, false, '之後只有 3 次');
+  assert.equal(itemOf(progressA(four, [], [award('C1', '羚羊', '2026-01-01')]), 'P-羚羊-7').done, true, '已有羚羊章（剛入團視為通過、沒有日期）：全部出席都算');
 });
 
 test('出席紀錄被修改後自動完成會重算（不寫入完成紀錄）', () => {

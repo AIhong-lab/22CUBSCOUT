@@ -141,7 +141,7 @@ var Logic = (function () {
     { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
     { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
     { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
-    { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算）' },
+    { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算；進程項目只算上一級頒發後的出席）' },
     { key: '快達標門檻（剩幾項以內）', type: 'int', def: 2, min: 1, max: 10, desc: '' },
     { key: '未頒章再提醒天數', type: 'int', def: 14, min: 0, max: 365, desc: '填 0 表示不提醒' },
     { key: '每日排程時間（幾點）', type: 'int', def: 8, min: 0, max: 23, desc: '' },
@@ -536,18 +536,28 @@ var Logic = (function () {
     // 出席（含遲到；請假不算；集會設為「不計入進程」的不算）的日期，由舊到新；呼叫端只傳這位小狼、啟用中集會的紀錄
     var attended = (p.attendance || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
-    // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）
-    if (p.autoItemId && p.autoCount > 0 && attended.length >= p.autoCount) {
-      var autoDate = attended[p.autoCount - 1];
-      if (!done[p.autoItemId] || autoDate < done[p.autoItemId].date) {
-        done[p.autoItemId] = { date: autoDate, signer: '出席自動計算', auto: true };
-      }
-    }
     var awarded = {};
     (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
     // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）
     if (!awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
       awarded[NEWBIE] = { cubId: cubId, unit: NEWBIE, date: null, occasion: '已晉級（視為通過）', implicit: true };
+    }
+    // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）。
+    // 項目屬於某一級進程時，只算「上一級頒發日之後（不含當天）」的出席；上一級還沒頒發就不自動完成
+    //（SPEC 附錄第 64 點：羚羊的「參加團集會至少4次」從剛入團頒發後才開始算）。視為通過、沒有日期的上一級：全部出席都算。
+    if (p.autoItemId && p.autoCount > 0) {
+      var autoIt = (p.items || []).filter(function (it) { return it.id === p.autoItemId; })[0];
+      var autoPool = attended, li = autoIt && autoIt.category === CATEGORY.PROGRESS ? LEVELS.indexOf(autoIt.unit) : -1;
+      if (li > 0) {
+        var pa = awarded[LEVELS[li - 1]];
+        autoPool = !pa ? [] : (pa.date ? attended.filter(function (d) { return d > pa.date; }) : attended);
+      }
+      if (autoPool.length >= p.autoCount) {
+        var autoDate = autoPool[p.autoCount - 1];
+        if (!done[p.autoItemId] || autoDate < done[p.autoItemId].date) {
+          done[p.autoItemId] = { date: autoDate, signer: '出席自動計算', auto: true };
+        }
+      }
     }
 
     var currentLevel = null;
