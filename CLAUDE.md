@@ -41,7 +41,8 @@
 - LINE 圖文選單改版（SPEC 附錄第 60 點）：`docs/line-richmenu.jpg` 是團長提供的設計圖（放大成 2500×1686；換圖時六格位置要對齊三欄兩列）；`tools/richmenu.js` 是程式版備案（需指定輸出路徑）；試算表選單「📱 安裝 LINE 圖文選單」（`gas/RichMenu.js`，建立→上傳圖→設預設→刪舊的同名選單，失敗會清掉半成品）；`webUrl_()` 預設改回 GitHub（WEB_URL → `DEFAULT_WEB_URL`）。
 - 點名與請假再整理（SPEC 附錄第 61 點）：`Logic.ATTEND_MARKS`／`isPresent`（遲到算出席；判斷出席一律用 `isPresent`，不要寫 `=== '出席'`）、`attendanceCounts` 多回傳 `late`；集會 `counts`（「計入進程」欄，`counts === false` 的出席不算晉級、自動完成與 `trialProgress`，出席率照算）；`meetingSave` 收 `counts`；前端 `MARK_LABEL`／`MARK_ICON`、行事曆 `[data-ct]`、`.list-row.mrow`。不收請假原因；團部ID 在 ROADMAP。
 - 手機 App（PWA，SPEC 附錄第 62 點）：`web/manifest.json`、`web/sw.js`（只快取同網域 GET：網頁先連網後快取、圖示先快取；改 sw.js 要把 `VERSION` 加 1）、`web/icons/`（`tools/appicon.js` 產生）；註冊只在 `!IN_GAS && isSecureContext`；CSP 有 `manifest-src 'self'; worker-src 'self'`。`tests/web/pwa.js`（本機伺服器＋離線開啟）；e2e 用 `serviceWorkers: 'block'`。離線點名在 ROADMAP。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 147 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- LINE@ 與 PWA 分工（SPEC 附錄第 63 點）：維持帳號密碼、不用 LIFF；管理員關鍵字「點名」→ `rollReplyText_()`（Notify.js；今天或下一場集會、已請假名單、`web/#roll=集會ID`）；前端 `pendingRoll`（登入後開 `ADMIN_PAGES.roll` 的 `params.meetingId`）。家長推播待團長討論。
+- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 148 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。

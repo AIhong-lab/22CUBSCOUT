@@ -1287,3 +1287,32 @@ test('集會「計入進程」開關與遲到（附錄第 61 點）', () => {
   assert.equal(call(L, 'meetingList').meetings[0].counts, true);
 });
 
+
+test('LINE 關鍵字「點名」（附錄第 63 點）：只回已連結的管理員；下一場集會、已請假名單、直達點名頁', () => {
+  const { env, call, L, A, cubId } = world();
+  env.props.LINE_MESSAGING_TOKEN = 'test-token';
+  const replies = () => env.sent.filter((x) => /reply/.test(x.url));
+  linkLine(env, call, L, 'Uleader');
+  let n = replies().length;
+  say(env, '點名', 'Uleader');
+  assert.match(replies().at(-1).body.messages[0].text, /接下來沒有排定的集會/);
+  const c2 = call(L, 'cubSave', { name: '測試小狼乙', squad: '二小隊', joinDate: '2026-10-01' }).cubId;
+  call(L, 'meetingSave', { lines: '2026-11-07 團集會\n2026-11-21 團集會\n2026-11-28 露營' });
+  const next = call(L, 'meetingList').meetings.find((m) => m.date === '2026-11-21');
+  call(A, 'attendanceSave', { meetingId: next.meetingId, marks: { [c2]: '請假' } });
+  n = replies().length;
+  say(env, '點名', 'Ustranger');
+  assert.equal(replies().length, n, '沒連結的人不回');
+  say(env, '點名', 'Uleader');
+  const t = replies().at(-1).body.messages[0].text;
+  assert.match(t, /11\/21（六）團集會/);
+  assert.match(t, /已請假 1 位[\s\S]*測試小狼乙（二小隊）/);
+  assert.ok(!t.includes('測試小狼甲'), '沒請假的不列');
+  assert.ok(t.includes('https://aihong-lab.github.io/22CUBSCOUT/web/#roll=' + encodeURIComponent(next.meetingId)), '直達點名頁');
+  // 今天有集會就回今天的，並顯示已點名人數
+  call(L, 'meetingSave', { lines: '2026-11-14 團集會' });
+  const today = call(L, 'meetingList').meetings.find((m) => m.date === '2026-11-14');
+  call(A, 'attendanceSave', { meetingId: today.meetingId, marks: { [cubId]: '遲到' } });
+  say(env, '點名', 'Uleader');
+  assert.match(replies().at(-1).body.messages[0].text, /今天[\s\S]*11\/14（六）團集會[\s\S]*已點名出席 1 位[\s\S]*沒有人請假/);
+});

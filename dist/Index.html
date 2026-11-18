@@ -1150,8 +1150,21 @@ const pendingAward = {
   clear() { try { sessionStorage.removeItem('pendingAward'); } catch (e) {} },
 };
 
+/** LINE 關鍵字「點名」回覆的直達連結 #roll=集會ID（SPEC 附錄第 63 點）：登入後直接打開那一場的點名 */
+const pendingRoll = {
+  get() { try { return sessionStorage.getItem('pendingRoll'); } catch (e) { return null; } },
+  set(v) { try { sessionStorage.setItem('pendingRoll', v); } catch (e) {} },
+  clear() { try { sessionStorage.removeItem('pendingRoll'); } catch (e) {} },
+};
+
 async function start() {
   const h = IN_GAS ? gasHash : location.hash;
+  const rm = /^#roll=(.+)$/.exec(h);
+  if (rm) {
+    try { pendingRoll.set(decodeURIComponent(rm[1])); } catch (e) {}
+    setHash('');
+    if (!store.get('token')) return renderLogin({ notice: '請先登入，登入後會直接打開點名畫面。' });
+  }
   const am = /^#award=(.+)$/.exec(h);
   if (am) {
     try { pendingAward.set(decodeURIComponent(am[1])); } catch (e) {}
@@ -1188,6 +1201,11 @@ async function start() {
   if (pa) {
     pendingAward.clear();
     if (state.me.role === '團長') { state.mode = 'admin'; state.admin = { tab: 'home', page: { name: 'award', params: { deeplink: pa } } }; }
+  }
+  const pr = pendingRoll.get();
+  if (pr) {
+    pendingRoll.clear();
+    if (state.me.role) { state.mode = 'admin'; state.admin = { tab: 'roll', page: { name: 'roll', params: { meetingId: pr } } }; }
   }
   route();
 }

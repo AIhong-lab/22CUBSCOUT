@@ -4828,8 +4828,9 @@ function linePush_(ids, message, token) {
 /** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」只回覆已連結 LINE 的管理員 */
 function handleKeyword_(text, lineUserId, replyToken) {
   if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
-  if (text !== '可晉級' && text !== '快達標') return null;
+  if (text !== '可晉級' && text !== '快達標' && text !== '點名') return null;
   if (!loadAdmins_().some(function (a) { return a.lineUserId === lineUserId; })) return null;
+  if (text === '點名') return lineReply_(replyToken, rollReplyText_());
   var scan = scanCubs_(progressCtx_(), loadCubs_());
   var lines;
   if (text === '可晉級') {
@@ -4838,6 +4839,32 @@ function handleKeyword_(text, lineUserId, replyToken) {
   }
   lines = scan.near.map(function (p) { return '・' + p.name + '：' + unitLabel_(p) + '（還差 ' + p.remaining + ' 項）'; });
   return lineReply_(replyToken, lines.length ? ('🔥 快達標 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有快達標的小狼。');
+}
+
+/**
+ * 關鍵字「點名」（SPEC 附錄第 63 點，只回已連結 LINE 的管理員）：今天或下一場集會、已請假名單、直達點名頁的連結。
+ * 只列請假的孩子姓名與小隊；名單和「可晉級」一樣只會回給管理員。
+ */
+function rollReplyText_() {
+  var today = today_();
+  var m = loadMeetings_().filter(function (x) { return x.enabled && Logic.isDateStr(x.date) && x.date >= today; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0];
+  if (!m) return '接下來沒有排定的集會。到網站後台「行事曆」新增：\n' + webUrl_() + 'web/';
+  var inMeeting = {};
+  cubsOnDate_(m.date, m.type).forEach(function (c) { inMeeting[c.cubId] = c; });
+  var leave = [], present = 0;
+  loadAttendance_().forEach(function (a) {
+    if (a.meetingId !== m.meetingId || !inMeeting[a.cubId]) return;
+    if (a.status === '請假') leave.push(inMeeting[a.cubId]);
+    else if (Logic.isPresent(a.status)) present++;
+  });
+  var d = m.date.split('-');
+  var wd = '日一二三四五六'.charAt(new Date(Number(d[0]), Number(d[1]) - 1, Number(d[2])).getDay());
+  var lines = [(m.date === today ? '📋 今天 ' : '📋 下一場：') + Number(d[1]) + '/' + Number(d[2]) + '（' + wd + '）' + m.name];
+  if (m.date === today) lines.push('已點名出席 ' + present + ' 位');
+  lines.push(leave.length ? '🌙 已請假 ' + leave.length + ' 位：\n' + leave.map(function (c) { return '・' + c.name + (c.squad ? '（' + c.squad + '）' : ''); }).join('\n') : '🌙 目前沒有人請假');
+  lines.push('點名：' + webUrl_() + 'web/#roll=' + encodeURIComponent(m.meetingId));
+  return lines.join('\n').slice(0, 4500);
 }
 
 // ───────────── 每日排程 ─────────────

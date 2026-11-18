@@ -561,6 +561,14 @@ function seed(env) {
   await page.locator('#toParent').click();
   await page.getByText('還沒有綁定孩子').waitFor();
 
+  // ═════ LINE 關鍵字「點名」的連結 #roll=集會ID：直接打開那一場的點名（附錄第 63 點） ═════
+  await page.goto('about:blank'); await page.goto(PAGE + '#roll=M1');
+  await page.locator('#mSel').waitFor();
+  assert.equal(await page.locator('#mSel').inputValue(), 'M1');
+  assert.equal(new URL(page.url()).hash, '', '用過就清掉');
+  await page.locator('#toParent').click();
+  await page.getByText('還沒有綁定孩子').waitFor();
+
   // ═════ 電腦寬螢幕：上方導覽列、後台左側選單、四級橫排 ═════
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.locator('#toAdmin').click();
