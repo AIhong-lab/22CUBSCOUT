@@ -1243,11 +1243,11 @@ test('LINE 圖文選單一鍵安裝（附錄第 60 點）：建立、上傳圖�
   assert.ok(!calls.some((x) => /richmenu\/other$/.test(x.url) && x.method === 'delete'), '別的選單不動');
   assert.ok(!JSON.stringify(env.logs).includes('tok-test') && !env.ui.alerts.join('').includes('tok-test'), 'token 不出現在日誌或視窗');
 
-  // 沒填 FB：第六格改開「了解幼童軍」
+  // 沒填 FB：右下角直接開 22 團的 FB 粉絲專頁（附錄第 67 點）
   call(L, 'siteContentSave', { about: '我們是 22 團', fb: '' });
   env.ctx.menuInstallRichMenu();
   const c2 = rm().filter((x) => /\/v2\/bot\/richmenu$/.test(x.url)).at(-1);
-  assert.equal(c2.body.areas[5].action.uri, 'https://aihong-lab.github.io/22CUBSCOUT/web/#about');
+  assert.equal(c2.body.areas[5].action.uri, 'https://www.facebook.com/profile.php?id=100064559625116');
 
   // LINE 回錯誤：說明失敗、不設預設、刪掉做到一半的選單
   const before = rm().length;

@@ -45,6 +45,7 @@
 - 羚羊自動完成（SPEC 附錄第 64 點）：`computeCubProgress` 的出席自動完成項目只算「該項目所屬級的上一級頒發日之後」的出席（上一級沒頒發→不自動完成；視為通過沒有日期→全部算）；舊生用補登剛入團，不設基準日。
 - 上線前檢查（SPEC 附錄第 65 點）：`adminHome.alerts.placeholders`（`placeholderPlaces_()`：最新個資告知、了解幼童軍含「【請填寫」；只給有 `manageSettings` 的人）；不採用寫死的剛入團基準日。
 - 公開頁面載入（SPEC 附錄第 66 點）：`renderInfo` 先用 `noticeData`／`siteData` 畫面再背景更新（`infoSeq` 與 `#infoBack[data-seq]` 防止換頁後被舊回應蓋掉）；GitHub 版 `api()` 用 AbortController 45 秒逾時（`window.__apiTimeout` 給測試用）。`tests/web/slow.js`。
+- LINE 選單右下角（SPEC 附錄第 67 點）：`RichMenu.js` 的 `TEAM_FB_URL`（22 團 FB 粉絲專頁）是沒填「網站內容 → FB 網址」時的預設；三份手冊都有 LINE 官方帳號章節（完整版「五之二」）。
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構

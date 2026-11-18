@@ -5127,7 +5127,10 @@ function lineReply_(replyToken, text) {
 var RICH_MENU_NAME = '22團選單';
 var RICH_MENU_SIZE = { width: 2500, height: 1686 };
 
-/** 六格：[按鈕名稱, 網站頁面]；第六格 FB 用「網站內容」的 FB 網址，沒填就開「了解幼童軍」 */
+/** 22 團 FB 粉絲專頁（公開網址；SPEC 附錄第 67 點：右下角直接連到 FB） */
+var TEAM_FB_URL = 'https://www.facebook.com/profile.php?id=100064559625116';
+
+/** 六格：[按鈕名稱, 網站頁面]；第六格 FB 用「網站內容」的 FB 網址，沒填就用 22 團 FB 粉絲專頁 */
 var RICH_MENU_CELLS = [['公佈欄', 'notices'], ['進程查詢', 'progress'], ['技能章查詢', 'badges'], ['了解幼童軍', 'about'], ['活動時間', 'calendar'], ['22團 FB', 'fb']];
 
 /** 六格的範圍與連結（純計算，方便測試） */
@@ -5136,7 +5139,7 @@ function richMenuAreas_(root, fb) {
   var xs = [0, Math.round(W / 3), Math.round(W * 2 / 3), W], ys = [0, Math.round(H / 2), H];
   return RICH_MENU_CELLS.map(function (c, i) {
     var col = i % 3, row = Math.floor(i / 3);
-    var uri = c[1] === 'fb' ? (/^https:\/\/((www|m)\.)?(facebook\.com|fb\.com|fb\.me)\//.test(fb || '') ? fb : root + 'web/#about') : root + 'web/#' + c[1];
+    var uri = c[1] === 'fb' ? (/^https:\/\/((www|m)\.)?(facebook\.com|fb\.com|fb\.me)\//.test(fb || '') ? fb : TEAM_FB_URL) : root + 'web/#' + c[1];
     return { bounds: { x: xs[col], y: ys[row], width: xs[col + 1] - xs[col], height: ys[row + 1] - ys[row] },
       action: { type: 'uri', label: c[0], uri: uri } };
   });
