@@ -34,11 +34,10 @@ function scanCubs_(ctx, cubs) {
 }
 
 function unitLabel_(p) { return p.category === Logic.CATEGORY.PROGRESS ? (p.unit === Logic.NEWBIE ? p.unit : p.unit + '級') : p.unit + '技能章'; }
-/** 網站網址：指令碼屬性 WEB_URL → 這個專案的網頁應用程式網址（網頁放在 GAS 時就是它）→ 舊的 GitHub 網址 */
+/** 網站網址（結尾有 /）：指令碼屬性 WEB_URL → GitHub 正式網站（SPEC 附錄第 59 點：正式網站是 GitHub Pages） */
 function webUrl_() {
   var p = PropertiesService.getScriptProperties().getProperty('WEB_URL');
-  if (p) return p;
-  try { var u = ScriptApp.getService().getUrl(); if (u) return u; } catch (e) { /* 取不到就用預設 */ }
+  if (p) return /\/$/.test(p) ? p : p + '/';
   return DEFAULT_WEB_URL;
 }
 function linkedLineIds_() { return loadAdmins_().map(function (a) { return a.lineUserId; }).filter(String); }

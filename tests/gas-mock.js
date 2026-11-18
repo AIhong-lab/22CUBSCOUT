@@ -158,7 +158,16 @@ function loadGas(opts = {}) {
       },
       DigestAlgorithm: { SHA_256: 'SHA_256' }, Charset: { UTF_8: 'UTF_8' },
     },
-    UrlFetchApp: { fetch: (url, o) => { sent.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => net.code }; } },
+    // net.handler(url, o) 可自訂回應（回傳 { code, body, blob }）；沒有就回 net.code。payload 是圖片（非字串）時 body 放原物件
+    UrlFetchApp: { fetch: (url, o) => {
+      o = o || {};
+      const body = typeof o.payload === 'string' ? JSON.parse(o.payload) : o.payload;
+      sent.push({ url, method: (o.method || 'get').toLowerCase(), headers: o.headers || {}, contentType: o.contentType, body });
+      const r = (net.handler && net.handler(url, o)) || {};
+      const code = r.code === undefined ? net.code : r.code;
+      return { getResponseCode: () => code, getContentText: () => (r.body === undefined ? '{}' : typeof r.body === 'string' ? r.body : JSON.stringify(r.body)),
+        getBlob: () => r.blob || { kind: 'blob', url } };
+    } },
     CacheService: { getScriptCache: () => ({
       get: (k) => (cache[k] && cache[k].exp > clock ? cache[k].v : null),
       // 分頁暫存（SHEET_）預設關閉：很多測試直接改試算表內容，真實環境由 onEdit 清掉暫存，模擬環境沒有 onEdit。要測暫存時設 env.flags.sheetCache = true

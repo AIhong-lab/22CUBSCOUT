@@ -304,7 +304,7 @@ test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄
   env.ctx.onOpen();
   assert.equal(env.ui.menus[0].title, '🐺 幼童軍系統');
   assert.ok(env.ui.menus[0].items.every(([, fn]) => typeof env.ctx[fn] === 'function' && !fn.endsWith('_')), '選單函式存在且非私有');
-  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['🔑 團長預設帳號（admin）', '把帳號設為團長', '顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
+  assert.deepEqual(env.ui.menus[0].items.map(([t]) => t), ['🔑 團長預設帳號（admin）', '把帳號設為團長', '📱 安裝 LINE 圖文選單', '顯示全部分頁（查紀錄用）', '只顯示需要編輯的分頁']);
   assert.equal(typeof env.ctx.menuInviteAssistant, 'undefined');
 });
 

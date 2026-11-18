@@ -740,7 +740,7 @@ test('LINE 關鍵字：可晉級／快達標只回已連結的管理員；進度
   say(env, '進度', 'Ustranger');
   assert.equal(replies().length, n + 1);
   assert.ok(!/測試小狼/.test(JSON.stringify(replies().at(-1).body)), '不含任何個資');
-  assert.match(replies().at(-1).body.messages[0].text, /script\.google\.com\/macros\/s\/TEST\/exec/, '沒設定 WEB_URL 時用這個專案自己的網址');
+  assert.match(replies().at(-1).body.messages[0].text, /aihong-lab\.github\.io\/22CUBSCOUT\//, '沒設定 WEB_URL 時用 GitHub 正式網站（附錄第 59 點）');
   say(env, '可晉級', 'Uleader');
   assert.match(replies().at(-1).body.messages[0].text, /測試小狼甲：環保技能章/);
   say(env, '快達標', 'Uleader');
@@ -1194,4 +1194,67 @@ test('startup：一次取得登入資料與第一個畫面（附錄第 58 點）
   assert.equal(p.prefetch.adminHome, undefined, '家長拿不到後台資料');
   assert.equal(p.prefetch.cubDetail.cub.cubId, cubId, '家長：第一個孩子的資料');
   assert.equal(call('bad-token', 'startup').code, 'SESSION_EXPIRED');
+});
+
+test('LINE 圖文選單一鍵安裝（附錄第 60 點）：建立、上傳圖片、設為預設、刪掉舊的', () => {
+  const { env, L, call } = world();
+  const rm = () => env.sent.filter((x) => /richmenu/.test(x.url));
+  // 沒有 token：不呼叫 LINE，跳出說明
+  env.ctx.menuInstallRichMenu();
+  assert.match(env.ui.alerts.at(-1), /LINE_MESSAGING_TOKEN/);
+  assert.equal(rm().length, 0);
+
+  env.props.LINE_MESSAGING_TOKEN = 'tok-test';
+  call(L, 'siteContentSave', { about: '我們是 22 團', fb: 'https://www.facebook.com/test22' });
+  let n = 0;
+  env.net.handler = (url, o) => {
+    if (/richmenu\/list$/.test(url)) return { body: { richmenus: [{ richMenuId: 'old-1', name: '22團選單' }, { richMenuId: 'other', name: '別人的選單' }] } };
+    if (/\/v2\/bot\/richmenu$/.test(url)) return { body: { richMenuId: 'new-' + (++n) } };
+    if (/line-richmenu\.jpg$/.test(url)) return { blob: { kind: 'jpg' } };
+    return { body: {} };
+  };
+  env.ctx.menuInstallRichMenu();
+  assert.match(env.ui.alerts.at(-1), /完成/);
+  const calls = rm();
+  const create = calls.find((x) => /\/v2\/bot\/richmenu$/.test(x.url));
+  assert.equal(create.method, 'post');
+  assert.equal(create.headers.Authorization, 'Bearer tok-test');
+  assert.deepEqual(create.body.size, { width: 2500, height: 1686 });
+  assert.equal(create.body.name, '22團選單');
+  const uris = create.body.areas.map((a) => a.action.uri);
+  assert.deepEqual(uris, ['https://aihong-lab.github.io/22CUBSCOUT/web/#notices', 'https://aihong-lab.github.io/22CUBSCOUT/web/#progress',
+    'https://aihong-lab.github.io/22CUBSCOUT/web/#badges', 'https://aihong-lab.github.io/22CUBSCOUT/web/#about',
+    'https://aihong-lab.github.io/22CUBSCOUT/web/#calendar', 'https://www.facebook.com/test22']);
+  // 六格剛好鋪滿整張圖、不重疊
+  const area = create.body.areas.reduce((t, a) => t + a.bounds.width * a.bounds.height, 0);
+  assert.equal(area, 2500 * 1686);
+  create.body.areas.forEach((a) => assert.ok(a.action.label.length <= 20));
+  const up = calls.find((x) => /api-data\.line\.me\/v2\/bot\/richmenu\/new-1\/content/.test(x.url));
+  assert.equal(up.contentType, 'image/jpeg');
+  assert.deepEqual(up.body, { kind: 'jpg' });
+  assert.ok(calls.some((x) => /user\/all\/richmenu\/new-1$/.test(x.url) && x.method === 'post'), '設為所有人的預設選單');
+  assert.ok(calls.some((x) => /richmenu\/old-1$/.test(x.url) && x.method === 'delete'), '刪掉舊的 22團選單');
+  assert.ok(!calls.some((x) => /richmenu\/other$/.test(x.url) && x.method === 'delete'), '別的選單不動');
+  assert.ok(!JSON.stringify(env.logs).includes('tok-test') && !env.ui.alerts.join('').includes('tok-test'), 'token 不出現在日誌或視窗');
+
+  // 沒填 FB：第六格改開「了解幼童軍」
+  call(L, 'siteContentSave', { about: '我們是 22 團', fb: '' });
+  env.ctx.menuInstallRichMenu();
+  const c2 = rm().filter((x) => /\/v2\/bot\/richmenu$/.test(x.url)).at(-1);
+  assert.equal(c2.body.areas[5].action.uri, 'https://aihong-lab.github.io/22CUBSCOUT/web/#about');
+
+  // LINE 回錯誤：說明失敗、不設預設、刪掉做到一半的選單
+  const before = rm().length;
+  env.net.handler = (url) => (/\/v2\/bot\/richmenu$/.test(url) ? { body: { richMenuId: 'bad' } } : /content$/.test(url) ? { code: 400, body: { message: 'image too large' } } : { body: { richmenus: [] } });
+  env.ctx.menuInstallRichMenu();
+  assert.match(env.ui.alerts.at(-1), /失敗[\s\S]*image too large/);
+  const after = rm().slice(before);
+  assert.ok(!after.some((x) => /user\/all/.test(x.url)));
+  assert.ok(after.some((x) => /richmenu\/bad$/.test(x.url) && x.method === 'delete'));
+
+  // 網頁訪客（GAS 模式）呼叫不到：沒有試算表視窗就直接失敗、不呼叫 LINE
+  env.ui.unavailable = true;
+  const b2 = rm().length;
+  assert.throws(() => env.ctx.menuInstallRichMenu());
+  assert.equal(rm().length, b2);
 });

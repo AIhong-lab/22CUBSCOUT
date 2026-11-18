@@ -14,6 +14,8 @@ function onOpen() {
     .addItem('🔑 團長預設帳號（admin）', 'menuDefaultAdmin')
     .addItem('把帳號設為團長', 'menuSetLeader')
     .addSeparator()
+    .addItem('📱 安裝 LINE 圖文選單', 'menuInstallRichMenu')
+    .addSeparator()
     .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
     .addItem('只顯示需要編輯的分頁', 'menuHideSystemSheets')
     .addToUi();

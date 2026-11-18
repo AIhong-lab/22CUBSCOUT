@@ -35,16 +35,17 @@
 - 活動報名對象與資料保留（SPEC 附錄第 52 點）：`canRegisterEvents_`（管理員或綁定在團／體驗孩子）、`eventList.eligible`；`purgeEndedEvents_`（`dailyJob` 呼叫；先 `syncEventSheet_` 成功才刪報名並寫「封存時間」），封存後 `eventSave`／`syncEventSheet_` 拒絕。
 - 章的內建圖與進程顯示範圍（SPEC 附錄第 53 點）：前端 `BADGES`（四級菱形 SVG）、`triBadge`（技能章三角形，顏色 `BADGE_COLOR` 依分類）、`iconOf`（有內建圖時加 `.art`）、`lvIcon`、`levelWindow(currentLevel)`（家長闖關、家長首頁、已登入家長的公開進程頁）。上傳的章圖仍優先（`applyUnitImages`）。
 - 網頁由 GAS 提供（SPEC 附錄第 56 點）：`npm run build` 另產生 `dist/Index.html`（＝`web/index.html`）；`doGet` 用 `HtmlService.createHtmlOutputFromFile('Index')`；前端 `IN_GAS` 時走 `google.script.run.apiFromPage`、`gasHash`／`google.script.url.getLocation`（`?p=` 或 `#`）、`gasBase`（`ping.webUrl`）。**公開函式（非底線結尾）訪客都呼叫得到**：`setup`→`setupCore_`、`dailyJob`→`runDaily_`、`weeklyBackup`→`runWeekly_`（`throttle_`），測試一律呼叫內部函式；`tests/web/gas-mode.js` 是 GAS 模式冒煙測試。
-- 鎖在 GAS 與加速（SPEC 附錄第 57 點）：設定「允許外部網頁連線」＝否時 `doPost` API 回 `ERR.MOVED`（前端 `showMoved`）；`doGet` 用 `bootData_()` 把公開資料內嵌進 `<script id="boot"></script>`（前端 `window.__BOOT`）；`cachedPublic_`／`clearPublicCache_`（`registerAdmin_` 每次動作後清）；`webUrl_()` 預設用專案自己的網址。`npm run test:web` 會跑三段：一般、`E2E_GAS=1`、`gas-mode.js`。
+- 鎖在 GAS 與加速（SPEC 附錄第 57 點）：設定「允許外部網頁連線」＝否時 `doPost` API 回 `ERR.MOVED`（前端 `showMoved`）；`doGet` 用 `bootData_()` 把公開資料內嵌進 `<script id="boot"></script>`（前端 `window.__BOOT`）；`cachedPublic_`／`clearPublicCache_`（`registerAdmin_` 每次動作後清）；`webUrl_()` 預設改回 GitHub（附錄第 60 點）。`npm run test:web` 會跑三段：一般、`E2E_GAS=1`、`gas-mode.js`。
 - 加速（SPEC 附錄第 58 點）：`ss_()` 快取試算表（`SS_CACHE_`／`SHEET_CACHE_`）；`readAll_` 對項目總表、級別與章說明、進程細項、設定使用 CacheService（`sheetCacheKey_`，`invalidate_` 與 `onEdit`／`clearAllCaches_` 清除；模擬環境預設關閉，`env.flags.sheetCache`）；`startup` API（me＋第一個畫面，前端 `state.prefetch`）。
 - 正式網站維持 GitHub Pages（SPEC 附錄第 59 點）：`web/index.html` 有 CSP meta（connect-src 只允許 script.google.com／script.googleusercontent.com；建置 `dist/Index.html` 時拿掉這行）、`referrer` no-referrer、被框住時不顯示內容（`!IN_GAS && window.top !== window.self`）。**之後網頁若要載入任何外部資源，必須同時更新 CSP**，e2e 會把 CSP 阻擋當成錯誤。「允許外部網頁連線」必須維持「是」。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 144 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- LINE 圖文選單改版（SPEC 附錄第 60 點）：`tools/richmenu.js` 產生 `docs/line-richmenu.jpg`（章圖取自 web/index.html 的 `BADGES`／`triBadge`）；試算表選單「📱 安裝 LINE 圖文選單」（`gas/RichMenu.js`，建立→上傳圖→設預設→刪舊的同名選單，失敗會清掉半成品）；`webUrl_()` 預設改回 GitHub（WEB_URL → `DEFAULT_WEB_URL`）。
+- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 145 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
 - 後端：Google Apps Script Web App（`gas/`，用 clasp 管理），資料庫是 Google 試算表。
 - 登入：家長、服務員、團長都用帳號密碼。註冊改為自己選身分送出申請、團長審核（SPEC 附錄第 31 點）；綁定碼仍可直接註冊；邀請碼已拿掉，只剩 setup() 的第一位團長邀請碼（附錄第 33 點）。密碼加鹽多次雜湊；登入後發隨機憑證，前端存瀏覽器，後端只存雜湊。忘記密碼由團長產生臨時碼。
-- LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。圖文選單是給所有人的六個網頁連結（附錄第 49 點），不經過後端。
+- LINE：只用 Messaging API channel（官方帳號），僅通知「已連結 LINE」的管理員與管理員關鍵字查詢。沒有 LINE Login、沒有 LIFF、不推播給家長。圖文選單是給所有人的六個網頁連結（附錄第 49 點），按鈕不經過後端；由試算表選單一鍵安裝（附錄第 60 點）。
 - 前端呼叫 GAS：`fetch` POST，`Content-Type: text/plain`，body 放 JSON（避免 CORS 預檢）。
 - `doPost` 同時接前端 API 與 LINE webhook：網址帶 `key=` 參數且符合 Script Properties 的 webhook 密鑰 → 當 webhook；否則當前端 API（body 帶登入憑證）。
 - 憑證過期或無效時後端回明確錯誤代碼（預定 `SESSION_EXPIRED`），前端清除憑證回登入畫面，登入後回到原畫面。
@@ -129,13 +130,14 @@
 | `Auth.js` | 亂數（取自 UUID）、HMAC 雜湊、失敗紀錄與鎖定、登入憑證 |
 | `Api.js` | `doGet`／`doPost`、動作分派（`PUBLIC_ACTIONS`、`AUTHED_ACTIONS`）、家長端 API、`buildCubView_` |
 | `Webhook.js` | LINE webhook（密鑰與格式檢查）、管理員 LINE 配對碼、`lineReply_` |
+| `RichMenu.js` | LINE 圖文選單一鍵安裝（附錄第 60 點）：`richMenuAreas_`、`installRichMenu_`、試算表選單 `menuInstallRichMenu`；圖片由 `tools/richmenu.js` 產生 |
 | `AdminApi.js` | 後台 API（`registerAdmin_(名稱, 權限, 函式)` 統一做權限檢查）：首頁、小狼與綁定碼、簽核與撤銷、頒章／修改／撤銷／補登、管理員（邀請碼只剩列出與作廢）、帳號管理、行事曆與點名、年度出席、個資處理、LINE 配對 |
 | `TeamApi.js` | 小隊輔、正副小隊長與職務紀錄、公告欄（含公開 API `notices`）、批次匯入名單、家長線上請假（SPEC 附錄第 45 點） |
 | `EventApi.js` | 活動報名與繳費紀錄、章的圖片（SPEC 附錄第 50 點） |
 | `ItemsAdmin.js` | 項目管理 API（SPEC 7.7，4B）：樹狀資料、改文字、新增（自動ID、影響預覽）、停用／啟用、排序、大項改名、技能章新增／改名、說明、本團細項、匯出、重新載入；改完清公開查詢快取 |
 | `Notify.js` | LINE 主動通知（階段 5）：達標推播與去重、再提醒、關鍵字回覆、每日排程 |
 | `Backup.js` | 備份與輪替、權限檢查、`weeklyBackup`／`installBackupTrigger`、`ensureBackup_`（setup 自動建立資料夾與排程） |
-| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：團長預設帳號 admin（`ensureDefaultAdmin_`）、把帳號設為團長（`setLeaderByUsername_`）、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
+| `Menu.js` | 試算表選單「🐺 幼童軍系統」（`onOpen`）：團長預設帳號 admin（`ensureDefaultAdmin_`）、把帳號設為團長（`setLeaderByUsername_`）、安裝 LINE 圖文選單、顯示全部分頁／只顯示需要編輯的分頁；選單呼叫的函式名稱不可底線結尾 |
 | `Setup.js` | `setup()`、`ensureNewbieLevel_()`（補上剛入團，只做一次）、`organizeSheets_(hide)`（依 `EDITABLE_SHEETS` 排序並隱藏系統分頁，只改顯示狀態）、`cleanup0B()` |
 
 - `npm run build`：產生 `gas/SeedData.js` 與合併檔 `dist/Code.gs`（團長可整份貼到 Apps Script，不需 clasp）。`npm test` 會先自動 build。
