@@ -43,7 +43,8 @@
 - 手機 App（PWA，SPEC 附錄第 62 點）：`web/manifest.json`、`web/sw.js`（只快取同網域 GET：網頁先連網後快取、圖示先快取；改 sw.js 要把 `VERSION` 加 1）、`web/icons/`（`tools/appicon.js` 產生）；註冊只在 `!IN_GAS && isSecureContext`；CSP 有 `manifest-src 'self'; worker-src 'self'`。`tests/web/pwa.js`（本機伺服器＋離線開啟）；e2e 用 `serviceWorkers: 'block'`。離線點名在 ROADMAP。
 - LINE@ 與 PWA 分工（SPEC 附錄第 63 點）：維持帳號密碼、不用 LIFF；管理員關鍵字「點名」→ `rollReplyText_()`（Notify.js；今天或下一場集會、已請假名單、`web/#roll=集會ID`）；前端 `pendingRoll`（登入後開 `ADMIN_PAGES.roll` 的 `params.meetingId`）。家長推播待團長討論。
 - 羚羊自動完成（SPEC 附錄第 64 點）：`computeCubProgress` 的出席自動完成項目只算「該項目所屬級的上一級頒發日之後」的出席（上一級沒頒發→不自動完成；視為通過沒有日期→全部算）；舊生用補登剛入團，不設基準日。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 149 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- 上線前檢查（SPEC 附錄第 65 點）：`adminHome.alerts.placeholders`（`placeholderPlaces_()`：最新個資告知、了解幼童軍含「【請填寫」；只給有 `manageSettings` 的人）；不採用寫死的剛入團基準日。
+- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。

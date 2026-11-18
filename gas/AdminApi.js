@@ -114,10 +114,19 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       privacyOverdue: Logic.overdueForPrivacy(cubs, ctx.settings['離團後提醒處理個資的天數'], ctx.today).map(function (c) { return { cubId: c.cubId, name: c.name, leftDate: c.leftDate }; }),
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
       pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核'; }).length : 0,
-      notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0)
+      notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0),
+      placeholders: Logic.can(who.admin.role, 'manageSettings') ? placeholderPlaces_() : []
     }
   };
 });
+
+/** 上線前要改的範本文字還留著「【請填寫】」的地方（SPEC 附錄第 65 點）：最新版個資告知、了解幼童軍 */
+function placeholderPlaces_() {
+  var out = [], has = function (t) { return /【請填寫/.test(String(t || '')); };
+  if (has((latestConsent_() || {}).content)) out.push('個資告知內容');
+  if (has(siteValues_().about)) out.push('了解幼童軍');
+  return out;
+}
 
 // ───────────── 小狼管理與綁定碼 ─────────────
 

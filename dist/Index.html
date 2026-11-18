@@ -1885,6 +1885,7 @@ const ADMIN_PAGES = {
     const al = h.alerts;
     const alerts = [];
     if (al.pendingRequests) alerts.push(['red', '📝', `有 ${al.pendingRequests} 筆註冊申請等待審核`]);
+    if ((al.placeholders || []).length) alerts.push(['red', '✏️', `${al.placeholders.join('、')}還有「【請填寫】」的範本文字，開放家長註冊前請到「設定」改成實際內容`]);
     if (al.permission && !al.permission.ok) alerts.push(['red', '🚨', '試算表權限過寬：' + al.permission.issues.join('；')]);
     if (al.itemErrors.length) alerts.push(['red', '⚠️', `項目總表有 ${al.itemErrors.length} 列格式錯誤（第 ${al.itemErrors.map((e) => e.row).join('、')} 列），這些列暫時不會被使用。`]);
     if (al.settingErrors.length) alerts.push(['yellow', '⚙️', '設定值有問題，已暫用預設值：' + al.settingErrors.map((e) => e.key + '（' + e.reason + '）').join('；')]);
