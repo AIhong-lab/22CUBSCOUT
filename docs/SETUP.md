@@ -51,8 +51,18 @@ Apps Script →「專案設定」（齒輪）→ 最下方「指令碼屬性」�
 ## 5. GitHub Pages
 已在階段 0B 完成（Settings → Pages → main / root）。正式網頁網址（階段 3 起）：`https://aihong-lab.github.io/22CUBSCOUT/web/`
 
-## 6. webhook 網址、關閉官方帳號內建自動回應
-已在階段 0B 完成。網址格式：`GAS 網址?key=WEBHOOK_KEY 的值`。
+## 6. LINE webhook（讓官方帳號收得到訊息：配對、關鍵字）
+已在階段 0B 設定過。要確認或重新設定時：
+1. Apps Script →「專案設定 → 指令碼屬性」，複製 `WEBHOOK_KEY` 的值。
+2. Apps Script →「部署 → 管理部署」，複製網頁應用程式網址（`https://script.google.com/macros/s/…/exec`）。
+3. LINE Developers（developers.line.biz）→ 你的 Messaging API channel →「Messaging API」分頁：
+   - **Webhook URL** 填：`部署網址?key=WEBHOOK_KEY 的值`（例如 `https://script.google.com/macros/s/AKfy…/exec?key=abc123…`）→ Update。
+   - **Use webhook** 打開。
+   - 「Verify」按鈕顯示失敗不用理會（GAS 會轉址，實測不影響）。
+4. LINE Official Account Manager →「設定 → 回應設定」：**Webhook 開啟**、**自動回應訊息關閉**（不然官方帳號會自己亂回）。
+5. 測試：手機在官方帳號聊天室輸入「進度」，應該回覆網站連結。
+- 部署時要選「管理部署 → 編輯 → 新版本」，網址才不會變；如果新建了另一個部署，網址會不同，Webhook URL 也要跟著換。
+- `WEBHOOK_KEY` 是密鑰，不要貼到 LINE 群組或公開的地方。
 
 ## 7. 備份資料夾與每週備份（自動）
 不用手動設定：第 8 步執行 `setup()` 時，會自動在你的雲端硬碟建立「幼童軍進程系統備份」資料夾（只有你看得到），並開啟每週日凌晨 3 點自動備份。執行紀錄會出現「建立備份資料夾」「開啟每週日 03:00 自動備份」。之後在網頁後台「💾 備份與權限」看上次備份時間、按「立即備份」。
