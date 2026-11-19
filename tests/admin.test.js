@@ -1381,7 +1381,7 @@ test('LINE 關鍵字「點名」（附錄第 63 點）：只回已連結的管�
 test('後台首頁提醒：個資說明與「了解幼童軍」還有【請填寫】範本文字（附錄第 65 點）', () => {
   const { call, L, A } = world();
   let al = call(L, 'adminHome').alerts;
-  assert.deepEqual(al.placeholders, ['個資告知內容', '了解幼童軍'], '預設文字還沒改');
+  assert.deepEqual(al.placeholders, ['個資告知內容', '認識 22 團'], '預設文字還沒改');
   assert.deepEqual(call(A, 'adminHome').alerts.placeholders, [], '服務員不顯示（改不了）');
   call(L, 'consentSave', { content: '親愛的家長您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡團長：LINE 官方帳號。' });
   call(L, 'siteContentSave', { about: '我們是 22 團，歡迎來體驗。', activity: '', fb: '' });

@@ -46,11 +46,18 @@
 - 上線前檢查（SPEC 附錄第 65 點）：`adminHome.alerts.placeholders`（`placeholderPlaces_()`：最新個資告知、了解幼童軍含「【請填寫」；只給有 `manageSettings` 的人）；不採用寫死的剛入團基準日。
 - 公開頁面載入（SPEC 附錄第 66 點）：`renderInfo` 先用 `noticeData`／`siteData` 畫面再背景更新（`infoSeq` 與 `#infoBack[data-seq]` 防止換頁後被舊回應蓋掉）；GitHub 版 `api()` 用 AbortController 45 秒逾時（`window.__apiTimeout` 給測試用）。`tests/web/slow.js`。
 - LINE 選單右下角（SPEC 附錄第 67 點）：`RichMenu.js` 的 `TEAM_FB_URL`（22 團 FB 粉絲專頁）是沒填「網站內容 → FB 網址」時的預設；三份手冊都有 LINE 官方帳號章節（完整版「五之二」）。
-- **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- **目前狀態**（2026-11-16；全團第 1 期見下方附錄第 74 點）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 - 多分團（SPEC 附錄第 68 點，2026-11-19 只定規格、尚未寫程式）：將擴充成 22 團團部網站；第一期骨架為分團欄位（空白＝小狼）、權限範圍（管理員／總團／團長（含副團長）／服務員／家長／小孩）、綁定紀錄「關係」、小狼模組化、恢復邀請碼。升團與離團（附錄第 69 點）、三項登記（附錄第 70 點）已定。
 - 多分團骨架（SPEC 附錄第 71 點，2026-11-19 已實作）：`Logic.SECTIONS`／`sectionOf`（空白＝小狼）／`CENTRAL`（總團）／`effectiveAdmins(rows, section)`／`validateStaffChange`；`loadAdminRows_()`（管理員分頁全部列）與 `loadAdmins_()`（**只回在小狼有效的身分**，總團視為團長並標 `scope`，LINE userId 跟著人走）；`requireAccount_` 多回 `staff`、`isCentral`；`me.staff`／`isCentral`／`canManageStaff`。`gas/StaffApi.js`：`staffList`、`staffSave`、`inviteCreate`（`requireStaffManager_`：admin 或總團）。邀請碼帶分團、職稱（`redeemInvite_` 依分團寫入）。前端 `ADMIN_PAGES.staff`、`renderNoCub` 的「分團功能準備中」。總團不能在 `adminUpdate`／`adminRemove` 修改。官方進程資料 `data/sections/`（未匯入）、轉換程式 `tools/sections-convert.py`。測試 `tests/web/sections.js`。**新增任何後台功能都要想清楚屬於哪個分團**；目前 `loadAdmins_()` 等於「小狼」。
 - 後端版本檢查（SPEC 附錄第 72 點）：`APP_VERSION` 在 `gas/Config.js` 與 `web/index.html` 各一份，**改任何 gas/ 程式都要把兩邊一起改成新版本號**（格式 `YYYY-MM-DD` 加小寫字母，npm test 檢查一致）；`me.serverVersion`、`ping.version`；不一致時團長後台首頁紅色提醒。網站後端網址 2026-11-19 改連團長維護中的專案（原網址屬另一個舊專案）。
 - **全團上線（SPEC 附錄第 73 點，目標 2027-01-01）**：配置 23 項已定，分三期（第 1 期全團共用功能、第 2 期稚齡進程優先、第 3 期本人登入／升團／三項登記）。每期開新對話，先讀附錄第 73 點再動工。
+- **第 1 期已實作（SPEC 附錄第 74 點，2026-11-19，模擬測試通過、未在真實環境驗證）**：
+  - 目前分團：網頁 `api()` 每個請求帶 `_sec`（`state.section`），`requireAccount_(token, section)` 用 `Logic.staffSections`／`pickSection` 決定 `who.section`、`who.admin`（admin、總團在每個分團都是團長）；`registerAdmin_` 設 `CUR_SEC_`（`dispatch_` 開頭清空）。**後台程式一律用 `secCubs_()`、`findCub_()`（只找目前分團）、`squadListOf_()`、`sectionSettingOf_()`、`loadAdmins_(section)`**，不要直接 `loadCubs_()` 列名單（ID 產生、綁定碼、家長端除外）。`cubsOnDate_(date, type, section)`。新增團員要寫第 12 欄分團（`curSec_()`）。
+  - 進程只在 `Logic.PROGRESS_SECTIONS`（小狼）：`PROGRESS_ACTIONS` 在其他分團回 FORBIDDEN；`buildCubView_`／`cubAdminDetail` 回 `hasProgress`；`progressCubs_()`（Notify）只掃小狼。
+  - 全團共用功能：`SHARED_ACTIONS`（動作 → 功能）＋`canShared_(who, 功能)`，設定鍵「共用功能權限：系統設定／網站內容／個資告知／帳號管理／備份」（`Logic.SHARED_FUNCS`、`canShared`，預設總團）。設定頁 `settingGroupFor_`：全團／分團／權限；各分團設定鍵 `Logic.sectionSettingKey`（小狼用原鍵，其他加「（分團）」，`optional` 不報錯）。`canManageAll_(who)`：全團集會、公告、活動、年度預設（admin、總團；沒有 admin 時團長）。`adminCandidates`（指定管理員時搜尋帳號，只回帳號與稱呼）。
+  - 對象：`Logic.ALL`（全團）、`targetOf`／`targetIncludes`（集會、公告、年度出席）、`parseTargets`／`targetsInclude`（活動可複選）；`meetingVisible_`／`canEditMeeting_`／`findMeeting_`、`canEditNotice_`、`canManageEvent_`／`findManagedEvent_`／`eventTargets_`、`accountSections_`（報名資格）、`sectionPeriod_(section, date)`（分團自己的，沒有就全團預設）。
+  - 帳號申請：`Logic.UNASSIGNED`（未指定）、`requestSection_`、`childSections_`（`childSections` 與 `childNames` 對應、`staffSection`）、`requestVisible_`、`requestAssign`；核准時第 12 欄寫實際分團。
+  - 前端：`SECTIONS`／`SEC_INFO`（full、slug、icon）、`secFull`、`roleName`（羅浮群長）、`targetSel`／`targetPill`、`switchSection`（`#secSel`）、`adminTabs()`／`secHasProgress()`／`canShared()`／`pageOk()`；公開 `renderHome`（團部入口 `#secCards`）、`renderSectionPage(sec)`（`#cub` 等）、`renderCatalog(view, {sec})`（`#secTabs`、`#scout/progress`）、`mountNotices(max, after, secs)`／`noticesFor`、`drawCalendar(el, site, ym, secs)`、`mountCalendarAndFb`；家長 `viewHomeBasic`（非小狼）、`mySecs()`；註冊 `secSelectHtml`／`childSecsOf`。測試 `tests/sections.test.js`、`tests/web/sections.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -100,18 +107,18 @@
 | 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間 |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |
-| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動）、計入進程（是/否，空白＝是）、分團 |
+| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動）、計入進程（是/否，空白＝是）、分團（分團名稱或「全團」；空白＝小狼） |
 | 出席紀錄 | 集會ID、小狼ID、狀態（出席/遲到/請假；空白＝無此列）、點名人、點名時間 |
-| 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註 |
+| 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註、分團（全團／分團；空白＝小狼） |
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |
 | 失敗紀錄 | 類型（登入/綁定）、對象（帳號名稱、帳號ID 或「未登入」）、時間 |
 | 告知同意內容 | 版本、內容、生效日 |
-| 註冊申請 | 申請ID、帳號ID、類型（孩子/服務員）、填寫姓名、申請時間、狀態（待審核/已核准/已退回）、處理人、處理時間、小狼ID、同意版本、備註、分團 |
-| 小隊輔 | 小隊、帳號ID、設定人、設定時間 |
+| 註冊申請 | 申請ID、帳號ID、類型（孩子/服務員）、填寫姓名、申請時間、狀態（待審核/已核准/已退回）、處理人、處理時間、小狼ID、同意版本、備註、分團（空白＝小狼；「未指定」＝家長不確定） |
+| 小隊輔 | 小隊、帳號ID、設定人、設定時間、分團（空白＝小狼） |
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
-| 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架）、分團 |
+| 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架）、分團（分團名稱或「全團」） |
 | 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
-| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團 |
+| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼） |
 | 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間 |
 | 設定 | 鍵、值、說明 |

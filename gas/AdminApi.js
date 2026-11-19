@@ -185,11 +185,11 @@ function allSectionsSummary_() {
   return { sections: out, unassigned: reqs.filter(function (r) { return r.section === Logic.UNASSIGNED; }).length };
 }
 
-/** 上線前要改的範本文字還留著「【請填寫】」的地方（SPEC 附錄第 65 點）：最新版個資告知、了解幼童軍 */
+/** 上線前要改的範本文字還留著「【請填寫】」的地方（SPEC 附錄第 65 點）：最新版個資告知、認識 22 團 */
 function placeholderPlaces_() {
   var out = [], has = function (t) { return /【請填寫/.test(String(t || '')); };
   if (has((latestConsent_() || {}).content)) out.push('個資告知內容');
-  if (has(siteValues_().about)) out.push('了解幼童軍');
+  if (has(siteValues_().about)) out.push('認識 22 團');
   return out;
 }
 
@@ -769,7 +769,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
     purgeSessions_(acc.accountId);
     logOp_(who.account.accountId, '產生臨時碼', acc.username, '', ''); // 不記臨時碼
     var url = webUrl_();
-    var msgText = acc.nickname + ' 您好，這是 22 團幼童軍進程系統的密碼重設臨時碼：\n' +
+    var msgText = acc.nickname + ' 您好，這是 22 團網站的密碼重設臨時碼：\n' +
       '帳號：' + acc.username + '\n臨時碼：' + code + '\n' +
       '請打開 ' + url + ' →「忘記密碼？」→ 輸入帳號、臨時碼與新密碼。\n' +
       '臨時碼只能用一次，' + Utilities.formatDate(exp, TZ, 'MM/dd HH:mm') + ' 前有效。';

@@ -271,21 +271,21 @@ function apiParentLeave_(req, who) {
 }
 AUTHED_ACTIONS.parentLeave = apiParentLeave_;
 
-// ───────────── 網站內容：了解幼童軍、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
+// ───────────── 網站內容：認識 22 團（原「了解幼童軍」）、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
 
 var SITE_KEYS = ['about', 'activity', 'fb'];
-/** 還沒設定「了解幼童軍」時顯示的範本，請團長在後台改成實際內容 */
+/** 還沒設定「認識 22 團」時顯示的範本（全團版，附錄第 73 點），請管理員到後台改成實際內容 */
 var DEFAULT_ABOUT = [
-  '【這是範本，請團長到後台「系統設定 → 網站內容」改成實際內容】',
+  '【這是範本，請到後台「設定 → 網站內容」改成實際內容】',
   '',
-  '幼童軍是什麼？',
-  '幼童軍是給國小階段孩子參加的童軍活動。孩子在小隊裡和夥伴一起玩遊戲、學技能、到戶外探索，從「做中學」培養自己動手、照顧別人和團隊合作的習慣。',
+  '22 團是什麼？',
+  '22 團有五個分團：稚齡童軍（小一、小二）、幼童軍（小三到小六）、童軍（國中）、行義童軍（高中）、羅浮童軍（18 歲以上）。孩子在小隊裡和夥伴一起玩遊戲、學技能、到戶外探索，從「做中學」培養自己動手、照顧別人和團隊合作的習慣。',
   '',
   '我們平常做什麼？',
-  '定期舉行團集會，內容包含遊戲、手作、繩結、戶外活動與服務學習；每年另有露營等大活動。',
+  '各分團定期舉行團集會，內容包含遊戲、手作、繩結、戶外活動與服務學習；每年另有露營、團慶等全團活動。',
   '',
   '怎麼加入？',
-  '歡迎先來體驗：參加 4 次一般團集會後就可以正式入團。想帶孩子來體驗，請聯絡團長：【請填寫聯絡方式】。'
+  '歡迎先來體驗：參加幾次一般團集會後就可以正式入團。想帶孩子來體驗，請聯絡：【請填寫聯絡方式】。'
 ].join('\n');
 
 function loadSite_() {
@@ -298,7 +298,7 @@ function siteValues_() {
   return { about: s.about ? s.about.value : DEFAULT_ABOUT, activity: s.activity ? s.activity.value : '', fb: s.fb ? s.fb.value : '' };
 }
 
-/** 公開：了解幼童軍、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
+/** 公開：認識 22 團、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
 function apiSiteInfo_() { return cachedPublic_('PUB_SITE', buildSiteInfo_); }
 function buildSiteInfo_() {
   var today = today_(), from = today.slice(0, 8) + '01';
@@ -315,7 +315,7 @@ registerAdmin_('siteContentGet', 'manageSettings', function () { return siteValu
 registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
   var text = function (v) { return String(v === undefined || v === null ? '' : v).replace(/\r\n/g, '\n').trim(); };
   var next = { about: text(req.about), activity: text(req.activity), fb: Logic.clean(req.fb) };
-  if (next.about.length > 5000) throw new ApiError(ERR.BAD_INPUT, '「了解幼童軍」最多 5000 字。');
+  if (next.about.length > 5000) throw new ApiError(ERR.BAD_INPUT, '「認識 22 團」最多 5000 字。');
   if (next.activity.length > 1000) throw new ApiError(ERR.BAD_INPUT, '「活動時間說明」最多 1000 字。');
   if (next.fb && !/^https:\/\/((www|m)\.)?(facebook\.com|fb\.com|fb\.me)\/[^\s<>"']{1,300}$/.test(next.fb)) throw new ApiError(ERR.BAD_INPUT, 'FB 網址請貼 Facebook 粉絲專頁的網址（https://www.facebook.com/…）。');
   return withLock_(function () {
@@ -326,7 +326,7 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     });
     if (ups.length) updateRows_(SHEET.SITE, ups);
     if (adds.length) appendRows_(SHEET.SITE, adds);
-    logOp_(who.account.accountId, '修改網站內容', '了解幼童軍／活動時間／FB', '', '');
+    logOp_(who.account.accountId, '修改網站內容', '認識 22 團／活動時間／FB', '', '');
     return { changed: ups.length + adds.length };
   });
 });

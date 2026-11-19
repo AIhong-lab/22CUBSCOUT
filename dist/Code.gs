@@ -1466,7 +1466,7 @@ TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-19d';
+var APP_VERSION = '2026-11-19e';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -1503,7 +1503,7 @@ var SEED = {
   "鹿": "參與狼級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成鹿級進程，經公開晉級儀式頒授佩戴鹿章。",
   "豹": "參與鹿級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成豹級進程，經公開晉級儀式頒授佩戴豹章。"
  },
- "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在幼童軍團的進程，本團使用「幼童軍進程查詢系統」。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別（小狼、稚齡、童軍、家長、服務員）、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，只有團長看得到，由團長負責保管。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 本團團長與服務員看得到全團資料，用來簽核、點名與頒章。\n\n四、資料放在哪裡\n存放在本團團長管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡團長：【請填寫：團長稱呼與聯絡方式，例如 LINE 官方帳號「22團幼童軍進程系統」】。"
+ "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在 22 團的紀錄，本團使用「22團網站」（涵蓋稚齡童軍、幼童軍、童軍、行義童軍、羅浮童軍五個分團）。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、所屬分團、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章（各分團的進程功能陸續上線）。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，由團長負責保管。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計、活動報名，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 孩子所屬分團的團長與服務員看得到該分團的資料，用來點名、簽核與頒章；其他分團的團長、服務員看不到。\n3. 總團與系統管理員看得到全團資料，用來協助各分團與處理帳號問題。\n4. 孩子升上其他分團時，新分團的團長可以看到孩子之前的紀錄，讓進程接續。\n\n四、資料放在哪裡\n存放在本團管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡孩子所屬分團的團長，或：【請填寫：聯絡方式，例如 LINE 官方帳號「22團」】。"
 };
 
 // ════════════════ Db.js ════════════════
@@ -2036,10 +2036,10 @@ function doGet() {
     try { boot = '<script>window.__BOOT=' + JSON.stringify(bootData_()).replace(/</g, '\\u003c') + ';</script>'; } catch (e2) { console.error(e2); boot = ''; }
     var mark = '<script id="boot"></script>', at = page.indexOf(mark);
     if (boot && at >= 0) page = page.slice(0, at) + boot + page.slice(at + mark.length);
-    return HtmlService.createHtmlOutput(page).setTitle('22團幼童軍')
+    return HtmlService.createHtmlOutput(page).setTitle('22團')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   } catch (e) {
-    return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。（還沒有加入 Index 網頁檔）');
+    return ContentService.createTextOutput('OK：22團系統後端運作中。（還沒有加入 Index 網頁檔）');
   }
 }
 
@@ -2957,11 +2957,11 @@ function allSectionsSummary_() {
   return { sections: out, unassigned: reqs.filter(function (r) { return r.section === Logic.UNASSIGNED; }).length };
 }
 
-/** 上線前要改的範本文字還留著「【請填寫】」的地方（SPEC 附錄第 65 點）：最新版個資告知、了解幼童軍 */
+/** 上線前要改的範本文字還留著「【請填寫】」的地方（SPEC 附錄第 65 點）：最新版個資告知、認識 22 團 */
 function placeholderPlaces_() {
   var out = [], has = function (t) { return /【請填寫/.test(String(t || '')); };
   if (has((latestConsent_() || {}).content)) out.push('個資告知內容');
-  if (has(siteValues_().about)) out.push('了解幼童軍');
+  if (has(siteValues_().about)) out.push('認識 22 團');
   return out;
 }
 
@@ -3541,7 +3541,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
     purgeSessions_(acc.accountId);
     logOp_(who.account.accountId, '產生臨時碼', acc.username, '', ''); // 不記臨時碼
     var url = webUrl_();
-    var msgText = acc.nickname + ' 您好，這是 22 團幼童軍進程系統的密碼重設臨時碼：\n' +
+    var msgText = acc.nickname + ' 您好，這是 22 團網站的密碼重設臨時碼：\n' +
       '帳號：' + acc.username + '\n臨時碼：' + code + '\n' +
       '請打開 ' + url + ' →「忘記密碼？」→ 輸入帳號、臨時碼與新密碼。\n' +
       '臨時碼只能用一次，' + Utilities.formatDate(exp, TZ, 'MM/dd HH:mm') + ' 前有效。';
@@ -4442,21 +4442,21 @@ function apiParentLeave_(req, who) {
 }
 AUTHED_ACTIONS.parentLeave = apiParentLeave_;
 
-// ───────────── 網站內容：了解幼童軍、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
+// ───────────── 網站內容：認識 22 團（原「了解幼童軍」）、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
 
 var SITE_KEYS = ['about', 'activity', 'fb'];
-/** 還沒設定「了解幼童軍」時顯示的範本，請團長在後台改成實際內容 */
+/** 還沒設定「認識 22 團」時顯示的範本（全團版，附錄第 73 點），請管理員到後台改成實際內容 */
 var DEFAULT_ABOUT = [
-  '【這是範本，請團長到後台「系統設定 → 網站內容」改成實際內容】',
+  '【這是範本，請到後台「設定 → 網站內容」改成實際內容】',
   '',
-  '幼童軍是什麼？',
-  '幼童軍是給國小階段孩子參加的童軍活動。孩子在小隊裡和夥伴一起玩遊戲、學技能、到戶外探索，從「做中學」培養自己動手、照顧別人和團隊合作的習慣。',
+  '22 團是什麼？',
+  '22 團有五個分團：稚齡童軍（小一、小二）、幼童軍（小三到小六）、童軍（國中）、行義童軍（高中）、羅浮童軍（18 歲以上）。孩子在小隊裡和夥伴一起玩遊戲、學技能、到戶外探索，從「做中學」培養自己動手、照顧別人和團隊合作的習慣。',
   '',
   '我們平常做什麼？',
-  '定期舉行團集會，內容包含遊戲、手作、繩結、戶外活動與服務學習；每年另有露營等大活動。',
+  '各分團定期舉行團集會，內容包含遊戲、手作、繩結、戶外活動與服務學習；每年另有露營、團慶等全團活動。',
   '',
   '怎麼加入？',
-  '歡迎先來體驗：參加 4 次一般團集會後就可以正式入團。想帶孩子來體驗，請聯絡團長：【請填寫聯絡方式】。'
+  '歡迎先來體驗：參加幾次一般團集會後就可以正式入團。想帶孩子來體驗，請聯絡：【請填寫聯絡方式】。'
 ].join('\n');
 
 function loadSite_() {
@@ -4469,7 +4469,7 @@ function siteValues_() {
   return { about: s.about ? s.about.value : DEFAULT_ABOUT, activity: s.activity ? s.activity.value : '', fb: s.fb ? s.fb.value : '' };
 }
 
-/** 公開：了解幼童軍、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
+/** 公開：認識 22 團、活動時間說明、FB 網址，以及這個月 1 日以後、啟用中的集會（只有日期、名稱、類型、備註） */
 function apiSiteInfo_() { return cachedPublic_('PUB_SITE', buildSiteInfo_); }
 function buildSiteInfo_() {
   var today = today_(), from = today.slice(0, 8) + '01';
@@ -4486,7 +4486,7 @@ registerAdmin_('siteContentGet', 'manageSettings', function () { return siteValu
 registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
   var text = function (v) { return String(v === undefined || v === null ? '' : v).replace(/\r\n/g, '\n').trim(); };
   var next = { about: text(req.about), activity: text(req.activity), fb: Logic.clean(req.fb) };
-  if (next.about.length > 5000) throw new ApiError(ERR.BAD_INPUT, '「了解幼童軍」最多 5000 字。');
+  if (next.about.length > 5000) throw new ApiError(ERR.BAD_INPUT, '「認識 22 團」最多 5000 字。');
   if (next.activity.length > 1000) throw new ApiError(ERR.BAD_INPUT, '「活動時間說明」最多 1000 字。');
   if (next.fb && !/^https:\/\/((www|m)\.)?(facebook\.com|fb\.com|fb\.me)\/[^\s<>"']{1,300}$/.test(next.fb)) throw new ApiError(ERR.BAD_INPUT, 'FB 網址請貼 Facebook 粉絲專頁的網址（https://www.facebook.com/…）。');
   return withLock_(function () {
@@ -4497,7 +4497,7 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     });
     if (ups.length) updateRows_(SHEET.SITE, ups);
     if (adds.length) appendRows_(SHEET.SITE, adds);
-    logOp_(who.account.accountId, '修改網站內容', '了解幼童軍／活動時間／FB', '', '');
+    logOp_(who.account.accountId, '修改網站內容', '認識 22 團／活動時間／FB', '', '');
     return { changed: ups.length + adds.length };
   });
 });
@@ -5727,7 +5727,8 @@ var RICH_MENU_SIZE = { width: 2500, height: 1686 };
 var TEAM_FB_URL = 'https://www.facebook.com/profile.php?id=100064559625116';
 
 /** 六格：[按鈕名稱, 網站頁面]；第六格 FB 用「網站內容」的 FB 網址，沒填就用 22 團 FB 粉絲專頁 */
-var RICH_MENU_CELLS = [['公佈欄', 'notices'], ['進程查詢', 'progress'], ['技能章查詢', 'badges'], ['了解幼童軍', 'about'], ['活動時間', 'calendar'], ['22團 FB', 'fb']];
+/** 文字改全團通用（附錄第 73 點⑳）；連結不變，已安裝的選單不用重裝，只有圖片上的字要換 */
+var RICH_MENU_CELLS = [['公佈欄', 'notices'], ['進程查詢', 'progress'], ['章查詢', 'badges'], ['認識22團', 'about'], ['活動時間', 'calendar'], ['22團 FB', 'fb']];
 
 /** 六格的範圍與連結（純計算，方便測試） */
 function richMenuAreas_(root, fb) {

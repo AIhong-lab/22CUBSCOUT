@@ -427,7 +427,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-19d';
+const APP_VERSION = '2026-11-19e';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -673,7 +673,7 @@ function noticesHtml(list, max) {
     ${n.meeting ? `<div class="s">📅 ${fmtDate(n.meeting.date)}　${esc(n.meeting.name)}</div>` : ''}
     ${n.content ? `<div style="white-space:pre-wrap">${esc(n.content)}</div>` : ''}</div>`).join('')}</section>`;
 }
-/** 網站內容（公開）：了解幼童軍、活動時間說明、FB 網址、這個月起的集會（SPEC 附錄第 49 點） */
+/** 網站內容（公開）：認識 22 團、活動時間說明、FB 網址、這個月起的集會（SPEC 附錄第 49 點） */
 let siteData = null;
 async function loadSite(force) { if (!siteData || force) siteData = await api('siteInfo'); return siteData; }
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -727,7 +727,7 @@ function drawCalendar(el, site, ym, secs) {
   el.querySelectorAll('[data-info=events]').forEach((b) => { b.onclick = () => renderInfo('events'); });
   el.querySelectorAll('[data-cal]').forEach((b) => { b.onclick = () => drawCalendar(el, site, b.dataset.cal); });
 }
-/** 公佈欄、活動時間、了解幼童軍：不用登入的三個頁面（LINE 圖文選單會直接連到這裡） */
+/** 公佈欄、活動時間、認識 22 團：不用登入的三個頁面（LINE 圖文選單會直接連到這裡） */
 const INFO_PAGES = { notices: '📣 公佈欄', calendar: '📅 活動時間', events: '🎪 活動報名', about: '🧭 認識 22 團' };
 const fmtStamp = (t) => `${fmtDate(t.slice(0, 10))} ${t.slice(11)}`;
 const EV_PILL = { '報名中': 'st-進行中', '尚未開始': 'st-未開始', '已截止': 'st-未開始', '已關閉': 'st-未開始' };
@@ -2844,7 +2844,7 @@ const ADMIN_PAGES = {
         bindForm($('#flv', sh), async (fd) => { const r = await api('cubLeave', { cubId: c.cubId, leftDate: fd.get('leftDate'), reason: fd.get('reason') }); close(); toast('已標記' + r.status); reload(); });
       });
     });
-    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團幼童軍進程系統的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有綁定碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
+    on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團網站的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有綁定碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));
     on('#newCode', (b) => { if (confirm('重新產生後，舊的綁定碼立即失效（已綁定的家長不受影響）。確定嗎？')) act(b, async () => { await api('cubNewCode', { cubId: c.cubId }); toast('已產生新的綁定碼'); reload(); }); });
     $$('[data-unbind]').forEach((b) => { b.onclick = () => { if (confirm(`確定要解除「${b.dataset.n}」與 ${c.name} 的綁定嗎？`)) act(b, async () => { await api('cubUnbind', { cubId: c.cubId, accountId: b.dataset.unbind }); reload(); }); }; });
     $$('[data-revoke]').forEach((b) => { b.onclick = () => { if (confirm('確定要撤銷這一項的簽核嗎？')) act(b, async () => { await api('signoffRevoke', { entries: [{ cubId: c.cubId, itemId: b.dataset.revoke }] }); toast('已撤銷'); reload(); }); }; });
@@ -3294,7 +3294,7 @@ const ADMIN_PAGES = {
     wireBack();
     $('#go').onclick = (ev) => act(ev.currentTarget, async () => {
       const r = await api('lineLinkStart');
-      $('#out').innerHTML = `<div class="codebox">${esc(r.code)}</div><ol class="small"><li>用手機 LINE 加入「22團幼童軍進程系統」官方帳號好友（已加過就略過）</li><li>在聊天室輸入上面這 6 位數字並送出</li><li>收到「已連結」的回覆就完成了</li></ol><p class="muted small">配對碼 ${r.expiresInMin} 分鐘內有效，只能用一次。</p>`;
+      $('#out').innerHTML = `<div class="codebox">${esc(r.code)}</div><ol class="small"><li>用手機 LINE 加入 22 團的 LINE 官方帳號好友（已加過就略過）</li><li>在聊天室輸入上面這 6 位數字並送出</li><li>收到「已連結」的回覆就完成了</li></ol><p class="muted small">配對碼 ${r.expiresInMin} 分鐘內有效，只能用一次。</p>`;
     });
     const un = $('#un');
     if (un) un.onclick = (ev) => { if (confirm('解除後就不會收到 LINE 通知了，確定嗎？')) act(ev.currentTarget, async () => { await api('lineUnlink'); goAdmin('line'); }); };

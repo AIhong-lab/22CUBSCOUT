@@ -20,10 +20,10 @@ function doGet() {
     try { boot = '<script>window.__BOOT=' + JSON.stringify(bootData_()).replace(/</g, '\\u003c') + ';</script>'; } catch (e2) { console.error(e2); boot = ''; }
     var mark = '<script id="boot"></script>', at = page.indexOf(mark);
     if (boot && at >= 0) page = page.slice(0, at) + boot + page.slice(at + mark.length);
-    return HtmlService.createHtmlOutput(page).setTitle('22團幼童軍')
+    return HtmlService.createHtmlOutput(page).setTitle('22團')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   } catch (e) {
-    return ContentService.createTextOutput('OK：幼童軍進程系統後端運作中。（還沒有加入 Index 網頁檔）');
+    return ContentService.createTextOutput('OK：22團系統後端運作中。（還沒有加入 Index 網頁檔）');
   }
 }
 

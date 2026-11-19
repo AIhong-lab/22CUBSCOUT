@@ -510,7 +510,7 @@ test('網頁由 GAS 提供（附錄第 56 點）：doGet 回傳頁面；訪客�
   env.html.Index = '<!doctype html><title>x</title>';
   const out = env.ctx.doGet({ parameter: {} });
   assert.equal(out.kind, 'html');
-  assert.equal(out.title, '22團幼童軍');
+  assert.equal(out.title, '22團');
   assert.match(out.meta.viewport, /width=device-width/);
   // 頁面用 google.script.run 呼叫 apiFromPage：和 doPost 同一套處理，回傳 JSON 字串
   assert.equal(JSON.parse(env.ctx.apiFromPage(JSON.stringify({ action: 'ping' }))).ok, true);

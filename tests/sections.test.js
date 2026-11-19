@@ -235,3 +235,26 @@ test('活動：可以複選分團；全團活動只有 admin、總團；只有�
   assert.equal(call(S, 'eventRegs', { eventId: ev.id }).regs.length, 1);
   assert.deepEqual(env.api({ action: 'siteInfo' }).events.map((e) => e.targets.join('、')).sort(), ['全團', '童軍、行義'].sort());
 });
+
+test('LINE（附錄第 73 點⑳）：達標通知只推給小狼已連結 LINE 的人；童軍的人輸入「點名」看到童軍的集會', () => {
+  const { env, call, L, S } = world();
+  env.props.LINE_MESSAGING_TOKEN = 'test-token';
+  const link = (token, userId) => {
+    const code = call(token, 'lineLinkStart').code;
+    env.ctx.doPost({ parameter: { key: env.props.WEBHOOK_KEY }, postData: { contents: JSON.stringify({ events: [{ type: 'message', message: { type: 'text', text: code }, source: { type: 'user', userId }, replyToken: 'r' }] }) } });
+  };
+  link(L, 'Uwolf'); link(S, 'Uscout');
+  assert.equal(env.rows('管理員').filter((r) => r[5]).length, 2, '童軍團長也能連結 LINE');
+  const cub = call(L, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-01-01' }).cubId;
+  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導').map((r) => r[0]);
+  call(L, 'signoff', { cubIds: [cub], itemIds: guide, date: '2026-10-01' });
+  const pushes = env.sent.filter((x) => /multicast/.test(x.url));
+  assert.equal(pushes.length, 1);
+  assert.deepEqual(pushes[0].body.to, ['Uwolf'], '童軍團長收不到小狼的達標通知');
+  call(S, 'meetingSave', { lines: '2026-11-21 童軍團集會' });
+  call(L, 'meetingSave', { lines: '2026-11-20 小狼團集會' });
+  env.ctx.doPost({ parameter: { key: env.props.WEBHOOK_KEY }, postData: { contents: JSON.stringify({ events: [{ type: 'message', message: { type: 'text', text: '點名' }, source: { type: 'user', userId: 'Uscout' }, replyToken: 'rt' }] }) } });
+  const reply = env.sent.filter((x) => /reply/.test(x.url)).at(-1).body.messages[0].text;
+  assert.match(reply, /童軍團集會/);
+  assert.doesNotMatch(reply, /小狼團集會/);
+});
