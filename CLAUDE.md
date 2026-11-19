@@ -50,6 +50,7 @@
 - 多分團（SPEC 附錄第 68 點，2026-11-19 只定規格、尚未寫程式）：將擴充成 22 團團部網站；第一期骨架為分團欄位（空白＝小狼）、權限範圍（管理員／總團／團長（含副團長）／服務員／家長／小孩）、綁定紀錄「關係」、小狼模組化、恢復邀請碼。升團與離團（附錄第 69 點）、三項登記（附錄第 70 點）已定。
 - 多分團骨架（SPEC 附錄第 71 點，2026-11-19 已實作）：`Logic.SECTIONS`／`sectionOf`（空白＝小狼）／`CENTRAL`（總團）／`effectiveAdmins(rows, section)`／`validateStaffChange`；`loadAdminRows_()`（管理員分頁全部列）與 `loadAdmins_()`（**只回在小狼有效的身分**，總團視為團長並標 `scope`，LINE userId 跟著人走）；`requireAccount_` 多回 `staff`、`isCentral`；`me.staff`／`isCentral`／`canManageStaff`。`gas/StaffApi.js`：`staffList`、`staffSave`、`inviteCreate`（`requireStaffManager_`：admin 或總團）。邀請碼帶分團、職稱（`redeemInvite_` 依分團寫入）。前端 `ADMIN_PAGES.staff`、`renderNoCub` 的「分團功能準備中」。總團不能在 `adminUpdate`／`adminRemove` 修改。官方進程資料 `data/sections/`（未匯入）、轉換程式 `tools/sections-convert.py`。測試 `tests/web/sections.js`。**新增任何後台功能都要想清楚屬於哪個分團**；目前 `loadAdmins_()` 等於「小狼」。
 - 後端版本檢查（SPEC 附錄第 72 點）：`APP_VERSION` 在 `gas/Config.js` 與 `web/index.html` 各一份，**改任何 gas/ 程式都要把兩邊一起改成新版本號**（格式 `YYYY-MM-DD` 加小寫字母，npm test 檢查一致）；`me.serverVersion`、`ping.version`；不一致時團長後台首頁紅色提醒。網站後端網址 2026-11-19 改連團長維護中的專案（原網址屬另一個舊專案）。
+- **全團上線（SPEC 附錄第 73 點，目標 2027-01-01）**：配置 23 項已定，分三期（第 1 期全團共用功能、第 2 期稚齡進程優先、第 3 期本人登入／升團／三項登記）。每期開新對話，先讀附錄第 73 點再動工。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
