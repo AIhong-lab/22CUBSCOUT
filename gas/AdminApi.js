@@ -638,7 +638,7 @@ registerAdmin_('inviteList', 'manageInvites', function () {
   var names = adminNames_(), now = Date.now();
   return {
     invites: loadInvites_().filter(function (i) { return i.status === '未使用'; }).map(function (i) {
-      return { code: i.code, role: i.role, name: i.name, createdBy: names[i.createdBy] || i.createdBy, expiresAt: i.expiresAt, expired: now > i.expiresAt };
+      return { code: i.code, role: i.role, section: i.section, title: i.title, name: i.name, createdBy: names[i.createdBy] || i.createdBy, expiresAt: i.expiresAt, expired: now > i.expiresAt };
     })
   };
 });

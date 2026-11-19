@@ -1295,6 +1295,15 @@ function requestsHtml(reqs) {
 }
 function renderNoCub() {
   const reqs = state.me.requests || [];
+  // 只有其他分團身分的人（SPEC 附錄第 68 點）：分團功能還在準備中
+  const staff = state.me.staff || [];
+  if (staff.length && !state.me.role) {
+    $app.innerHTML = `<section class="card welcome"><div class="mascot">🏕️</div><h2>分團功能準備中</h2>
+      <p>您的身分：${staff.map((x) => `<span class="pill st-進行中">${esc(x.role === '總團' ? '總團' : x.section + '／' + x.role)}${x.title ? '（' + esc(x.title) + '）' : ''}</span>`).join(' ')}</p>
+      <p class="muted">22 團團部網站正在建置，目前只開放小狼（幼童軍）的功能。您所屬分團的功能完成後，登入就會看到；現在可以先看上方的「公佈欄」與行事曆。</p></section>`;
+    return;
+  }
+
   const waiting = reqs.some((r) => r.status === '待審核');
   $app.innerHTML = `
     <section class="card welcome"><div class="mascot">${waiting ? '⏳' : '🧒'}</div><h2>${waiting ? '申請已送出，等待團長審核' : '還沒有綁定孩子'}</h2>
@@ -1831,7 +1840,7 @@ function adminMoreItems() {
     ['award', '🏅', '頒章', L, '每次集會'], ['notices', '📣', '公佈欄', true, '每次集會'], ['events', '🎪', '活動報名', L, '每次集會'],
     ['requests', '📝', '帳號申請', L, '名單'], ['overview', '📊', '總覽', true, '名單'], ['print', '🖨️', '列印紙本', true, '名單'],
     ['calendar', '📅', '行事曆', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L, '設定'], ['settings', '⚙️', '系統設定', L, '設定'],
-    ['admins', '👥', '帳號與權限', L, '設定'],
+    ['admins', '👥', '帳號與權限', L, '設定'], ['staff', '🏷️', '分團身分與邀請碼', !!(state.me && state.me.canManageStaff), '設定'],
     ['privacy', '🔐', '個資處理', L, '系統'], ['backup', '💾', '備份與權限', L, '系統'], ['line', '💬', '連結 LINE 通知', true, '系統'], ['mine', '👤', '我的帳號（改密碼）', true, '系統'], ['pub', '📖', '公開查詢頁', true, '系統'],
   ].filter((x) => x[3]);
 }
@@ -2895,17 +2904,18 @@ const ADMIN_PAGES = {
     // 最高權限鎖在 admin：有 admin 帳號時，只有它能指定或取消團長（後端也會檢查）
     const canLeader = !a.ownerExists || !!state.me.isOwner;
     const roleOpts = (cur) => (canLeader ? ['服務員', '團長'] : ['服務員']).map((r) => `<option ${r === cur ? 'selected' : ''}>${r}</option>`).join('');
-    const locked = (x) => x.owner || (x.role === '團長' && !canLeader);
+    const locked = (x) => x.owner || x.central || (x.role === '團長' && !canLeader);
     $app.innerHTML = `${backBtn()}<section class="card"><h2>👥 管理員</h2>
       ${a.ownerExists ? `<p class="muted small" id="ownerNote">🔒 最高權限在 admin 帳號：只有 admin 可以指定或取消團長，admin 本身不能被更動。${canLeader ? '' : '你可以管理服務員。'}</p>` : ''}
-      ${a.admins.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span> <span class="pill ${x.role === '團長' ? 'st-已頒發' : 'st-進行中'}">${esc(x.role)}</span>${x.owner ? ' <span class="pill st-未開始">🔒 最高權限</span>' : ''}${x.lineLinked ? ' 💬' : ''}<br>
+      ${a.admins.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span> <span class="pill ${x.role === '團長' ? 'st-已頒發' : 'st-進行中'}">${esc(x.central ? '總團' : x.role)}</span>${x.title ? ' ' + esc(x.title) : ''}${x.owner ? ' <span class="pill st-未開始">🔒 最高權限</span>' : ''}${x.lineLinked ? ' 💬' : ''}<br>
         <span class="s">帳號 ${esc(x.username)}・加入 ${fmtTime(x.joinedAt)}・指定人 ${esc(x.assignedBy || '－')}</span></span>
         ${locked(x) ? '' : `<button class="btn ghost small" data-ad="${esc(x.accountId)}">管理</button>`}</div>`).join('')}</section>
       <section class="card"><h2>➕ 從已註冊的帳號指定</h2><p class="muted small">對方已有帳號（例如家長兼服務員）時用。</p>
         <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
       <section class="card"><h2>🆕 新的服務員</h2><p class="muted small">請對方自己到網站「登入 → 註冊新帳號」選「服務員」，再到「📝 帳號申請」核准。</p>
         <button class="btn alt small" id="toReq2">📝 前往帳號申請</button>
-        ${inv.invites.length ? `<h3>尚未使用的舊邀請碼</h3><p class="muted small">邀請碼功能已停用；這些是之前產生、還沒用掉的，建議作廢。</p>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role)}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('')}` : ''}</section>`;
+        ${state.me.canManageStaff ? '<p class="muted small">也可以到「🏷️ 分團身分與邀請碼」產生邀請碼（已指定分團與身分，對方註冊即生效）。</p>' : ''}
+        ${inv.invites.length ? `<h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role === '總團' ? '總團' : (i.section || '小狼') + '／' + i.role)}${i.title ? '・' + esc(i.title) : ''}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('')}` : ''}</section>`;
     $('#toReq2').onclick = () => goAdmin('requests');
     wireBack();
     const drawCands = () => {
@@ -2930,6 +2940,56 @@ const ADMIN_PAGES = {
           <button class="btn danger" id="rm">移除管理員身分</button><p class="muted small">移除後帳號保留，綁定的孩子仍可用家長身分查詢。</p>`, (sh, close) => {
           bindForm($('#fu', sh), async (fd) => { await api('adminUpdate', { accountId: x.accountId, role: fd.get('role'), name: fd.get('name') }); close(); toast('已更新，立即生效'); goAdmin('admins'); });
           $('#rm', sh).onclick = (ev) => { if (confirm(`確定移除「${x.name}」的管理員身分？`)) act(ev.currentTarget, async () => { await api('adminRemove', { accountId: x.accountId }); close(); goAdmin('admins'); }); };
+        });
+      };
+    });
+  },
+
+  /** 分團身分與邀請碼（SPEC 附錄第 68 點）：只有管理員（admin）或總團看得到 */
+  async staff() {
+    const [st, acc] = await Promise.all([api('staffList'), api('accountList')]);
+    const roles = st.isOwner ? ['服務員', '團長', '總團'] : ['服務員'];
+    const opt = (list, cur) => list.map((r) => `<option ${r === cur ? 'selected' : ''}>${esc(r)}</option>`).join('');
+    const label = (x) => (x.role === '總團' ? '總團（全部分團）' : x.section + '／' + x.role);
+    const fields = (x) => `<label>身分</label><select class="full" name="role">${opt(roles, x.role || '服務員')}</select>
+      <label>分團（身分選「總團」時不用選）</label><select class="full" name="section">${opt(st.sections, x.section || '小狼')}</select>
+      <label>職稱（顯示用，例如副團長、小隊輔；可空白）</label><input name="title" type="text" maxlength="20" value="${esc(x.title || '')}">
+      <label>顯示姓名</label><input name="name" type="text" maxlength="30" value="${esc(x.name || '')}">`;
+    const keyOf = (x) => (x.role === '總團' ? '總團' : x.section);
+    const bySec = st.sections.concat(['總團']).map((sec) => [sec, st.staff.filter((x) => keyOf(x) === sec)]).filter((g) => g[1].length);
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🏷️ 分團身分</h2>
+      <p class="muted small">同一個人可以在不同分團各有一個身分。小狼以外的分團目前只有身分、功能準備中。${st.isOwner ? '' : '你可以設定服務員；總團、團長只有 admin 能指定。'}</p>
+      ${bySec.map(([sec, list]) => `<h3>${esc(sec)}</h3>${list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span> <span class="pill ${x.role === '服務員' ? 'st-進行中' : 'st-已頒發'}">${esc(x.role)}</span>${x.title ? ' ' + esc(x.title) : ''}${x.owner ? ' <span class="pill st-未開始">🔒 admin</span>' : ''}${x.lineLinked ? ' 💬' : ''}<br><span class="s">帳號 ${esc(x.username)}</span></span>
+        ${x.owner && !st.isOwner ? '' : `<button class="btn ghost small" data-sf="${esc(x.accountId)}" data-k="${esc(x.key)}">管理</button>`}</div>`).join('')}`).join('') || '<p class="muted">還沒有任何身分。</p>'}</section>
+      <section class="card"><h2>🎟️ 產生邀請碼</h2><p class="muted small">邀請碼已指定分團與身分，對方到網站「登入 → 註冊新帳號 → 我有綁定碼」輸入就生效。</p>
+        <form id="fi">${fields({})}<button class="btn" type="submit">產生邀請碼</button><div class="out"></div></form><div id="invOut"></div></section>
+      <section class="card"><h2>➕ 指定身分給已註冊的帳號</h2><input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>`;
+    wireBack();
+    bindForm($('#fi'), async (fd) => {
+      const r = await api('inviteCreate', { role: fd.get('role'), section: fd.get('section'), title: fd.get('title'), name: fd.get('name') });
+      const who = fd.get('role') === '總團' ? '總團' : fd.get('section') + '／' + fd.get('role');
+      const msg = `邀請您加入 22 團網站（${who}）：\n請到網站按「登入 → 註冊新帳號 → 我有綁定碼」，輸入：${r.code}\n（${fmtTime(r.expiresAt)} 前有效）`;
+      $('#invOut').innerHTML = `<div class="codebox">${esc(r.code)}</div><pre class="copytext">${esc(msg)}</pre><button class="btn alt" id="cpi">📋 複製，用 LINE 傳給對方</button>`;
+      $('#cpi').onclick = () => copyText(msg);
+    });
+    const save = (sh, close, body) => bindForm($('#fs', sh), async (fd) => {
+      await api('staffSave', Object.assign(body, { role: fd.get('role'), section: fd.get('section'), title: fd.get('title'), name: fd.get('name') }));
+      close(); toast('已儲存，立即生效'); goAdmin('staff');
+    });
+    const drawCands = () => {
+      const q = $('#q').value.trim();
+      const list = q ? acc.accounts.filter((x) => x.status === '啟用' && [x.username, x.nickname].concat(x.cubs).some((v) => v.includes(q))).slice(0, 20) : [];
+      $('#cands').innerHTML = q ? (list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span><br><span class="s">帳號 ${esc(x.username)}</span></span><button class="btn small" data-pk="${esc(x.accountId)}" data-n="${esc(x.nickname)}">指定</button></div>`).join('') || '<p class="muted">沒有符合的帳號。</p>') : '<p class="muted small">輸入關鍵字搜尋。</p>';
+      $$('[data-pk]').forEach((b) => { b.onclick = () => openSheet(`<h2>指定身分</h2><form id="fs">${fields({ name: b.dataset.n })}<button class="btn" type="submit">確認</button><div class="out"></div></form>`, (sh, close) => save(sh, close, { type: 'add', accountId: b.dataset.pk })); });
+    };
+    $('#q').oninput = drawCands; drawCands();
+    $$('[data-sf]').forEach((b) => {
+      b.onclick = () => {
+        const x = st.staff.find((y) => y.accountId === b.dataset.sf && y.key === b.dataset.k);
+        openSheet(`<h2>${esc(x.name)}：${esc(label(x))}</h2><form id="fs">${fields(x)}<button class="btn" type="submit">儲存</button><div class="out"></div></form>
+          <button class="btn danger" id="rm">移除這個身分</button><p class="muted small">只移除這個分團的身分，帳號與其他分團身分保留。</p>`, (sh, close) => {
+          save(sh, close, { type: 'update', accountId: x.accountId, key: x.key });
+          $('#rm', sh).onclick = (ev) => { if (confirm(`確定移除「${x.name}」的${label(x)}身分？`)) act(ev.currentTarget, async () => { await api('staffSave', { type: 'remove', accountId: x.accountId, key: x.key }); close(); goAdmin('staff'); }); };
         });
       };
     });
