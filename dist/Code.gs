@@ -51,6 +51,76 @@ var Logic = (function () {
 
   var ROLE = { LEADER: '團長', ASSISTANT: '服務員' };
 
+  // ───────────── 多分團（SPEC 附錄第 68 點） ─────────────
+  /** 分團清單；試算表「分團」欄空白一律視為小狼 */
+  var SECTIONS = ['稚齡', '小狼', '童軍', '行義', '羅浮'];
+  var DEFAULT_SECTION = '小狼';
+  /** 總團：全部分團都有團長權限（管理員＝admin 帳號，另由 ownerId 判斷） */
+  var CENTRAL = '總團';
+  var STAFF_ROLES = [CENTRAL, ROLE.LEADER, ROLE.ASSISTANT];
+  /** 綁定紀錄「關係」：空白視為家長 */
+  var RELATION = { PARENT: '家長', SELF: '本人' };
+
+  function sectionOf(v) {
+    var x = clean(v);
+    return x || DEFAULT_SECTION;
+  }
+
+  /**
+   * 從「管理員」分頁全部列（一人可有多列），算出在某分團有效的管理員，每個帳號一筆。
+   * 總團在每個分團都視為團長（scope 標記為總團）；同一人有多列時取權限較高者。
+   * rows: [{accountId, role, section, ...}]
+   */
+  function effectiveAdmins(rows, section) {
+    var target = sectionOf(section), byId = {}, order = [];
+    (rows || []).forEach(function (r) {
+      var e = null;
+      if (r.role === CENTRAL) e = Object.assign({}, r, { role: ROLE.LEADER, scope: CENTRAL });
+      else if ((r.role === ROLE.LEADER || r.role === ROLE.ASSISTANT) && sectionOf(r.section) === target) e = Object.assign({}, r, { scope: target });
+      if (!e) return;
+      var cur = byId[r.accountId];
+      if (!cur) { byId[r.accountId] = e; order.push(r.accountId); return; }
+      if (cur.role !== ROLE.LEADER && e.role === ROLE.LEADER) byId[r.accountId] = e;
+    });
+    return order.map(function (id) { return byId[id]; });
+  }
+
+  /**
+   * 分團身分異動（由管理員或總團在後台設定，SPEC 附錄第 68 點）。
+   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：admin 帳號ID（沒有則空）
+   * change {type: 'add'|'update'|'remove', targetId, section, role, title}
+   */
+  function validateStaffChange(rows, actor, change, ownerId) {
+    rows = rows || []; actor = actor || {}; change = change || {};
+    if (!actor.isOwner && !actor.isCentral) return { ok: false, error: '只有管理員或總團可以設定分團身分' };
+    var role = clean(change.role);
+    var section = role === CENTRAL ? '' : clean(change.section);
+    if (change.type !== 'remove') {
+      if (STAFF_ROLES.indexOf(role) < 0) return { ok: false, error: '身分只能是總團、團長或服務員' };
+      if (role !== CENTRAL && SECTIONS.indexOf(section) < 0) return { ok: false, error: '請選擇分團' };
+      if (clean(change.title).length > 20) return { ok: false, error: '職稱最多 20 個字' };
+    }
+    if (ownerId && change.targetId === ownerId && actor.accountId !== ownerId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var key = function (r) { return r.role === CENTRAL ? CENTRAL : sectionOf(r.section); };
+    var wantKey = role === CENTRAL ? CENTRAL : section;
+    var mine = rows.filter(function (r) { return r.accountId === change.targetId; });
+    var target = change.type === 'add' ? null : mine.filter(function (r) { return key(r) === clean(change.key || wantKey); })[0];
+    if (change.type !== 'add' && !target) return { ok: false, error: '找不到這個身分' };
+    if (change.type === 'add' && mine.some(function (r) { return key(r) === wantKey; })) return { ok: false, error: '這個人在這個分團已經有身分，請改用修改' };
+    if (change.type === 'update' && wantKey !== key(target) && mine.some(function (r) { return key(r) === wantKey; })) return { ok: false, error: '這個人在這個分團已經有身分' };
+    // 總團、團長只有管理員（admin）能指定或取消；沒有 admin 帳號時總團也可以
+    var high = function (r) { return r && (r.role === CENTRAL || r.role === ROLE.LEADER); };
+    if ((high({ role: role }) && change.type !== 'remove') || high(target)) {
+      if (ownerId ? actor.accountId !== ownerId : !actor.isCentral) return { ok: false, error: '只有管理員（admin）可以指定或取消總團、團長' };
+    }
+    // 小狼至少保留一位團長（總團也算）
+    var after = rows.filter(function (r) { return r !== target; });
+    if (change.type !== 'remove') after.push({ accountId: change.targetId, role: role, section: section });
+    var leaders = effectiveAdmins(after, DEFAULT_SECTION).filter(function (a) { return a.role === ROLE.LEADER; }).length;
+    if (!leaders) return { ok: false, error: '小狼至少要保留一位團長' };
+    return { ok: true, row: target || null, section: section, role: role };
+  }
+
   /** 綁定碼／邀請碼／臨時碼字元集：大寫英文與數字，排除 0、O、1、I、L */
   var CODE_CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -983,6 +1053,8 @@ var Logic = (function () {
     var actor = (admins || []).filter(function (a) { return a.accountId === actorId; })[0];
     if (!actor || actor.role !== ROLE.LEADER) return { ok: false, error: '只有團長可以管理管理員' };
     var target = admins.filter(function (a) { return a.accountId === change.targetId; })[0];
+    // 總團身分不在這裡改（SPEC 附錄第 68 點：在「分團身分」設定）
+    if (target && target.scope === CENTRAL && change.type !== 'add') return { ok: false, error: '這位是總團，請到「分團身分」調整' };
     var leaders = admins.filter(function (a) { return a.role === ROLE.LEADER; }).length;
     if (ownerId) {
       if (change.targetId === ownerId && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
@@ -1157,7 +1229,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
@@ -1238,31 +1310,31 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
-HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本'];
-HEADERS[SHEET.ADMINS] = ['帳號ID', '姓名', '角色', '加入時間', '指定人', 'LINE userId', 'LINE 連結時間'];
-HEADERS[SHEET.INVITES] = ['邀請碼', '角色', '姓名', '建立人', '建立時間', '到期時間', '狀態', '使用者帳號ID', '使用時間'];
+HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本', '關係'];
+HEADERS[SHEET.ADMINS] = ['帳號ID', '姓名', '角色', '加入時間', '指定人', 'LINE userId', 'LINE 連結時間', '分團', '職稱'];
+HEADERS[SHEET.INVITES] = ['邀請碼', '角色', '姓名', '建立人', '建立時間', '到期時間', '狀態', '使用者帳號ID', '使用時間', '分團', '職稱'];
 HEADERS[SHEET.ITEMS] = ['項目ID', '類別', '級別或章名', '大項', '項目內容', '排序', '啟用'];
 HEADERS[SHEET.UNITS] = ['名稱', '類別', '分類', '說明', '晉級條件', '排序'];
 HEADERS[SHEET.DETAILS] = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
 HEADERS[SHEET.COMPLETIONS] = ['小狼ID', '項目ID', '完成日期', '簽核人', '備註', '回報人', '回報狀態'];
 HEADERS[SHEET.AWARDS] = ['小狼ID', '級別或章名', '頒發日期', '頒發場合', '備註', '簽核人', '登錄時間'];
-HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型', '計入進程'];
+HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型', '計入進程', '分團'];
 HEADERS[SHEET.ATTENDANCE] = ['集會ID', '小狼ID', '狀態', '點名人', '點名時間'];
 HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席總數', '備註'];
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
 HEADERS[SHEET.NOTIFY] = ['小狼ID', '級別或章名', '通知類型', '通知時間'];
 HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
-HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註'];
+HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註', '分團'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
-HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間'];
+HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間', '分團'];
 HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
-HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態'];
+HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
@@ -1521,13 +1593,27 @@ function loadAccounts_() {
 
 function loadBindings_() {
   return readRows_(SHEET.BINDINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { accountId: Logic.clean(r[0]), cubId: Logic.clean(r[1]), consentAt: ms_(r[3]), consentVersion: Number(r[4]) || 0, _row: r._row, _raw: r };
+    return { accountId: Logic.clean(r[0]), cubId: Logic.clean(r[1]), consentAt: ms_(r[3]), consentVersion: Number(r[4]) || 0, relation: Logic.clean(r[5]) || Logic.RELATION.PARENT, _row: r._row, _raw: r };
   });
 }
 
-function loadAdmins_() {
+/** 管理員分頁全部列（一人可有多列：每個分團一列，總團一列；SPEC 附錄第 68 點） */
+function loadAdminRows_() {
   return readRows_(SHEET.ADMINS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { accountId: Logic.clean(r[0]), name: Logic.clean(r[1]), role: Logic.clean(r[2]), lineUserId: Logic.clean(r[5]), _row: r._row, _raw: r };
+    return {
+      accountId: Logic.clean(r[0]), name: Logic.clean(r[1]), role: Logic.clean(r[2]), lineUserId: Logic.clean(r[5]),
+      section: Logic.clean(r[2]) === Logic.CENTRAL ? '' : Logic.sectionOf(r[7]), title: Logic.clean(r[8]), _row: r._row, _raw: r
+    };
+  });
+}
+
+/** 在小狼有權限的管理員（每人一筆；總團視為團長）。目前所有後台功能都屬於小狼 */
+function loadAdmins_() {
+  var rows = loadAdminRows_(), line = {};
+  rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
+  // LINE 通知是跟著人走的：同一人任何一列有連結都算
+  return Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION).map(function (a) {
+    return a.lineUserId || !line[a.accountId] ? a : Object.assign({}, a, { lineUserId: line[a.accountId] });
   });
 }
 
@@ -1535,7 +1621,8 @@ function loadInvites_() {
   return readRows_(SHEET.INVITES).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
       code: Logic.normalizeCode(r[0]), role: Logic.clean(r[1]), name: Logic.clean(r[2]), createdBy: Logic.clean(r[3]),
-      expiresAt: ms_(r[5]), status: Logic.clean(r[6]), _row: r._row, _raw: r
+      expiresAt: ms_(r[5]), status: Logic.clean(r[6]),
+      section: Logic.clean(r[1]) === Logic.CENTRAL ? '' : Logic.sectionOf(r[9]), title: Logic.clean(r[10]), _row: r._row, _raw: r
     };
   });
 }
@@ -1765,8 +1852,11 @@ function requireAccount_(token) {
   if (!ses || !Logic.isSessionValid({ expiresAt: ms_(ses[3]) }, Date.now())) throw fail;
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
-  var admin = loadAdmins_().filter(function (a) { return a.accountId === acc.accountId; })[0] || null;
-  return { account: acc, admin: admin, sessionHash: h };
+  var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
+  var admin = Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION)[0] || null;
+  // staff：這個人在各分團的身分（含小狼以外，給「分團功能準備中」畫面與分團身分設定用）
+  var staff = rows.map(function (a) { return { section: a.section, role: a.role, title: a.title }; });
+  return { account: acc, admin: admin, staff: staff, isCentral: rows.some(function (a) { return a.role === Logic.CENTRAL; }), sessionHash: h };
 }
 
 function setPassword_(acc, password) {
@@ -2008,9 +2098,10 @@ function bindCub_(accountId, cub, consentVersion) {
 /** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
 function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
-  var admins = loadAdmins_();
-  if (!admins.some(function (a) { return a.accountId === accountId; })) {
-    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
+  // 邀請碼已指定分團、身分、職稱（SPEC 附錄第 68 點）；同一人在同一分團已有身分就不重複加
+  var key = function (r) { return r.role === Logic.CENTRAL ? Logic.CENTRAL : Logic.sectionOf(r.section); };
+  if (!loadAdminRows_().some(function (a) { return a.accountId === accountId && key(a) === key(invite); })) {
+    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '', invite.section, invite.title]]);
   }
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
@@ -2285,6 +2376,10 @@ function apiMe_(req, who) {
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId) : [],
+    // 各分團身分（SPEC 附錄第 68 點）：staff 給「分團功能準備中」畫面；canManageStaff 決定後台是否顯示「分團身分」頁
+    staff: who.staff || [],
+    isCentral: !!who.isCentral,
+    canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
     requests: (function () {
@@ -3080,12 +3175,12 @@ function guardOwner_(targetId, who, admins) {
 registerAdmin_('adminList', 'manageAdmins', function () {
   var acc = accountsById_(), owner = ownerId_();
   var names = adminNames_();
-  var rows = readRows_(SHEET.ADMINS).filter(function (r) { return Logic.clean(r[0]); });
+  // 只列在小狼有權限的人（總團也列，標記 central）；其他分團的身分在「分團身分」頁（SPEC 附錄第 68 點）
   return {
     ownerExists: !!owner,
-    admins: rows.map(function (r) {
-      var id = Logic.clean(r[0]);
-      return { owner: !!owner && id === owner, accountId: id, name: Logic.clean(r[1]), role: Logic.clean(r[2]), username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!Logic.clean(r[5]) };
+    admins: loadAdmins_().map(function (a) {
+      var r = a._raw, id = a.accountId;
+      return { owner: !!owner && id === owner, accountId: id, name: a.name, role: a.role, central: a.scope === Logic.CENTRAL, title: a.title, username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!a.lineUserId };
     })
   };
 });
@@ -3147,7 +3242,7 @@ registerAdmin_('inviteList', 'manageInvites', function () {
   var names = adminNames_(), now = Date.now();
   return {
     invites: loadInvites_().filter(function (i) { return i.status === '未使用'; }).map(function (i) {
-      return { code: i.code, role: i.role, name: i.name, createdBy: names[i.createdBy] || i.createdBy, expiresAt: i.expiresAt, expired: now > i.expiresAt };
+      return { code: i.code, role: i.role, section: i.section, title: i.title, name: i.name, createdBy: names[i.createdBy] || i.createdBy, expiresAt: i.expiresAt, expired: now > i.expiresAt };
     })
   };
 });
@@ -3237,7 +3332,8 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
     if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error);
     purgeSessions_(acc.accountId);
     deleteRows_(SHEET.BINDINGS, loadBindings_().filter(function (b) { return b.accountId === acc.accountId; }).map(function (b) { return b._row; }));
-    deleteRows_(SHEET.ADMINS, admins.filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
+    // 所有分團的身分一起刪（loadAdmins_ 只有小狼的那一列）
+    deleteRows_(SHEET.ADMINS, loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
     deleteRegsOfAccount_(acc.accountId);
     deleteRows_(SHEET.REQUESTS, loadRequests_().filter(function (r) { return r.accountId === acc.accountId; }).map(function (r) { return r._row; }));
     deleteRows_(SHEET.ACCOUNTS, [acc._row]);
@@ -4703,6 +4799,91 @@ registerAdmin_('itemsReload', 'manageItems', function () {
   itemsChanged_();
   return { errors: loadItems_().errors.length };
 });
+
+// ════════════════ StaffApi.js ════════════════
+/**
+ * 分團身分與邀請碼（SPEC 附錄第 68 點，多分團骨架）
+ * - 管理員分頁一人可有多列：每個分團一列（團長／服務員），總團一列（全部分團）。
+ * - 只有管理員（admin 帳號）或總團可以設定；總團、團長只有 admin 能指定或取消（沒有 admin 帳號時總團也可以）。
+ * - 小狼以外的分團目前只有身分，還沒有功能；他們登入後看到「分團功能準備中」。
+ */
+
+/** 只有管理員（admin）或總團可以用 */
+function requireStaffManager_(who) {
+  var owner = ownerId_();
+  var isOwner = !!owner && who.account.accountId === owner;
+  if (!isOwner && !who.isCentral) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
+  return { accountId: who.account.accountId, isOwner: isOwner, isCentral: !!who.isCentral, ownerId: owner };
+}
+
+/** 一列的代號：總團或分團名稱（同一人同一代號只會有一列） */
+function staffKey_(r) { return r.role === Logic.CENTRAL ? Logic.CENTRAL : r.section; }
+
+AUTHED_ACTIONS.staffList = function (req, who) {
+  var actor = requireStaffManager_(who);
+  var acc = accountsById_();
+  return {
+    sections: Logic.SECTIONS, roles: Logic.STAFF_ROLES, isOwner: actor.isOwner,
+    staff: loadAdminRows_().map(function (r) {
+      return {
+        accountId: r.accountId, key: staffKey_(r), name: r.name, username: (acc[r.accountId] || {}).username || '（帳號已刪除）',
+        section: r.section, role: r.role, title: r.title, owner: !!actor.ownerId && r.accountId === actor.ownerId, lineLinked: !!r.lineUserId
+      };
+    })
+  };
+};
+
+/** 新增／修改／移除一個分團身分。req: {type, accountId, key（修改、移除時原本的代號）, section, role, title, name} */
+AUTHED_ACTIONS.staffSave = function (req, who) {
+  var actor = requireStaffManager_(who);
+  return withLock_(function () {
+    var type = Logic.clean(req.type);
+    if (['add', 'update', 'remove'].indexOf(type) < 0) throw new ApiError(ERR.BAD_INPUT, '不支援的操作。');
+    var target = accountsById_()[Logic.clean(req.accountId)];
+    if (!target) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
+    if (type === 'add' && target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
+    var rows = loadAdminRows_();
+    var v = Logic.validateStaffChange(rows, actor, {
+      type: type, targetId: target.accountId, key: Logic.clean(req.key), section: req.section, role: req.role, title: req.title
+    }, actor.ownerId);
+    if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
+    var title = Logic.clean(req.title).slice(0, 20);
+    var name = Logic.clean(req.name).slice(0, 30) || (v.row && v.row.name) || target.nickname || target.username;
+    var desc = function (role, section, t) { return (role === Logic.CENTRAL ? '總團' : section + '／' + role) + (t ? '（' + t + '）' : ''); };
+    if (type === 'add') {
+      appendRows_(SHEET.ADMINS, [[target.accountId, name, v.role, new Date(), who.account.accountId, '', '', v.section, title]]);
+      logOp_(who.account.accountId, '新增分團身分', target.username, '', desc(v.role, v.section, title));
+    } else if (type === 'update') {
+      var row = v.row._raw.slice(0, HEADERS[SHEET.ADMINS].length);
+      var before = desc(v.row.role, v.row.section, v.row.title);
+      row[1] = name; row[2] = v.role; row[7] = v.section; row[8] = title;
+      updateRows_(SHEET.ADMINS, [{ row: v.row._row, values: row }]);
+      logOp_(who.account.accountId, '修改分團身分', target.username, before, desc(v.role, v.section, title));
+    } else {
+      deleteRows_(SHEET.ADMINS, [v.row._row]);
+      logOp_(who.account.accountId, '移除分團身分', target.username, desc(v.row.role, v.row.section, v.row.title), '');
+    }
+    return {};
+  });
+};
+
+/** 產生邀請碼（已指定分團、身分、職稱；對方用碼註冊即生效）。req: {section, role, title, name} */
+AUTHED_ACTIONS.inviteCreate = function (req, who) {
+  var actor = requireStaffManager_(who);
+  return withLock_(function () {
+    var role = Logic.clean(req.role), section = role === Logic.CENTRAL ? '' : Logic.clean(req.section);
+    if (Logic.STAFF_ROLES.indexOf(role) < 0) throw new ApiError(ERR.BAD_INPUT, '身分只能是總團、團長或服務員。');
+    if (role !== Logic.CENTRAL && Logic.SECTIONS.indexOf(section) < 0) throw new ApiError(ERR.BAD_INPUT, '請選擇分團。');
+    if (role !== Logic.ROLE.ASSISTANT && (actor.ownerId ? !actor.isOwner : !actor.isCentral)) throw new ApiError(ERR.BAD_INPUT, '只有管理員（admin）可以邀請總團、團長。');
+    var title = Logic.clean(req.title).slice(0, 20), name = Logic.clean(req.name).slice(0, 30);
+    var hours = loadSettings_().values['管理員邀請碼有效小時數'];
+    var code = Logic.generateCode(loadSettings_().values['綁定碼長度'] + 2, randInt_, allCodes_());
+    var now = Date.now(), exp = new Date(now + hours * 3600000);
+    appendRows_(SHEET.INVITES, [[code, role, name, who.account.accountId, new Date(now), exp, '未使用', '', '', section, title]]);
+    logOp_(who.account.accountId, '產生邀請碼', name, '', (role === Logic.CENTRAL ? '總團' : section + '／' + role) + (title ? '（' + title + '）' : ''));
+    return { code: code, expiresAt: exp.getTime() };
+  });
+};
 
 // ════════════════ Notify.js ════════════════
 /**

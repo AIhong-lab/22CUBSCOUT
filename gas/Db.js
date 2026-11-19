@@ -185,13 +185,27 @@ function loadAccounts_() {
 
 function loadBindings_() {
   return readRows_(SHEET.BINDINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { accountId: Logic.clean(r[0]), cubId: Logic.clean(r[1]), consentAt: ms_(r[3]), consentVersion: Number(r[4]) || 0, _row: r._row, _raw: r };
+    return { accountId: Logic.clean(r[0]), cubId: Logic.clean(r[1]), consentAt: ms_(r[3]), consentVersion: Number(r[4]) || 0, relation: Logic.clean(r[5]) || Logic.RELATION.PARENT, _row: r._row, _raw: r };
   });
 }
 
-function loadAdmins_() {
+/** 管理員分頁全部列（一人可有多列：每個分團一列，總團一列；SPEC 附錄第 68 點） */
+function loadAdminRows_() {
   return readRows_(SHEET.ADMINS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { accountId: Logic.clean(r[0]), name: Logic.clean(r[1]), role: Logic.clean(r[2]), lineUserId: Logic.clean(r[5]), _row: r._row, _raw: r };
+    return {
+      accountId: Logic.clean(r[0]), name: Logic.clean(r[1]), role: Logic.clean(r[2]), lineUserId: Logic.clean(r[5]),
+      section: Logic.clean(r[2]) === Logic.CENTRAL ? '' : Logic.sectionOf(r[7]), title: Logic.clean(r[8]), _row: r._row, _raw: r
+    };
+  });
+}
+
+/** 在小狼有權限的管理員（每人一筆；總團視為團長）。目前所有後台功能都屬於小狼 */
+function loadAdmins_() {
+  var rows = loadAdminRows_(), line = {};
+  rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
+  // LINE 通知是跟著人走的：同一人任何一列有連結都算
+  return Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION).map(function (a) {
+    return a.lineUserId || !line[a.accountId] ? a : Object.assign({}, a, { lineUserId: line[a.accountId] });
   });
 }
 
@@ -199,7 +213,8 @@ function loadInvites_() {
   return readRows_(SHEET.INVITES).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
       code: Logic.normalizeCode(r[0]), role: Logic.clean(r[1]), name: Logic.clean(r[2]), createdBy: Logic.clean(r[3]),
-      expiresAt: ms_(r[5]), status: Logic.clean(r[6]), _row: r._row, _raw: r
+      expiresAt: ms_(r[5]), status: Logic.clean(r[6]),
+      section: Logic.clean(r[1]) === Logic.CENTRAL ? '' : Logic.sectionOf(r[9]), title: Logic.clean(r[10]), _row: r._row, _raw: r
     };
   });
 }

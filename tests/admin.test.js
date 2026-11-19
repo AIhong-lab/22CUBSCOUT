@@ -158,10 +158,52 @@ test('管理員：方式一指定、角色變更立即生效、最後一位團�
   assert.equal(call(A, 'adminUpdate', { accountId: helperId, role: '服務員' }).code, 'BAD_INPUT', '最後一位團長不可降級');
 });
 
-test('邀請碼功能已拿掉：後台不能再產生；之前留下的邀請碼可以作廢', () => {
-  const { env, call, L } = world();
-  assert.equal(call(L, 'inviteCreate', { role: '服務員', name: '林服務員' }).code, 'BAD_INPUT', '不支援的操作');
-  // 模擬之前產生、還沒用掉的邀請碼
+test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他分團的人碰不到小狼、總團（SPEC 附錄第 68 點）', () => {
+  const { env, call, L, A } = world();
+  // 沒有管理員（admin）時，一般團長不能設定分團身分
+  assert.equal(call(L, 'inviteCreate', { section: '童軍', role: '服務員' }).code, 'FORBIDDEN');
+  assert.equal(call(L, 'staffList').code, 'FORBIDDEN');
+  const made = env.ctx.ensureDefaultAdmin_();
+  const O = env.api({ action: 'login', username: made.username, password: made.password }).token;
+  assert.equal(call(O, 'me').canManageStaff, true);
+  // 童軍服務員：用邀請碼註冊即生效，但沒有任何小狼權限
+  const inv = call(O, 'inviteCreate', { section: '童軍', role: '服務員', title: '副團長', name: '王童軍' });
+  assert.match(inv.code, /^[A-Z2-9]{8}$/);
+  const S = env.api({ action: 'register', code: inv.code, childName: '', username: 'scout01', password: 'scoutpass1', nickname: '王' }).token;
+  const me = call(S, 'me');
+  assert.equal(me.role, null);
+  assert.deepEqual(me.staff, [{ section: '童軍', role: '服務員', title: '副團長' }]);
+  for (const x of ['adminHome', 'cubList', 'signoffData', 'meetingList', 'adminList']) assert.equal(call(S, x).code, 'FORBIDDEN', '童軍服務員：' + x);
+  assert.ok(!call(L, 'adminList').admins.some((a) => a.name === '王童軍'), '小狼管理員名單不列其他分團');
+  // 小狼服務員另外加一個童軍團長身分：小狼權限不變
+  const helperId = call(L, 'accountList').accounts.find((a) => a.username === 'helper01').accountId;
+  assert.equal(call(O, 'staffSave', { type: 'add', accountId: helperId, section: '童軍', role: '團長', title: '團長' }).ok, true);
+  assert.equal(call(O, 'staffSave', { type: 'add', accountId: helperId, section: '童軍', role: '服務員' }).code, 'BAD_INPUT', '同一分團不重複');
+  assert.equal(call(A, 'adminList').code, 'FORBIDDEN');
+  assert.equal(call(A, 'signoffData').ok, true);
+  assert.equal(call(O, 'staffList').staff.filter((x) => x.accountId === helperId).length, 2);
+  // 總團：小狼的團長權限；小狼管理員頁不能改他
+  const inv2 = call(O, 'inviteCreate', { role: '總團', title: '團部' });
+  const C = env.api({ action: 'register', code: inv2.code, childName: '', username: 'central01', password: 'centralpass1', nickname: '總團' }).token;
+  assert.equal(call(C, 'me').isCentral, true);
+  assert.equal(call(C, 'cubList').ok, true);
+  assert.equal(call(C, 'adminList').ok, true);
+  const centralId = call(O, 'staffList').staff.find((x) => x.role === '總團').accountId;
+  assert.equal(call(L, 'adminList').admins.find((a) => a.accountId === centralId).central, true);
+  assert.equal(call(L, 'adminUpdate', { accountId: centralId, role: '服務員', name: 'x' }).code, 'BAD_INPUT');
+  // 總團只能邀請服務員；總團、團長要管理員（admin）
+  assert.equal(call(C, 'inviteCreate', { section: '行義', role: '服務員' }).ok, true);
+  assert.equal(call(C, 'inviteCreate', { section: '行義', role: '團長' }).code, 'BAD_INPUT');
+  assert.equal(call(C, 'staffSave', { type: 'remove', accountId: helperId, key: '童軍' }).code, 'BAD_INPUT');
+  assert.equal(call(O, 'staffSave', { type: 'update', accountId: helperId, key: '童軍', section: '童軍', role: '服務員', title: '服務員' }).ok, true);
+  assert.equal(call(C, 'staffSave', { type: 'remove', accountId: helperId, key: '童軍' }).ok, true);
+  assert.ok(env.rows('操作日誌').some((r) => r[2] === '移除分團身分'));
+  // 刪除帳號時，所有分團身分一起刪除（不能只刪小狼那一列）
+  const scoutId = call(O, 'staffList').staff.find((x) => x.name === '王童軍').accountId;
+  assert.equal(call(O, 'staffSave', { type: 'add', accountId: scoutId, section: '行義', role: '服務員' }).ok, true);
+  assert.equal(call(L, 'accountDelete', { accountId: scoutId, confirmUsername: 'scout01' }).ok, true);
+  assert.equal(env.rows('管理員').filter((r) => r[0] === scoutId).length, 0, '其他分團的身分也要刪掉');
+  // 之前留下的舊邀請碼（沒有分團欄）視為小狼，可以作廢
   const sh = env.sheet('管理員邀請');
   sh.getRange(sh.getLastRow() + 1, 1, 1, 9).setValues([['OLDCODE2', '服務員', '', 'x', new Date(), new Date(Date.now() + 86400000), '未使用', '', '']]);
   assert.ok(call(L, 'inviteList').invites.some((i) => i.code === 'OLDCODE2'));
