@@ -731,3 +731,13 @@ test('多分團：分團身分異動規則', () => {
   const lone = [{ accountId: 'O', role: '團長', section: '小狼' }];
   assert.equal(L.validateStaffChange(lone, owner, { type: 'update', targetId: 'O', key: '小狼', section: '童軍', role: '團長' }, '').ok, false, '小狼至少一位團長');
 });
+
+test('多分團：團長可以兼任（同一人在多個分團當團長或服務員，SPEC 附錄第 71 點）', () => {
+  const rows = [{ accountId: 'O', role: '團長', section: '小狼' }, { accountId: 'B', role: '團長', section: '小狼' }];
+  const owner = { accountId: 'O', isOwner: true };
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'add', targetId: 'B', section: '童軍', role: '團長' }, 'O').ok, true);
+  rows.push({ accountId: 'B', role: '團長', section: '童軍' });
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'add', targetId: 'B', section: '行義', role: '服務員' }, 'O').ok, true);
+  assert.deepEqual(L.effectiveAdmins(rows, '童軍').map((a) => a.accountId + a.role), ['B團長']);
+  assert.ok(L.effectiveAdmins(rows, '小狼').some((a) => a.accountId === 'B' && a.role === '團長'));
+});
