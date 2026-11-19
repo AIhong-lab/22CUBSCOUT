@@ -1367,6 +1367,12 @@ TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
 TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 
+/**
+ * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
+ * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
+ */
+var APP_VERSION = '2026-11-19b';
+
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
   MOVED: 'MOVED',
@@ -1964,7 +1970,7 @@ function doPost(e) {
 
 /** 不需登入的動作 */
 var PUBLIC_ACTIONS = {
-  ping: function () { var url = ''; try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; } return { serverTime: new Date().toISOString(), webUrl: url }; },
+  ping: function () { var url = ''; try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; } return { serverTime: new Date().toISOString(), webUrl: url, version: APP_VERSION }; },
   consentText: apiConsentText_,
   checkCode: apiCheckCode_,
   register: apiRegister_,
@@ -2380,6 +2386,7 @@ function apiMe_(req, who) {
     staff: who.staff || [],
     isCentral: !!who.isCentral,
     canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
+    serverVersion: APP_VERSION, // 網頁用來檢查後端是否已部署新版本（附錄第 72 點）
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
     requests: (function () {

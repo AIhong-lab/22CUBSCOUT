@@ -35,8 +35,23 @@ const PAGE = 'https://pages.test/web/';
     await page.click('button[type=submit]');
   };
 
-  // ═════ admin：產生童軍服務員的邀請碼 ═════
+  // ═════ 後端版本檢查（附錄第 72 點）：版本一致時不提醒；後端舊版時團長首頁出現紅色提醒 ═════
   await page.goto(PAGE);
+  await login('leader01', 'leaderpass1');
+  await page.locator('#sysTips').waitFor();
+  assert.doesNotMatch(await text(), /後端還是舊版/, '版本一致時不提醒');
+  await page.locator('#hdrLogout').click();
+  await page.getByText('已登出').waitFor();
+  const realVersion = env.ctx.APP_VERSION;
+  env.ctx.APP_VERSION = 'old-test';
+  await login('leader01', 'leaderpass1');
+  await page.getByText('後端還是舊版').waitFor();
+  assert.match(await text(), /不要按「新增部署作業」/);
+  env.ctx.APP_VERSION = realVersion;
+  await page.locator('#hdrLogout').click();
+  await page.getByText('已登出').waitFor();
+
+  // ═════ admin：產生童軍服務員的邀請碼 ═════
   await login(made.username, made.password);
   await page.locator('nav.tabs button[data-v=staff]').click();
   await page.getByText('🎟️ 產生邀請碼').waitFor();
@@ -61,5 +76,5 @@ const PAGE = 'https://pages.test/web/';
 
   assert.deepEqual(errors, [], '網頁沒有錯誤');
   await browser.close();
-  console.log('多分團網頁測試通過（分團身分頁、邀請碼、其他分團準備中畫面）');
+  console.log('多分團網頁測試通過（後端版本提醒、分團身分頁、邀請碼、其他分團準備中畫面）');
 })().catch((e) => { console.error(e); process.exit(1); });

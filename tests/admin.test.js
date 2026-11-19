@@ -1372,3 +1372,15 @@ test('後台首頁提醒：個資說明與「了解幼童軍」還有【請填�
   al = call(L, 'adminHome').alerts;
   assert.deepEqual(al.placeholders, []);
 });
+
+test('後端版本檢查（SPEC 附錄第 72 點）：網頁與後端版本號必須一致，me 與 ping 回傳版本', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const web = fs.readFileSync(path.join(__dirname, '..', 'web', 'index.html'), 'utf8').match(/^const APP_VERSION = '([^']+)';/m);
+  const gas = fs.readFileSync(path.join(__dirname, '..', 'gas', 'Config.js'), 'utf8').match(/^var APP_VERSION = '([^']+)';/m);
+  assert.ok(web && gas, '兩邊都要有 APP_VERSION');
+  assert.equal(web[1], gas[1], '改了後端就要同時更新 web/index.html 與 gas/Config.js 的 APP_VERSION');
+  const { env, call, L } = world();
+  assert.equal(call(L, 'me').serverVersion, gas[1]);
+  assert.equal(env.api({ action: 'ping' }).version, gas[1]);
+});

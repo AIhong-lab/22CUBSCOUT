@@ -87,7 +87,7 @@ function doPost(e) {
 
 /** 不需登入的動作 */
 var PUBLIC_ACTIONS = {
-  ping: function () { var url = ''; try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; } return { serverTime: new Date().toISOString(), webUrl: url }; },
+  ping: function () { var url = ''; try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; } return { serverTime: new Date().toISOString(), webUrl: url, version: APP_VERSION }; },
   consentText: apiConsentText_,
   checkCode: apiCheckCode_,
   register: apiRegister_,
@@ -503,6 +503,7 @@ function apiMe_(req, who) {
     staff: who.staff || [],
     isCentral: !!who.isCentral,
     canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
+    serverVersion: APP_VERSION, // 網頁用來檢查後端是否已部署新版本（附錄第 72 點）
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
     requests: (function () {
