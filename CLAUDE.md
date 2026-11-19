@@ -47,6 +47,7 @@
 - 公開頁面載入（SPEC 附錄第 66 點）：`renderInfo` 先用 `noticeData`／`siteData` 畫面再背景更新（`infoSeq` 與 `#infoBack[data-seq]` 防止換頁後被舊回應蓋掉）；GitHub 版 `api()` 用 AbortController 45 秒逾時（`window.__apiTimeout` 給測試用）。`tests/web/slow.js`。
 - LINE 選單右下角（SPEC 附錄第 67 點）：`RichMenu.js` 的 `TEAM_FB_URL`（22 團 FB 粉絲專頁）是沒填「網站內容 → FB 網址」時的預設；三份手冊都有 LINE 官方帳號章節（完整版「五之二」）。
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- 多分團（SPEC 附錄第 68 點，2026-11-19 只定規格、尚未寫程式）：將擴充成 22 團團部網站；第一期骨架為分團欄位（空白＝小狼）、權限範圍（管理員／總團／團長（含副團長）／服務員／家長／小孩）、綁定紀錄「關係」、小狼模組化、恢復邀請碼。升團、不續團、三項登記待討論（ROADMAP）。**動工前不要先改程式。**
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
