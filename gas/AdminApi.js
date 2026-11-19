@@ -447,7 +447,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
   var units = loadUnits_();
   var byItem = loadDetails_().byItem;
   var att = ctx.attByCub[cub.cubId] || [];
-  var period = Logic.periodOf(loadPeriods_(), ctx.today);
+  var period = sectionPeriod_(cub.section, ctx.today);
   var rate = null;
   if (period) {
     var extra = loadExtra_().filter(function (x) { return x.period === period.name && x.cubId === cub.cubId; }).reduce(function (s, x) { return s + x.count; }, 0);
@@ -1035,13 +1035,27 @@ registerAdmin_('requestReject', 'reviewRequests', function (req, who) {
 
 // ───────────── 集會行事曆、點名、出席 ─────────────
 
-registerAdmin_('meetingList', 'attendance', function () {
-  var count = {};
-  loadAttendance_().forEach(function (a) { if (Logic.isPresent(a.status)) count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
-  var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date); }).map(function (m) {
-    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0 };
+/**
+ * 集會對象（附錄第 73 點⑫）：每場集會是「某分團」或「全團」。目前分團看得到自己分團與全團的集會；
+ * 全團集會由管理員或總團設定，分團集會由該分團團長設定。點名時各分團點自己的團員。
+ */
+function meetingVisible_(m) { return Logic.targetIncludes(m.target, curSec_()); }
+function canEditMeeting_(who, m) { return m.target === Logic.ALL ? canManageAll_(who) : m.target === curSec_(); }
+function findMeeting_(meetingId) {
+  var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(meetingId) && meetingVisible_(x); })[0];
+  if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
+  return m;
+}
+
+registerAdmin_('meetingList', 'attendance', function (req, who) {
+  var count = {}, mine = {};
+  secCubs_().forEach(function (c) { mine[c.cubId] = true; });
+  // 出席人數只算目前分團的團員（全團集會各分團各自點名）
+  loadAttendance_().forEach(function (a) { if (Logic.isPresent(a.status) && mine[a.cubId]) count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
+  var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date) && meetingVisible_(m); }).map(function (m) {
+    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0, target: m.target, canEdit: canEditMeeting_(who, m) };
   }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
-  return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()) };
+  return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()), section: curSec_(), canManageAll: canManageAll_(who) };
 });
 
 /** 點名預設：今天的集會；今天沒有就選日期最接近的一場 */
@@ -1063,8 +1077,9 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
   return withLock_(function () {
     var meetings = loadMeetings_();
     if (req.meetingId) {
-      var m = meetings.filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
+      var m = meetings.filter(function (x) { return x.meetingId === Logic.clean(req.meetingId) && meetingVisible_(x); })[0];
       if (!m) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
+      if (!canEditMeeting_(who, m)) throw new ApiError(ERR.FORBIDDEN, m.target === Logic.ALL ? '全團集會由管理員或總團設定。' : '這是' + m.target + '的集會，請由' + m.target + '的團長修改。');
       var raw = readRows_(SHEET.MEETINGS).filter(function (r) { return r._row === m._row; })[0];
       var row = raw.slice(0, HEADERS[SHEET.MEETINGS].length);
       var before = [m.date, m.name, m.enabled ? '是' : '否'].join('／') + '／' + m.type + '／' + (m.counts ? '計入' : '不計入');
@@ -1075,10 +1090,19 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       if (req.type !== undefined) { if (Logic.MEETING_TYPES.indexOf(Logic.clean(req.type)) < 0) throw new ApiError(ERR.BAD_INPUT, '類型只能是一般或大活動。'); row[7] = Logic.clean(req.type); }
       // 計入進程（SPEC 附錄第 61 點）：「否」的集會出席不算晉級、自動完成與體驗次數；出席率照算
       if (req.counts !== undefined) row[8] = req.counts === false ? '否' : '是';
+      // 改對象（全團 ↔ 分團）只有管理員或總團可以
+      if (req.target !== undefined && Logic.targetOf(req.target) !== m.target) {
+        if (!canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '只有管理員或總團可以改集會的對象。');
+        while (row.length < 10) row.push('');
+        row[9] = meetingTarget_(req.target);
+      }
       updateRows_(SHEET.MEETINGS, [{ row: m._row, values: row }]);
       logOp_(who.account.accountId, '修改集會', m.meetingId, before, [row[1], row[2], row[4], row[7] || '一般', row[8] === '否' ? '不計入' : '計入'].join('／'));
       return { updated: 1 };
     }
+    var target = req.target === undefined ? curSec_() : meetingTarget_(req.target);
+    if (target === Logic.ALL && !canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '全團集會由管理員或總團設定。');
+    if (target !== Logic.ALL && target !== curSec_() && !canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '只能新增自己分團的集會。');
     var ids = meetings.map(function (x) { return x.meetingId; });
     var add = [], bad = [], now = new Date();
     String(req.lines || '').split(/\r?\n/).forEach(function (line, i) {
@@ -1091,7 +1115,7 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       ids.push(id);
       // 名稱裡有「大活動」就標成大活動（體驗者不算、點名不列體驗者）
       var nm = (mm[4] || '').trim().slice(0, 40) || '團集會';
-      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般', '是']);
+      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般', '是', target]);
     });
     if (!add.length) throw new ApiError(ERR.BAD_INPUT, '沒有可新增的集會。每行格式：2026-11-22 團集會' + (bad.length ? '\n看不懂的行：\n' + bad.join('\n') : ''));
     appendRows_(SHEET.MEETINGS, add);
@@ -1100,7 +1124,14 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
   });
 });
 
-/** 該集會當天在團的小狼 */
+/** 送來的集會對象：「全團」或分團名稱，其他一律拒絕 */
+function meetingTarget_(v) {
+  var x = Logic.clean(v);
+  if (x !== Logic.ALL && !Logic.isSection(x)) throw new ApiError(ERR.BAD_INPUT, '集會對象只能是全團或某個分團。');
+  return x;
+}
+
+/** 該集會當天在團的團員（目前分團或指定分團） */
 function cubsOnDate_(date, type, section) {
   var sec = Logic.sectionOf(section || curSec_());
   return loadCubs_().filter(function (c) {
@@ -1114,12 +1145,11 @@ function cubsOnDate_(date, type, section) {
 }
 
 registerAdmin_('attendanceSheet', 'attendance', function (req) {
-  var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
-  if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
+  var m = findMeeting_(req.meetingId);
   var st = {};
   loadAttendance_().forEach(function (a) { if (a.meetingId === m.meetingId) st[a.cubId] = a.status; });
   var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date) }; });
-  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type }, cubs: cubs, squads: squadsOf_(secCubs_()) };
+  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, target: m.target }, cubs: cubs, squads: squadsOf_(secCubs_()) };
 });
 
 /** 儲存點名：只更新送來的小狼（以「集會＋小狼」為單位，同時點名不互相覆蓋）；空白＝刪除該筆 */
@@ -1129,8 +1159,7 @@ registerAdmin_('attendanceSave', 'attendance', function (req, who) {
   if (!ids.length) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的點名。');
   ids.forEach(function (k) { if (marks[k] !== '' && Logic.ATTEND_MARKS.indexOf(marks[k]) < 0) throw new ApiError(ERR.BAD_INPUT, '點名狀態只能是出席、遲到、請假或空白。'); });
   return withLock_(function () {
-    var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
-    if (!m || !m.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
+    var m = findMeeting_(req.meetingId);
     var valid = {};
     cubsOnDate_(m.date, m.type).forEach(function (c) { valid[c.cubId] = true; });
     var existing = {};
@@ -1157,7 +1186,7 @@ registerAdmin_('attendanceSave', 'attendance', function (req, who) {
 registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
   var today = today_();
   var from = Logic.isDateStr(req.from) ? req.from : '0000-01-01', to = Logic.isDateStr(req.to) ? req.to : '9999-12-31';
-  var meetings = loadMeetings_().filter(function (m) { return m.enabled && m.date >= from && m.date <= to && m.date <= today; })
+  var meetings = loadMeetings_().filter(function (m) { return m.enabled && meetingVisible_(m) && m.date >= from && m.date <= to && m.date <= today; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   var mIds = {};
   meetings.forEach(function (m) { mIds[m.meetingId] = m; });
@@ -1168,7 +1197,7 @@ registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
     if (mIds[a.meetingId]) st[a.cubId + '|' + a.meetingId] = a.status;
     if (enabledMeetings[a.meetingId]) (allAtt[a.cubId] = allAtt[a.cubId] || []).push({ date: enabledMeetings[a.meetingId].date, status: a.status });
   });
-  var period = Logic.periodOf(loadPeriods_(), today);
+  var period = sectionPeriod_(curSec_(), today);
   var extra = {};
   if (period) loadExtra_().forEach(function (x) { if (x.period === period.name) extra[x.cubId] = (extra[x.cubId] || 0) + x.count; });
   var rows = secCubs_().filter(function (c) { return c.status === '在團' || c.status === Logic.TRIAL; }).map(function (c) {
@@ -1180,8 +1209,15 @@ registerAdmin_('attendanceOverview', 'viewOverview', function (req) {
   return { meetings: meetings.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name }; }), rows: rows, period: period, squads: squadsOf_(secCubs_()) };
 });
 
-registerAdmin_('periodList', 'viewOverview', function () {
-  return { periods: loadPeriods_(), current: (Logic.periodOf(loadPeriods_(), today_()) || {}).name || '' };
+/** 年度出席設定：目前分團自己的＋全團預設（附錄第 73 點）；全團預設由管理員或總團設定 */
+registerAdmin_('periodList', 'viewOverview', function (req, who) {
+  var sec = curSec_(), all = canManageAll_(who);
+  return {
+    periods: loadPeriods_().filter(function (p) { return p.target === sec || p.target === Logic.ALL; }).map(function (p) {
+      return { name: p.name, start: p.start, end: p.end, total: p.total, note: p.note, target: p.target, canEdit: p.target === Logic.ALL ? all : true };
+    }),
+    current: (sectionPeriod_(sec, today_()) || {}).name || '', section: sec, canManageAll: all
+  };
 });
 
 /** 新增或修改年度出席設定（以年度名稱為鍵） */
@@ -1192,12 +1228,15 @@ registerAdmin_('periodSave', 'manageCalendar', function (req, who) {
   if (end < start) throw new ApiError(ERR.BAD_INPUT, '結束日不可早於開始日。');
   var total = Number(req.total);
   if (!(total >= 0 && total <= 500 && Math.floor(total) === total)) throw new ApiError(ERR.BAD_INPUT, '應出席總數需為 0～500 的整數。');
+  var target = Logic.clean(req.target) === Logic.ALL ? Logic.ALL : curSec_();
+  if (target === Logic.ALL && !canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '全團預設由管理員或總團設定；請設定自己分團的年度。');
   return withLock_(function () {
-    var row = [name, start, end, total, Logic.clean(req.note).slice(0, 100)];
-    var cur = readRows_(SHEET.PERIODS).filter(function (r) { return Logic.clean(r[0]) === name; })[0];
+    var row = [name, start, end, total, Logic.clean(req.note).slice(0, 100), target];
+    // 以「年度名稱＋分團」為鍵：同名的全團預設與分團設定分開存
+    var cur = loadPeriods_().filter(function (p) { return p.name === name && p.target === target; })[0];
     if (cur) updateRows_(SHEET.PERIODS, [{ row: cur._row, values: row }]);
     else appendRows_(SHEET.PERIODS, [row]);
-    logOp_(who.account.accountId, '設定年度出席', name, cur ? [dateStr_(cur[1]), dateStr_(cur[2]), cur[3]].join('／') : '', [start, end, total].join('／'));
+    logOp_(who.account.accountId, '設定年度出席', name + '（' + target + '）', cur ? [cur.start, cur.end, cur.total].join('／') : '', [start, end, total].join('／'));
     return {};
   });
 });
@@ -1207,7 +1246,7 @@ registerAdmin_('extraSave', 'manageCalendar', function (req, who) {
   var period = Logic.clean(req.period), cubId = Logic.clean(req.cubId), count = Number(req.count);
   if (!(count >= 0 && count <= 100 && Math.floor(count) === count)) throw new ApiError(ERR.BAD_INPUT, '額外出席次數需為 0～100 的整數。');
   return withLock_(function () {
-    if (!loadPeriods_().some(function (p) { return p.name === period; })) throw new ApiError(ERR.NOT_FOUND, '找不到這個年度。');
+    if (!loadPeriods_().some(function (p) { return p.name === period && (p.target === curSec_() || p.target === Logic.ALL); })) throw new ApiError(ERR.NOT_FOUND, '找不到這個年度。');
     findCub_(cubId);
     var cur = readRows_(SHEET.EXTRA).filter(function (r) { return Logic.clean(r[0]) === period && Logic.clean(r[1]) === cubId; });
     var before = cur.length ? String(cur[0][2]) : '0';

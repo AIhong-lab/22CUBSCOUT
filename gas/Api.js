@@ -565,6 +565,8 @@ function buildCubView_(cub, today) {
   var byItem = loadDetails_().byItem;
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date); });
   var mById = {};
+  // 出席紀錄（含進程計算）算所有集會；家長看到的集會清單只列孩子分團與全團的
+  var shown = meetings.filter(function (m) { return Logic.targetIncludes(m.target, cub.section); });
   meetings.forEach(function (m) { mById[m.meetingId] = m; });
   var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
   var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type, counts: mById[a.meetingId].counts }; });
@@ -600,11 +602,11 @@ function buildCubView_(cub, today) {
   var statusOf = {};
   att.forEach(function (a) { statusOf[a.meetingId] = a.status; });
   var since = cub.trialStart && (!cub.joinDate || cub.trialStart < cub.joinDate) ? cub.trialStart : cub.joinDate;
-  var inTeam = meetings.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
+  var inTeam = shown.filter(function (m) { return since && m.date >= since && (!cub.leftDate || m.date <= cub.leftDate) && (m.type === '一般' || (cub.joinDate && m.date >= cub.joinDate)); });
   var past = inTeam.filter(function (m) { return m.date <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   // 今天（含）以後的集會：家長可以先請假
   var upcoming = inTeam.filter(function (m) { return m.date >= today && !Logic.isPresent(statusOf[m.meetingId]); }).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 12);
-  var period = Logic.periodOf(loadPeriods_(), today);
+  var period = sectionPeriod_(cub.section, today);
   var rate = null;
   if (period) {
     var extra = loadExtra_().filter(function (x) { return x.period === period.name && x.cubId === cub.cubId; })

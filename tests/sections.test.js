@@ -151,3 +151,87 @@ test('管理員（admin）與總團在每個分團都是團長，可以切換分
   assert.equal(call(p.token, 'me').section, '童軍');
   assert.ok(call(S, 'adminList').admins.some((a) => a.accountId === id));
 });
+
+test('集會：分團集會由該分團團長設定；全團集會只有 admin、總團；全團集會各分團點自己的團員', () => {
+  const { env, call, L, O, S } = world();
+  const wolf = call(L, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-01-01' }).cubId;
+  const scout = call(S, 'cubSave', { name: '測試童軍甲', joinDate: '2025-01-01' }).cubId;
+  assert.equal(call(S, 'meetingSave', { lines: '2026-11-21 童軍團集會' }).added, 1);
+  assert.equal(call(S, 'meetingSave', { lines: '2026-11-22 團慶', target: '全團' }).code, 'FORBIDDEN', '分團團長不能設全團集會');
+  assert.equal(call(S, 'meetingSave', { lines: '2026-11-22 團集會', target: '小狼' }).code, 'FORBIDDEN', '不能設別的分團的集會');
+  assert.equal(call(O, 'meetingSave', { lines: '2026-11-22 全團團慶', target: '全團' }).added, 1);
+  const names = (tk) => call(tk, 'meetingList').meetings.map((m) => m.name + '／' + m.target);
+  assert.deepEqual(names(S), ['童軍團集會／童軍', '全團團慶／全團']);
+  assert.deepEqual(names(L), ['全團團慶／全團'], '小狼看不到童軍的集會');
+  const all = call(S, 'meetingList').meetings.find((m) => m.target === '全團');
+  assert.equal(all.canEdit, false);
+  assert.equal(call(S, 'meetingSave', { meetingId: all.meetingId, name: '改名' }).code, 'FORBIDDEN');
+  const sm = call(S, 'meetingList').meetings.find((m) => m.target === '童軍');
+  assert.equal(call(L, 'attendanceSheet', { meetingId: sm.meetingId }).code, 'NOT_FOUND');
+  // 全團集會：各分團的點名名單只有自己的團員
+  assert.deepEqual(call(S, 'attendanceSheet', { meetingId: all.meetingId }).cubs.map((c) => c.cubId), [scout]);
+  assert.deepEqual(call(L, 'attendanceSheet', { meetingId: all.meetingId }).cubs.map((c) => c.cubId), [wolf]);
+  assert.equal(call(S, 'attendanceSave', { meetingId: all.meetingId, marks: { [wolf]: '出席', [scout]: '出席' } }).changed, 1, '只寫得進自己分團的團員');
+  assert.equal(call(L, 'meetingList').meetings[0].attended, 0, '出席人數各分團分開算');
+  assert.equal(env.rows('集會行事曆').find((r) => r[2] === '童軍團集會')[9], '童軍');
+  // 公開月曆：每場集會帶對象，網頁依頁面篩選
+  assert.deepEqual(env.api({ action: 'siteInfo' }).meetings.map((m) => m.target), ['童軍', '全團']);
+});
+
+test('年度出席設定：admin、總團做全團預設，各分團團長可以設自己的', () => {
+  const { env, call, L, O, S } = world();
+  assert.equal(call(S, 'periodSave', { name: '115學年度', start: '2026-08-01', end: '2027-07-31', total: 20, target: '全團' }).code, 'FORBIDDEN');
+  assert.equal(call(O, 'periodSave', { name: '115學年度', start: '2026-08-01', end: '2027-07-31', total: 20, target: '全團' }).ok, true);
+  assert.equal(call(S, 'periodList').current, '115學年度', '沒有自己的就用全團預設');
+  assert.equal(call(S, 'periodList').periods[0].canEdit, false);
+  assert.equal(call(S, 'periodSave', { name: '115學年度', start: '2026-09-01', end: '2027-06-30', total: 12 }).ok, true);
+  const mine = call(S, 'periodList').periods.find((p) => p.target === '童軍');
+  assert.equal(mine.total, 12);
+  assert.equal(env.rows('年度出席設定').length, 2, '同名的全團預設與分團設定分開存');
+  assert.equal(call(L, 'periodList').periods.length, 1, '小狼只看到全團預設');
+  const scout = call(S, 'cubSave', { name: '測試童軍甲', joinDate: '2025-01-01' }).cubId;
+  assert.equal(call(S, 'cubAdminDetail', { cubId: scout }).attendance.rate.period, '115學年度');
+});
+
+test('公告：全團公告只有 admin、總團能發；分團公告只在該分團；公開資料帶對象', () => {
+  const { env, call, L, O, S } = world();
+  assert.equal(call(S, 'noticeSave', { title: '童軍公告', content: '內容' }).ok, true);
+  assert.equal(call(S, 'noticeSave', { title: '全團公告', content: '內容', target: '全團' }).code, 'FORBIDDEN');
+  assert.equal(call(O, 'noticeSave', { title: '全團公告', content: '內容', target: '全團' }).ok, true);
+  assert.deepEqual(call(L, 'noticeList').notices.map((n) => n.title), ['全團公告']);
+  assert.deepEqual(call(S, 'noticeList').notices.map((n) => [n.title, n.canEdit]).sort(), [['全團公告', false], ['童軍公告', true]]);
+  const g = call(S, 'noticeList').notices.find((n) => n.title === '全團公告');
+  assert.equal(call(S, 'noticeSave', { id: g.id, title: '改', content: '' }).code, 'FORBIDDEN');
+  assert.deepEqual(env.api({ action: 'notices' }).notices.map((n) => [n.title, n.target]).sort(), [['全團公告', '全團'], ['童軍公告', '童軍']]);
+  // 舊公告（分團欄空白）＝小狼
+  const sh = env.sheet('公告');
+  sh.getRange(sh.getLastRow() + 1, 1, 1, 8).setValues([['N900', '舊公告', '', '否', '', 'x', new Date(), '顯示']]);
+  assert.ok(call(L, 'noticeList').notices.some((n) => n.title === '舊公告' && n.target === '小狼'));
+});
+
+test('活動：可以複選分團；全團活動只有 admin、總團；只有對象分團的家長能報名', () => {
+  const { env, call, L, O, S } = world(); // 模擬時間 2026-11-14 10:00
+  const base = { title: '聯合露營', desc: '', date: '2026-12-12', endDate: '2026-12-13', regStart: '2026-11-10T08:00', regEnd: '2026-11-30T23:59', fee: 100, questions: [] };
+  assert.equal(call(S, 'eventSave', { ...base, targets: ['全團'] }).code, 'FORBIDDEN');
+  assert.match(call(S, 'eventSave', { ...base, targets: ['小狼'] }).message, /要包含你自己的分團/);
+  const ev = call(S, 'eventSave', { ...base, targets: ['童軍', '行義'] });
+  assert.equal(ev.ok, true);
+  assert.equal(env.rows('活動').find((r) => r[0] === ev.id)[14], '童軍、行義');
+  assert.equal(call(L, 'eventAdminList').events.length, 0, '小狼看不到');
+  assert.equal(call(L, 'eventRegs', { eventId: ev.id }).code, 'NOT_FOUND');
+  const g = call(O, 'eventSave', { ...base, title: '全團園遊會', targets: ['全團'] });
+  assert.deepEqual(call(L, 'eventAdminList').events.map((e) => [e.title, e.canEdit]), [['全團園遊會', false]]);
+  assert.equal(call(L, 'eventSave', { ...base, id: g.id, title: '改' }).code, 'FORBIDDEN');
+  // 家長：小狼的孩子只看到全團活動；童軍的孩子看得到聯合露營並可報名
+  const wolf = call(L, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-01-01' });
+  const scout = call(S, 'cubSave', { name: '測試童軍甲', joinDate: '2025-01-01' });
+  const reg = (code, child, u) => env.api({ action: 'register', code, childName: child, username: u, password: 'parentpass1', nickname: '家長', consentVersion: v(env) }).token;
+  const PW = reg(wolf.code, '測試小狼甲', 'pwolf01'), PS = reg(scout.code, '測試童軍甲', 'pscout01');
+  assert.deepEqual(call(PW, 'eventList').events.map((e) => e.title), ['聯合露營', '全團園遊會'].filter((t) => t === '全團園遊會'));
+  assert.deepEqual(call(PS, 'eventList').events.map((e) => e.title).sort(), ['全團園遊會', '聯合露營'].sort());
+  const one = (name) => ({ eventId: ev.id, people: [{ name, identity: '童軍', answers: {} }] });
+  assert.match(call(PW, 'eventRegister', one('測試小狼甲')).message, /只開放給童軍、行義/);
+  assert.equal(call(PS, 'eventRegister', one('測試童軍甲')).ok, true);
+  assert.equal(call(S, 'eventRegs', { eventId: ev.id }).regs.length, 1);
+  assert.deepEqual(env.api({ action: 'siteInfo' }).events.map((e) => e.targets.join('、')).sort(), ['全團', '童軍、行義'].sort());
+});

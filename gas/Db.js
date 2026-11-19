@@ -282,7 +282,7 @@ function loadAwards_() {
 
 function loadMeetings_() {
   return readRows_(SHEET.MEETINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', counts: Logic.clean(r[8]) !== '否', _row: r._row };
+    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', counts: Logic.clean(r[8]) !== '否', target: Logic.targetOf(r[9]), _row: r._row };
   });
 }
 
@@ -294,8 +294,18 @@ function loadAttendance_() {
 
 function loadPeriods_() {
   return readRows_(SHEET.PERIODS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { name: Logic.clean(r[0]), start: dateStr_(r[1]), end: dateStr_(r[2]), total: Number(r[3]) || 0 };
+    return { name: Logic.clean(r[0]), start: dateStr_(r[1]), end: dateStr_(r[2]), total: Number(r[3]) || 0, note: Logic.clean(r[4]), target: Logic.targetOf(r[5]), _row: r._row };
   });
+}
+
+/**
+ * 某分團某天適用的年度出席設定（附錄第 73 點，團長 2026-11-19 決定）：
+ * 先找該分團自己的；沒有就用管理員或總團做的「全團」預設。
+ */
+function sectionPeriod_(section, date) {
+  var all = loadPeriods_(), sec = Logic.sectionOf(section);
+  return Logic.periodOf(all.filter(function (p) { return p.target === sec; }), date) ||
+    Logic.periodOf(all.filter(function (p) { return p.target === Logic.ALL; }), date);
 }
 
 function loadExtra_() {

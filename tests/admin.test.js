@@ -912,7 +912,7 @@ test('公告欄：團長與服務員可發、不用登入就看得到、置頂�
   assert.equal(pub.ok, true);
   assert.deepEqual(pub.notices.map((x) => x.title), ['重要：場地更改', '一般公告', '12/6 團集會通知']);
   assert.deepEqual(pub.notices[2].meeting, { date: '2026-12-06', name: '團集會' });
-  assert.deepEqual(Object.keys(pub.notices[0]).sort(), ['content', 'date', 'id', 'meeting', 'pinned', 'title']);
+  assert.deepEqual(Object.keys(pub.notices[0]).sort(), ['content', 'date', 'id', 'meeting', 'pinned', 'target', 'title']);
   assert.ok(!/U[A-Z2-9]{8}/.test(JSON.stringify(pub)), '公開資料不含帳號ID');
   call(L, 'noticeSave', { id: n2.id, title: '一般公告', content: '內容', visible: false });
   assert.equal(env.api({ action: 'notices' }).notices.length, 2);
@@ -1033,7 +1033,7 @@ test('網站內容（附錄第 49 點）：公開的活動時間與了解幼童�
   const d1 = pub();
   assert.deepEqual(d1.meetings.filter((m) => m.date > '2099').map((m) => [m.date, m.name]), [['2099-03-07', '三月團集會'], ['2099-03-21', '露營']]);
   assert.ok(!d1.meetings.some((m) => m.date === '2020-01-05'), '本月以前的不列');
-  assert.deepEqual(Object.keys(d1.meetings[0]).sort(), ['date', 'name', 'note', 'type'], '只回白名單欄位，不含集會ID 與建立人');
+  assert.deepEqual(Object.keys(d1.meetings[0]).sort(), ['date', 'name', 'note', 'target', 'type'], '只回白名單欄位，不含集會ID 與建立人');
   assert.ok(!d1.meetings.some((m) => m.date === '2099-04-04'), '停用的不列');
   // 權限與檢查
   assert.equal(call(A, 'siteContentSave', { about: 'x' }).code, 'FORBIDDEN');
@@ -1066,7 +1066,7 @@ test('活動報名與繳費紀錄（附錄第 50 點）：團長設定、登入�
   assert.ok(id);
   // 公開資料：有起訖時間與費用，沒有題目和報名名單
   const pub = env.api({ action: 'siteInfo' }).events;
-  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'title']);
+  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'targets', 'title']);
   assert.equal(pub[0].state, '報名中');
   // 報名要登入
   assert.equal(env.api({ action: 'eventList' }).ok, false);

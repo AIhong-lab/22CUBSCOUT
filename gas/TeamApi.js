@@ -123,14 +123,14 @@ function loadNotices_() {
   return readRows_(SHEET.NOTICES).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
       id: Logic.clean(r[0]), title: Logic.clean(r[1]), content: String(r[2] === undefined || r[2] === null ? '' : r[2]), pinned: Logic.clean(r[3]) === '是',
-      meetingId: Logic.clean(r[4]), poster: Logic.clean(r[5]), at: ms_(r[6]), visible: Logic.clean(r[7]) !== '下架', _row: r._row, _raw: r
+      meetingId: Logic.clean(r[4]), poster: Logic.clean(r[5]), at: ms_(r[6]), visible: Logic.clean(r[7]) !== '下架', target: Logic.targetOf(r[8]), _row: r._row, _raw: r
     };
   });
 }
 
 function noticeView_(n, meetings, names) {
   var m = n.meetingId ? meetings[n.meetingId] : null;
-  var o = { id: n.id, title: n.title, content: n.content, pinned: n.pinned, date: n.at ? Utilities.formatDate(new Date(n.at), TZ, 'yyyy-MM-dd') : '', meeting: m ? { date: m.date, name: m.name } : null };
+  var o = { id: n.id, title: n.title, content: n.content, pinned: n.pinned, target: n.target, date: n.at ? Utilities.formatDate(new Date(n.at), TZ, 'yyyy-MM-dd') : '', meeting: m ? { date: m.date, name: m.name } : null };
   if (names) { o.visible = n.visible; o.poster = names[n.poster] || ''; o.meetingId = n.meetingId; }
   return o;
 }
@@ -141,21 +141,32 @@ function noticeMeetings_() {
   return map;
 }
 
-/** 公開：顯示中的公告，置頂在前、新的在前，最多 30 則。只回標題、內容、日期與連結的集會 */
+/**
+ * 公開：顯示中的公告，置頂在前、新的在前。只回標題、內容、日期、對象（全團或分團）與連結的集會。
+ * 公開首頁只顯示全團公告，分團頁加上該分團的公告（由網頁依 target 篩選，附錄第 73 點⑭）；每個對象最多 30 則。
+ */
 function apiNotices_() { return cachedPublic_('PUB_NOTICES', buildNotices_); }
 function buildNotices_() {
   var meetings = noticeMeetings_();
+  var per = {};
   var list = loadNotices_().filter(function (n) { return n.visible; })
-    .sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.at - a.at; }).slice(0, 30);
+    .sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.at - a.at; })
+    .filter(function (n) { per[n.target] = (per[n.target] || 0) + 1; return per[n.target] <= 30; });
   return { notices: list.map(function (n) { return noticeView_(n, meetings, null); }) };
 }
 PUBLIC_ACTIONS.notices = apiNotices_;
 
-registerAdmin_('noticeList', 'postNotice', function () {
+/** 公告對象（附錄第 73 點⑭）：全團公告只有管理員或總團能發、能改；分團公告由該分團團長、服務員 */
+function canEditNotice_(who, n) { return n.target === Logic.ALL ? canManageAll_(who) : n.target === curSec_(); }
+
+registerAdmin_('noticeList', 'postNotice', function (req, who) {
   var meetings = noticeMeetings_(), names = adminNames_(), today = today_();
   return {
-    notices: loadNotices_().sort(function (a, b) { return b.at - a.at; }).map(function (n) { return noticeView_(n, meetings, names); }),
-    meetings: Object.keys(meetings).map(function (k) { return meetings[k]; }).filter(function (m) { return m.date >= today; })
+    section: curSec_(), canManageAll: canManageAll_(who),
+    notices: loadNotices_().filter(function (n) { return Logic.targetIncludes(n.target, curSec_()); }).sort(function (a, b) { return b.at - a.at; }).map(function (n) {
+      var o = noticeView_(n, meetings, names); o.canEdit = canEditNotice_(who, n); return o;
+    }),
+    meetings: Object.keys(meetings).map(function (k) { return meetings[k]; }).filter(function (m) { return m.date >= today && Logic.targetIncludes(m.target, curSec_()); })
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 30).map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name }; })
   };
 });
@@ -166,20 +177,25 @@ registerAdmin_('noticeSave', 'postNotice', function (req, who) {
   if (content.length > 2000) throw new ApiError(ERR.BAD_INPUT, '公告內容最多 2000 字。');
   var meetingId = Logic.clean(req.meetingId);
   return withLock_(function () {
-    if (meetingId && !noticeMeetings_()[meetingId]) throw new ApiError(ERR.BAD_INPUT, '找不到連結的集會，請重新選擇。');
+    var linked = meetingId ? noticeMeetings_()[meetingId] : null;
+    if (meetingId && (!linked || !Logic.targetIncludes(linked.target, curSec_()))) throw new ApiError(ERR.BAD_INPUT, '找不到連結的集會，請重新選擇。');
+    var target = req.target === undefined ? null : Logic.clean(req.target) === Logic.ALL ? Logic.ALL : curSec_();
+    if (target === Logic.ALL && !canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '全團公告由管理員或總團發布。');
     var list = loadNotices_();
     if (req.id) {
-      var n = list.filter(function (x) { return x.id === Logic.clean(req.id); })[0];
+      var n = list.filter(function (x) { return x.id === Logic.clean(req.id) && Logic.targetIncludes(x.target, curSec_()); })[0];
       if (!n) throw new ApiError(ERR.NOT_FOUND, '找不到這則公告。');
+      if (!canEditNotice_(who, n)) throw new ApiError(ERR.FORBIDDEN, '全團公告由管理員或總團修改。');
       var v = HEADERS[SHEET.NOTICES].map(function (h, j) { return n._raw[j] === undefined ? '' : n._raw[j]; });
       v[1] = title; v[2] = content; v[3] = req.pinned ? '是' : '否'; v[4] = meetingId;
+      if (target) v[8] = target;
       if (req.visible !== undefined) v[7] = req.visible ? '顯示' : '下架';
       updateRows_(SHEET.NOTICES, [{ row: n._row, values: v }]);
       logOp_(who.account.accountId, '修改公告', n.id, n.title, title + (v[7] === '下架' ? '（下架）' : ''));
       return { id: n.id };
     }
     var id = newId_('N', list.map(function (x) { return x.id; }));
-    appendRows_(SHEET.NOTICES, [[id, title, content, req.pinned ? '是' : '否', meetingId, who.account.accountId, new Date(), '顯示']]);
+    appendRows_(SHEET.NOTICES, [[id, title, content, req.pinned ? '是' : '否', meetingId, who.account.accountId, new Date(), '顯示', target || curSec_()]]);
     logOp_(who.account.accountId, '發布公告', id, '', title);
     return { id: id };
   });
@@ -242,6 +258,7 @@ function apiParentLeave_(req, who) {
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
     var cubSec = (loadCubs_().filter(function (c) { return c.cubId === cubId; })[0] || {}).section;
+    if (!Logic.targetIncludes(m.target, cubSec)) throw new ApiError(ERR.BAD_INPUT, '這場集會不需要請假。');
     if (!cubsOnDate_(m.date, m.type, cubSec).some(function (c) { return c.cubId === cubId; })) throw new ApiError(ERR.BAD_INPUT, '這場集會不需要請假。');
     var cur = loadAttendance_().filter(function (a) { return a.meetingId === m.meetingId && a.cubId === cubId; })[0];
     if (cur && Logic.isPresent(cur.status)) throw new ApiError(ERR.BAD_INPUT, '這場集會已經點名為' + cur.status + '，要修改請聯絡團長或服務員。');
@@ -288,7 +305,7 @@ function buildSiteInfo_() {
   var v = siteValues_();
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
-    .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note }; });
+    .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note, target: m.target }; });
   return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_() };
 }
 PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
