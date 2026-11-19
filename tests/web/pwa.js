@@ -45,12 +45,12 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.json': 'application/manif
   await context.route('https://script.google.com/**', (r) => { posts++; r.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, notices: [], images: {}, meetings: [], events: [], units: [], items: [] }) }); });
 
   await page.goto(url);
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
   assert.equal(await page.evaluate(() => document.querySelector('link[rel=manifest]').href.endsWith('/web/manifest.json')), true);
   // Service Worker 安裝完成並接管頁面
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
   assert.equal(await page.evaluate(() => !!navigator.serviceWorker.controller), true, 'Service Worker 已接管');
   const cached = await page.evaluate(async () => { const out = []; for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) out.push(r.url); return out; });
   assert.ok(cached.some((u) => u.endsWith('/web/')), '網頁有存在手機裡');
@@ -59,7 +59,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.json': 'application/manif
   // 沒網路：網頁仍打得開（資料會顯示連線失敗，不會是瀏覽器的離線錯誤頁）
   await context.setOffline(true);
   await page.reload();
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
   await context.setOffline(false);
 
   assert.deepEqual(errors, [], '沒有錯誤或內容安全政策阻擋');

@@ -90,8 +90,9 @@ function seed(env) {
 
   // ═════ 公開首頁與兩個查詢頁（不用登入） ═════
   await page.goto(PAGE);
-  await page.getByText('什麼是「進程」？').waitFor();
-  assert.equal(new URL(page.url()).hash, '#home', '沒登入時打開網站是首頁');
+  await page.locator('#secCards').waitFor();
+  assert.equal(new URL(page.url()).hash, '#home', '沒登入時打開網站是首頁（團部入口）');
+  assert.equal(await page.locator('#secCards [data-sec]').count(), 5, '五個分團卡片');
   await page.locator('#noticeCard').waitFor();
   assert.match(await page.locator('#noticeCard').innerText(), /公佈欄[\s\S]*目前沒有公告/, '沒有公告時公佈欄也要看得到');
   assert.equal(await page.locator('nav.tabs button').first().getAttribute('data-v'), 'home', '導覽列第一個是首頁');
@@ -105,19 +106,31 @@ function seed(env) {
   // 按標題「22團幼童軍」回首頁
   await tab('badges'); await page.locator('.badge').first().waitFor();
   await page.click('#title');
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
   assert.equal(new URL(page.url()).hash, '#home', '按標題回首頁');
   // 手機：分頁固定在螢幕下方（SPEC 附錄第 44 點），不會跟著內容捲走
   const vh = page.viewportSize().height;
   const nbb = await page.locator('nav.tabs').boundingBox();
   assert.ok(nbb.y > vh - 110 && nbb.y + nbb.height <= vh + 1, '手機分頁在螢幕下方：' + JSON.stringify(nbb));
   await tab('home');
+  await page.locator('#secCards').waitFor();
+  await shot('00-home'); await noHScroll('公開首頁');
+  // 分團頁（附錄第 73 點③）：小狼頁有進程與技能章介紹
+  await page.locator('#secCards [data-sec=小狼]').click();
   await page.getByText('什麼是「進程」？').waitFor();
   const hp = await text();
   assert.match(hp, /什麼是「技能章」？[\s\S]*3 類 26 個/);
   assert.match(hp, /家長、團長、服務員都從這裡登入[\s\S]*直接進入管理員後台/);
-  assert.equal(new URL(page.url()).hash, '#home');
-  await shot('00-home'); await noHScroll('公開首頁');
+  assert.equal(new URL(page.url()).hash, '#cub');
+  await shot('00c-cub'); await noHScroll('小狼頁');
+  // 還沒有進程的分團：網址 #scout/progress 顯示準備中
+  await page.goto('about:blank'); await page.goto(PAGE + '#scout/progress');
+  await page.getByText('童軍的進程查詢準備中').waitFor();
+  await page.locator('#secTabs [data-ps=小狼]').click();
+  await page.locator('.stage').first().waitFor();
+  assert.equal(new URL(page.url()).hash, '#progress');
+  await page.goto('about:blank'); await page.goto(PAGE + '#home');
+  await page.locator('#secCards').waitFor();
   // 公佈欄是導覽列上的一個分頁（附錄第 55 點）
   await tab('notices');
   await page.locator('#noticeCard, #infoBack').first().waitFor();
@@ -127,7 +140,7 @@ function seed(env) {
   assert.ok(lastPub.x + lastPub.width <= 391, '五個分頁在手機上放得下：' + JSON.stringify(lastPub));
   await shot('00n-notices-tab');
   await tab('home');
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
 
   await tab('progress');
   await page.locator('.stage').first().waitFor();
@@ -408,7 +421,7 @@ function seed(env) {
 
   // 小狼：新增
   await tab('cubs');
-  await page.getByText('＋ 新增小狼').click();
+  await page.getByText('＋ 新增團員').click();
   await page.fill('input[name=name]', '測試小狼丙'); await page.selectOption('select[name=squad]', '二小隊'); await page.fill('input[name=joinDate]', '2026-09-01');
   await page.click('form#f button[type=submit]');
   await page.locator('.codebox').waitFor();
@@ -430,14 +443,14 @@ function seed(env) {
   await tab('sign');
   // 三步驟：① 小隊 → ② 項目 → ③ 小狼與日期
   await page.locator('#squads .chip[data-s=二小隊]').click();
-  assert.match(await page.locator('#sqInfo').innerText(), /共 2 位小狼/);
+  assert.match(await page.locator('#sqInfo').innerText(), /共 2 位團員/);
   await page.locator('#next').click();
   await page.locator('#next').click();
   assert.match(dialogs[dialogs.length - 1], /請至少選一個項目/, '沒選項目不能往下');
   await page.selectOption('#flt', '進程|羚羊');
   await page.locator('#items input').nth(0).check();
   await page.locator('#items input').nth(1).check();
-  assert.match(await page.locator('#sum').innerText(), /2 個項目 × 2 位小狼：將新增 4 筆/);
+  assert.match(await page.locator('#sum').innerText(), /2 個項目 × 2 位團員：將新增 4 筆/);
   assert.match(await page.locator('#items').innerText(), /已完成 0／2 位/, '每個項目顯示已完成幾位');
   await shot('13-sign'); await noHScroll('簽核第 2 步');
   await page.locator('#next').click();
@@ -457,7 +470,7 @@ function seed(env) {
   await page.getByText('前往頒章').click();
   await page.fill('input[name=occasion]', '11 月團集會');
   await page.click('form#f button[type=submit]');
-  await page.getByText('目前沒有待頒章的小狼', { exact: false }).waitFor();
+  await page.getByText('目前沒有待頒章的團員', { exact: false }).waitFor();
   assert.ok(env.rows('頒章紀錄').some((r) => r[1] === '環保' && r[3] === '11 月團集會'));
 
   // 進程總覽
@@ -488,7 +501,7 @@ function seed(env) {
   assert.match(await page.locator('#esum').innerText(), /已修改 1 位/);
   await shot('60-roster-edit'); await noHScroll('名單直接編輯');
   await page.locator('#esave').click();
-  await page.getByText('已儲存 1 位小狼').waitFor();
+  await page.getByText('已儲存 1 位團員').waitFor();
   assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試小狼乙')[2], '一小隊');
   await page.locator('#editMode').click();
   await page.locator('#list .list-row').first().waitFor();
@@ -554,7 +567,7 @@ function seed(env) {
 
   // ═════ LINE 通知的「前往頒章」連結：登入中直接到頒章表單 ═════
   await page.goto('about:blank'); await page.goto(PAGE + '#award=' + encodeURIComponent('C1,狼'));
-  await page.getByText('同一場儀式可勾選多位小狼').waitFor();
+  await page.getByText('同一場儀式可勾選多位團員').waitFor();
   assert.equal(new URL(page.url()).hash, '', '用過就清掉');
   await page.locator('[data-back]').click();
   await page.locator('#adminQuick').waitFor();
@@ -822,8 +835,8 @@ function seed(env) {
 
   // LINE 圖文選單連到的三個公開頁面與首頁月曆（附錄第 49 點）
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
-  await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#calCard .cal-grid').waitFor();
-  assert.match(await page.locator('#calCard').innerText(), /團集會行事曆[\s\S]*年 \d+ 月/);
+  await page.goto('about:blank'); await page.goto(PAGE + '#cub'); await page.locator('#calCard .cal-grid').waitFor(); // 小狼的集會在小狼頁（首頁只有全團）
+  assert.match(await page.locator('#calCard').innerText(), /幼童軍行事曆[\s\S]*年 \d+ 月/);
   assert.ok(await page.locator('#calCard .d.today').count() === 1, '月曆標出今天');
   for (let i = 0; i < 3 && !(await page.locator('#calCard').innerText()).includes('12/6 團集會'); i++) await page.locator('#calCard [data-cal]').last().click();
   assert.match(await page.locator('#calCard').innerText(), /12\/6（日）[\s\S]*12\/6 團集會/, '月曆下方列出當月集會');
@@ -849,11 +862,13 @@ function seed(env) {
   await page.goto('about:blank'); await page.goto(PAGE + '#notices'); await page.locator('#noticeCard').waitFor();
   assert.match(await page.locator('#noticeCard').innerText(), /12 月團集會通知/);
   await page.locator('#infoBack').click();
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
 
-  // 沒登入的首頁也看得到公告
+  // 沒登入也看得到公告：小狼的公告在小狼頁，首頁（團部入口）只放全團公告
   await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
   await page.goto('about:blank'); await page.goto(PAGE); await page.locator('#noticeCard').waitFor();
+  assert.doesNotMatch(await page.locator('#noticeCard').innerText(), /12 月團集會通知/, '首頁不放分團公告');
+  await page.goto('about:blank'); await page.goto(PAGE + '#cub'); await page.locator('#noticeCard').waitFor();
   assert.match(await page.locator('#noticeCard').innerText(), /12 月團集會通知/);
   await shot('46-public-notice'); await noHScroll('公開首頁公告');
 

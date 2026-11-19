@@ -42,7 +42,7 @@ const PAGE = 'https://pages.test/web/';
     await page.locator('#calCard').waitFor();
     await page.locator('#noticeCard').waitFor();
     slow = true;
-    for (const [sel, text] of [['nav.tabs button[data-v=notices]', '目前沒有公告'], ['#infoBack', null], ['#homeLinks [data-info=calendar]', '團集會行事曆'], ['#infoBack', null], ['#homeLinks [data-info=about]', '了解幼童軍']]) {
+    for (const [sel, text] of [['nav.tabs button[data-v=notices]', '目前沒有公告'], ['#infoBack', null], ['#homeLinks [data-info=calendar]', '行事曆'], ['#infoBack', null], ['#homeLinks [data-info=about]', '認識 22 團']]) {
       await page.locator(sel).click();
       if (!text) { await page.locator('#homeLinks').waitFor(); continue; }
       await page.getByText(text).first().waitFor({ timeout: 1000 }); // 不用等 4 秒的後端
