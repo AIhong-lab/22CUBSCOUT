@@ -741,3 +741,16 @@ test('多分團：團長可以兼任（同一人在多個分團當團長或服�
   assert.deepEqual(L.effectiveAdmins(rows, '童軍').map((a) => a.accountId + a.role), ['B團長']);
   assert.ok(L.effectiveAdmins(rows, '小狼').some((a) => a.accountId === 'B' && a.role === '團長'));
 });
+
+test('多分團：總團可以兼任分團團長（例如總團兼童軍團長、小狼副團長）', () => {
+  const rows = [{ accountId: 'O', role: '團長', section: '小狼' }, { accountId: 'B', role: '總團', section: '' }];
+  const owner = { accountId: 'O', isOwner: true };
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'add', targetId: 'B', section: '童軍', role: '團長', title: '團長' }, 'O').ok, true);
+  rows.push({ accountId: 'B', role: '團長', section: '童軍', title: '團長' });
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'add', targetId: 'B', section: '小狼', role: '團長', title: '副團長' }, 'O').ok, true);
+  // 只移除總團，童軍團長身分照樣保留
+  const v = L.validateStaffChange(rows, owner, { type: 'remove', targetId: 'B', key: '總團' }, 'O');
+  assert.equal(v.ok, true);
+  assert.equal(v.row.role, '總團');
+  assert.deepEqual(L.effectiveAdmins(rows.filter((r) => r !== v.row), '童軍').map((a) => a.accountId + a.role), ['B團長']);
+});
