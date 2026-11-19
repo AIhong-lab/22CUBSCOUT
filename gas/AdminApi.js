@@ -728,7 +728,8 @@ registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
     if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error);
     purgeSessions_(acc.accountId);
     deleteRows_(SHEET.BINDINGS, loadBindings_().filter(function (b) { return b.accountId === acc.accountId; }).map(function (b) { return b._row; }));
-    deleteRows_(SHEET.ADMINS, admins.filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
+    // 所有分團的身分一起刪（loadAdmins_ 只有小狼的那一列）
+    deleteRows_(SHEET.ADMINS, loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
     deleteRegsOfAccount_(acc.accountId);
     deleteRows_(SHEET.REQUESTS, loadRequests_().filter(function (r) { return r.accountId === acc.accountId; }).map(function (r) { return r._row; }));
     deleteRows_(SHEET.ACCOUNTS, [acc._row]);

@@ -198,6 +198,11 @@ test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他�
   assert.equal(call(O, 'staffSave', { type: 'update', accountId: helperId, key: '童軍', section: '童軍', role: '服務員', title: '服務員' }).ok, true);
   assert.equal(call(C, 'staffSave', { type: 'remove', accountId: helperId, key: '童軍' }).ok, true);
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '移除分團身分'));
+  // 刪除帳號時，所有分團身分一起刪除（不能只刪小狼那一列）
+  const scoutId = call(O, 'staffList').staff.find((x) => x.name === '王童軍').accountId;
+  assert.equal(call(O, 'staffSave', { type: 'add', accountId: scoutId, section: '行義', role: '服務員' }).ok, true);
+  assert.equal(call(L, 'accountDelete', { accountId: scoutId, confirmUsername: 'scout01' }).ok, true);
+  assert.equal(env.rows('管理員').filter((r) => r[0] === scoutId).length, 0, '其他分團的身分也要刪掉');
   // 之前留下的舊邀請碼（沒有分團欄）視為小狼，可以作廢
   const sh = env.sheet('管理員邀請');
   sh.getRange(sh.getLastRow() + 1, 1, 1, 9).setValues([['OLDCODE2', '服務員', '', 'x', new Date(), new Date(Date.now() + 86400000), '未使用', '', '']]);
