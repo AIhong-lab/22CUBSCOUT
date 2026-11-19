@@ -221,9 +221,10 @@ function bindCub_(accountId, cub, consentVersion) {
 /** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
 function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
-  var admins = loadAdmins_();
-  if (!admins.some(function (a) { return a.accountId === accountId; })) {
-    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '']]);
+  // 邀請碼已指定分團、身分、職稱（SPEC 附錄第 68 點）；同一人在同一分團已有身分就不重複加
+  var key = function (r) { return r.role === Logic.CENTRAL ? Logic.CENTRAL : Logic.sectionOf(r.section); };
+  if (!loadAdminRows_().some(function (a) { return a.accountId === accountId && key(a) === key(invite); })) {
+    appendRows_(SHEET.ADMINS, [[accountId, invite.name || Logic.clean(nickname).slice(0, 30) || invite.role, invite.role, now, invite.createdBy || '邀請碼', '', '', invite.section, invite.title]]);
   }
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
@@ -498,6 +499,10 @@ function apiMe_(req, who) {
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId) : [],
+    // 各分團身分（SPEC 附錄第 68 點）：staff 給「分團功能準備中」畫面；canManageStaff 決定後台是否顯示「分團身分」頁
+    staff: who.staff || [],
+    isCentral: !!who.isCentral,
+    canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
     requests: (function () {

@@ -128,8 +128,11 @@ function requireAccount_(token) {
   if (!ses || !Logic.isSessionValid({ expiresAt: ms_(ses[3]) }, Date.now())) throw fail;
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
-  var admin = loadAdmins_().filter(function (a) { return a.accountId === acc.accountId; })[0] || null;
-  return { account: acc, admin: admin, sessionHash: h };
+  var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
+  var admin = Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION)[0] || null;
+  // staff：這個人在各分團的身分（含小狼以外，給「分團功能準備中」畫面與分團身分設定用）
+  var staff = rows.map(function (a) { return { section: a.section, role: a.role, title: a.title }; });
+  return { account: acc, admin: admin, staff: staff, isCentral: rows.some(function (a) { return a.role === Logic.CENTRAL; }), sessionHash: h };
 }
 
 function setPassword_(acc, password) {

@@ -571,12 +571,12 @@ function guardOwner_(targetId, who, admins) {
 registerAdmin_('adminList', 'manageAdmins', function () {
   var acc = accountsById_(), owner = ownerId_();
   var names = adminNames_();
-  var rows = readRows_(SHEET.ADMINS).filter(function (r) { return Logic.clean(r[0]); });
+  // 只列在小狼有權限的人（總團也列，標記 central）；其他分團的身分在「分團身分」頁（SPEC 附錄第 68 點）
   return {
     ownerExists: !!owner,
-    admins: rows.map(function (r) {
-      var id = Logic.clean(r[0]);
-      return { owner: !!owner && id === owner, accountId: id, name: Logic.clean(r[1]), role: Logic.clean(r[2]), username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!Logic.clean(r[5]) };
+    admins: loadAdmins_().map(function (a) {
+      var r = a._raw, id = a.accountId;
+      return { owner: !!owner && id === owner, accountId: id, name: a.name, role: a.role, central: a.scope === Logic.CENTRAL, title: a.title, username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!a.lineUserId };
     })
   };
 });

@@ -703,3 +703,31 @@ test('進程細項：種子轉列、依項目與分組合併、通過標準取�
   });
   assert.deepEqual(r.errors.map((e) => e.row), [7, 8, 9]);
 });
+
+test('多分團：有效管理員（總團視為團長、其他分團不算小狼、同一人取較高權限）', () => {
+  const rows = [
+    { accountId: 'U1', role: '團長', section: '' },
+    { accountId: 'U2', role: '服務員', section: '童軍' },
+    { accountId: 'U3', role: '總團', section: '' },
+    { accountId: 'U4', role: '服務員', section: '小狼' },
+    { accountId: 'U4', role: '團長', section: '小狼' }
+  ];
+  const cub = L.effectiveAdmins(rows, '小狼');
+  assert.deepEqual(cub.map((a) => a.accountId + a.role), ['U1團長', 'U3團長', 'U4團長']);
+  assert.equal(cub.find((a) => a.accountId === 'U3').scope, '總團');
+  assert.deepEqual(L.effectiveAdmins(rows, '童軍').map((a) => a.accountId), ['U2', 'U3']);
+  assert.equal(L.sectionOf(''), '小狼');
+});
+
+test('多分團：分團身分異動規則', () => {
+  const rows = [{ accountId: 'O', role: '團長', section: '' }, { accountId: 'C', role: '總團', section: '' }, { accountId: 'X', role: '服務員', section: '童軍' }];
+  const owner = { accountId: 'O', isOwner: true }, central = { accountId: 'C', isCentral: true };
+  assert.equal(L.validateStaffChange(rows, { accountId: 'X' }, { type: 'add', targetId: 'X', section: '行義', role: '服務員' }, 'O').ok, false, '一般人不能設定');
+  assert.equal(L.validateStaffChange(rows, central, { type: 'add', targetId: 'X', section: '行義', role: '服務員' }, 'O').ok, true);
+  assert.equal(L.validateStaffChange(rows, central, { type: 'add', targetId: 'X', section: '行義', role: '團長' }, 'O').ok, false, '團長要 admin');
+  assert.equal(L.validateStaffChange(rows, central, { type: 'remove', targetId: 'O', key: '小狼' }, 'O').ok, false, 'admin 不能被改');
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'add', targetId: 'X', section: '海軍', role: '服務員' }, 'O').ok, false, '分團不在清單');
+  assert.equal(L.validateStaffChange(rows, owner, { type: 'remove', targetId: 'C', key: '總團' }, 'O').ok, true);
+  const lone = [{ accountId: 'O', role: '團長', section: '小狼' }];
+  assert.equal(L.validateStaffChange(lone, owner, { type: 'update', targetId: 'O', key: '小狼', section: '童軍', role: '團長' }, '').ok, false, '小狼至少一位團長');
+});

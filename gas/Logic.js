@@ -44,6 +44,76 @@ var Logic = (function () {
 
   var ROLE = { LEADER: '團長', ASSISTANT: '服務員' };
 
+  // ───────────── 多分團（SPEC 附錄第 68 點） ─────────────
+  /** 分團清單；試算表「分團」欄空白一律視為小狼 */
+  var SECTIONS = ['稚齡', '小狼', '童軍', '行義', '羅浮'];
+  var DEFAULT_SECTION = '小狼';
+  /** 總團：全部分團都有團長權限（管理員＝admin 帳號，另由 ownerId 判斷） */
+  var CENTRAL = '總團';
+  var STAFF_ROLES = [CENTRAL, ROLE.LEADER, ROLE.ASSISTANT];
+  /** 綁定紀錄「關係」：空白視為家長 */
+  var RELATION = { PARENT: '家長', SELF: '本人' };
+
+  function sectionOf(v) {
+    var x = clean(v);
+    return x || DEFAULT_SECTION;
+  }
+
+  /**
+   * 從「管理員」分頁全部列（一人可有多列），算出在某分團有效的管理員，每個帳號一筆。
+   * 總團在每個分團都視為團長（scope 標記為總團）；同一人有多列時取權限較高者。
+   * rows: [{accountId, role, section, ...}]
+   */
+  function effectiveAdmins(rows, section) {
+    var target = sectionOf(section), byId = {}, order = [];
+    (rows || []).forEach(function (r) {
+      var e = null;
+      if (r.role === CENTRAL) e = Object.assign({}, r, { role: ROLE.LEADER, scope: CENTRAL });
+      else if ((r.role === ROLE.LEADER || r.role === ROLE.ASSISTANT) && sectionOf(r.section) === target) e = Object.assign({}, r, { scope: target });
+      if (!e) return;
+      var cur = byId[r.accountId];
+      if (!cur) { byId[r.accountId] = e; order.push(r.accountId); return; }
+      if (cur.role !== ROLE.LEADER && e.role === ROLE.LEADER) byId[r.accountId] = e;
+    });
+    return order.map(function (id) { return byId[id]; });
+  }
+
+  /**
+   * 分團身分異動（由管理員或總團在後台設定，SPEC 附錄第 68 點）。
+   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：admin 帳號ID（沒有則空）
+   * change {type: 'add'|'update'|'remove', targetId, section, role, title}
+   */
+  function validateStaffChange(rows, actor, change, ownerId) {
+    rows = rows || []; actor = actor || {}; change = change || {};
+    if (!actor.isOwner && !actor.isCentral) return { ok: false, error: '只有管理員或總團可以設定分團身分' };
+    var role = clean(change.role);
+    var section = role === CENTRAL ? '' : clean(change.section);
+    if (change.type !== 'remove') {
+      if (STAFF_ROLES.indexOf(role) < 0) return { ok: false, error: '身分只能是總團、團長或服務員' };
+      if (role !== CENTRAL && SECTIONS.indexOf(section) < 0) return { ok: false, error: '請選擇分團' };
+      if (clean(change.title).length > 20) return { ok: false, error: '職稱最多 20 個字' };
+    }
+    if (ownerId && change.targetId === ownerId && actor.accountId !== ownerId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var key = function (r) { return r.role === CENTRAL ? CENTRAL : sectionOf(r.section); };
+    var wantKey = role === CENTRAL ? CENTRAL : section;
+    var mine = rows.filter(function (r) { return r.accountId === change.targetId; });
+    var target = change.type === 'add' ? null : mine.filter(function (r) { return key(r) === clean(change.key || wantKey); })[0];
+    if (change.type !== 'add' && !target) return { ok: false, error: '找不到這個身分' };
+    if (change.type === 'add' && mine.some(function (r) { return key(r) === wantKey; })) return { ok: false, error: '這個人在這個分團已經有身分，請改用修改' };
+    if (change.type === 'update' && wantKey !== key(target) && mine.some(function (r) { return key(r) === wantKey; })) return { ok: false, error: '這個人在這個分團已經有身分' };
+    // 總團、團長只有管理員（admin）能指定或取消；沒有 admin 帳號時總團也可以
+    var high = function (r) { return r && (r.role === CENTRAL || r.role === ROLE.LEADER); };
+    if ((high({ role: role }) && change.type !== 'remove') || high(target)) {
+      if (ownerId ? actor.accountId !== ownerId : !actor.isCentral) return { ok: false, error: '只有管理員（admin）可以指定或取消總團、團長' };
+    }
+    // 小狼至少保留一位團長（總團也算）
+    var after = rows.filter(function (r) { return r !== target; });
+    if (change.type !== 'remove') after.push({ accountId: change.targetId, role: role, section: section });
+    var leaders = effectiveAdmins(after, DEFAULT_SECTION).filter(function (a) { return a.role === ROLE.LEADER; }).length;
+    if (!leaders) return { ok: false, error: '小狼至少要保留一位團長' };
+    return { ok: true, row: target || null, section: section, role: role };
+  }
+
   /** 綁定碼／邀請碼／臨時碼字元集：大寫英文與數字，排除 0、O、1、I、L */
   var CODE_CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -976,6 +1046,8 @@ var Logic = (function () {
     var actor = (admins || []).filter(function (a) { return a.accountId === actorId; })[0];
     if (!actor || actor.role !== ROLE.LEADER) return { ok: false, error: '只有團長可以管理管理員' };
     var target = admins.filter(function (a) { return a.accountId === change.targetId; })[0];
+    // 總團身分不在這裡改（SPEC 附錄第 68 點：在「分團身分」設定）
+    if (target && target.scope === CENTRAL && change.type !== 'add') return { ok: false, error: '這位是總團，請到「分團身分」調整' };
     var leaders = admins.filter(function (a) { return a.role === ROLE.LEADER; }).length;
     if (ownerId) {
       if (change.targetId === ownerId && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
@@ -1150,7 +1222,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
