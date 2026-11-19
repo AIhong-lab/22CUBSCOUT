@@ -168,7 +168,7 @@ function loadCubs_() {
     return {
       cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: dateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), trialStart: dateStr_(r[9]), role: Logic.clean(r[10]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), trialStart: dateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
     };
   });
 }
@@ -199,12 +199,22 @@ function loadAdminRows_() {
   });
 }
 
-/** 在小狼有權限的管理員（每人一筆；總團視為團長）。目前所有後台功能都屬於小狼 */
-function loadAdmins_() {
+/**
+ * 在某分團有權限的管理員（每人一筆；總團視為團長）。沒指定分團時用目前請求的分團（CUR_SEC_），再沒有就是小狼。
+ * 管理員（admin 帳號）在每個分團都是團長，沒有該分團的列時也會列出來（scope＝管理員）。
+ */
+function loadAdmins_(section) {
+  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
   var rows = loadAdminRows_(), line = {};
   rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
+  var list = Logic.effectiveAdmins(rows, sec);
+  var owner = findAccountByName_(DEFAULT_ADMIN_USERNAME);
+  if (owner && !list.some(function (a) { return a.accountId === owner.accountId; })) {
+    var orow = rows.filter(function (r) { return r.accountId === owner.accountId; })[0];
+    if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員' }));
+  }
   // LINE 通知是跟著人走的：同一人任何一列有連結都算
-  return Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION).map(function (a) {
+  return list.map(function (a) {
     return a.lineUserId || !line[a.accountId] ? a : Object.assign({}, a, { lineUserId: line[a.accountId] });
   });
 }
@@ -224,7 +234,7 @@ function loadRequests_() {
   return readRows_(SHEET.REQUESTS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
       requestId: Logic.clean(r[0]), accountId: Logic.clean(r[1]), type: Logic.clean(r[2]), name: Logic.clean(r[3]), at: ms_(r[4]),
-      status: Logic.clean(r[5]), cubId: Logic.clean(r[8]), consentVersion: Number(r[9]) || 0, note: Logic.clean(r[10]), _row: r._row, _raw: r
+      status: Logic.clean(r[5]), cubId: Logic.clean(r[8]), consentVersion: Number(r[9]) || 0, note: Logic.clean(r[10]), section: Logic.requestSectionOf(r[11]), _row: r._row, _raw: r
     };
   });
 }

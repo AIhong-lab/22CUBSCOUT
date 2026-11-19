@@ -427,7 +427,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-19b';
+const APP_VERSION = '2026-11-19c';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -2903,7 +2903,7 @@ const ADMIN_PAGES = {
   },
 
   async admins() {
-    const [a, acc, inv] = await Promise.all([api('adminList'), api('accountList'), api('inviteList')]);
+    const [a, inv] = await Promise.all([api('adminList'), api('inviteList')]);
     const adminIds = new Set(a.admins.map((x) => x.accountId));
     // 最高權限鎖在 admin：有 admin 帳號時，只有它能指定或取消團長（後端也會檢查）
     const canLeader = !a.ownerExists || !!state.me.isOwner;
@@ -2915,17 +2915,22 @@ const ADMIN_PAGES = {
         <span class="s">帳號 ${esc(x.username)}・加入 ${fmtTime(x.joinedAt)}・指定人 ${esc(x.assignedBy || '－')}</span></span>
         ${locked(x) ? '' : `<button class="btn ghost small" data-ad="${esc(x.accountId)}">管理</button>`}</div>`).join('')}</section>
       <section class="card"><h2>➕ 從已註冊的帳號指定</h2><p class="muted small">對方已有帳號（例如家長兼服務員）時用。</p>
-        <input type="search" id="q" placeholder="搜尋帳號、稱呼或孩子姓名"><div id="cands"></div></section>
+        <input type="search" id="q" placeholder="搜尋帳號或稱呼"><div id="cands"></div></section>
       <section class="card"><h2>🆕 新的服務員</h2><p class="muted small">請對方自己到網站「登入 → 註冊新帳號」選「服務員」，再到「📝 帳號申請」核准。</p>
         <button class="btn alt small" id="toReq2">📝 前往帳號申請</button>
         ${state.me.canManageStaff ? '<p class="muted small">也可以到「🏷️ 分團身分與邀請碼」產生邀請碼（已指定分團與身分，對方註冊即生效）。</p>' : ''}
         ${inv.invites.length ? `<h3>尚未使用的邀請碼</h3>${inv.invites.map((i) => `<div class="list-row"><span class="grow"><span class="t">${esc(i.code)}</span> ${esc(i.name || '（未填姓名）')}（${esc(i.role === '總團' ? '總團' : (i.section || '小狼') + '／' + i.role)}${i.title ? '・' + esc(i.title) : ''}）<br><span class="s">${i.expired ? '已過期' : '有效到 ' + fmtTime(i.expiresAt)}</span></span><button class="btn danger small" data-void="${esc(i.code)}">作廢</button></div>`).join('')}` : ''}</section>`;
     $('#toReq2').onclick = () => goAdmin('requests');
     wireBack();
-    const drawCands = () => {
-      const q = $('#q').value.trim();
-      const list = acc.accounts.filter((x) => !adminIds.has(x.accountId) && x.status === '啟用' && (!q || [x.username, x.nickname].concat(x.cubs).some((s) => s.includes(q)))).slice(0, 20);
-      $('#cands').innerHTML = list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span><br><span class="s">帳號 ${esc(x.username)}${x.cubs.length ? '・孩子 ' + esc(x.cubs.join('、')) : ''}</span></span><button class="btn small" data-pick="${esc(x.accountId)}" data-n="${esc(x.nickname)}">指定</button></div>`).join('') || '<p class="muted">沒有符合的帳號。</p>';
+    let candSeq = 0;
+    const drawCands = async () => {
+      const q = $('#q').value.trim(), seq = ++candSeq;
+      // 帳號清單由後端搜尋（只回帳號與稱呼）；各分團團長也能用
+      let found;
+      try { found = await api('adminCandidates', { q }); } catch (e) { $('#cands').innerHTML = `<div class="msg err">${esc(e.message)}</div>`; return; }
+      if (seq !== candSeq || !$('#cands')) return;
+      const list = found.accounts.filter((x) => !adminIds.has(x.accountId));
+      $('#cands').innerHTML = list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.nickname)}</span><br><span class="s">帳號 ${esc(x.username)}</span></span><button class="btn small" data-pick="${esc(x.accountId)}" data-n="${esc(x.nickname)}">指定</button></div>`).join('') || '<p class="muted">沒有符合的帳號。</p>';
       $$('[data-pick]').forEach((b) => {
         b.onclick = () => openSheet(`<h2>指定管理員</h2><form id="fa"><label>角色</label><select class="full" name="role">${roleOpts('服務員')}</select>
           <label>要顯示的姓名</label><input name="name" type="text" value="${esc(b.dataset.n)}" required><button class="btn" type="submit">確認指定</button><div class="out"></div></form>`, (sh, close) => {

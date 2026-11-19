@@ -185,7 +185,7 @@ test('查詢：只能看自己綁定的小狼；回傳欄位採白名單', () =>
   assert.equal(env.api({ action: 'cubDetail', token: leaderToken, cubId: 'C1' }).code, 'NOT_FOUND', '管理員的家長畫面也只看自己綁定的');
   const d = env.api({ action: 'cubDetail', token, cubId: 'C1' });
   assert.equal(d.ok, true);
-  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'role', 'squad', 'squadStaff', 'status', 'tenure', 'trialStart']);
+  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'role', 'section', 'squad', 'squadStaff', 'status', 'tenure', 'trialStart']);
   assert.equal(d.cub.joinDate, '2025-09-01');
   assert.equal(d.cub.tenure, '1 年 2 個月');
   assert.equal(d.nextChallenge.type, 'start');

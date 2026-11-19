@@ -67,12 +67,10 @@ const PAGE = 'https://pages.test/web/';
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();
 
-  // ═════ 童軍服務員：用邀請碼註冊 → 準備中，沒有後台 ═════
+  // ═════ 童軍服務員：用邀請碼註冊 → 進童軍的後台（附錄第 73 點） ═════
   env.api({ action: 'register', code, childName: '', username: 'scout01', password: 'scoutpass1', nickname: '王' });
   await login('scout01', 'scoutpass1');
-  await page.getByText('分團功能準備中').waitFor();
-  assert.match(await text(), /童軍／服務員（副團長）/);
-  assert.equal(await page.locator('#toAdmin').count(), 0, '沒有後台入口');
+  await page.locator('#adminQuick').waitFor();
 
   assert.deepEqual(errors, [], '網頁沒有錯誤');
   await browser.close();

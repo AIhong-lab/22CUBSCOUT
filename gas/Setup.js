@@ -88,7 +88,7 @@ function ensureSheet_(name, report) {
 
 /** 管理員分頁是空的時候，產生（或沿用）一組團長邀請碼 */
 function ensureFirstLeaderInvite_() {
-  if (loadAdmins_().length) return null;
+  if (loadAdminRows_().length) return null;
   var now = Date.now();
   var existing = loadInvites_().filter(function (i) { return i.role === Logic.ROLE.LEADER && Logic.checkInvite(i, now).ok; })[0];
   if (existing) return { code: existing.code, expiresAt: existing.expiresAt, reused: true };
