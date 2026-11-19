@@ -49,6 +49,7 @@
 - **目前狀態**（2026-11-16）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 - 多分團（SPEC 附錄第 68 點，2026-11-19 只定規格、尚未寫程式）：將擴充成 22 團團部網站；第一期骨架為分團欄位（空白＝小狼）、權限範圍（管理員／總團／團長（含副團長）／服務員／家長／小孩）、綁定紀錄「關係」、小狼模組化、恢復邀請碼。升團與離團（附錄第 69 點）、三項登記（附錄第 70 點）已定。
 - 多分團骨架（SPEC 附錄第 71 點，2026-11-19 已實作）：`Logic.SECTIONS`／`sectionOf`（空白＝小狼）／`CENTRAL`（總團）／`effectiveAdmins(rows, section)`／`validateStaffChange`；`loadAdminRows_()`（管理員分頁全部列）與 `loadAdmins_()`（**只回在小狼有效的身分**，總團視為團長並標 `scope`，LINE userId 跟著人走）；`requireAccount_` 多回 `staff`、`isCentral`；`me.staff`／`isCentral`／`canManageStaff`。`gas/StaffApi.js`：`staffList`、`staffSave`、`inviteCreate`（`requireStaffManager_`：admin 或總團）。邀請碼帶分團、職稱（`redeemInvite_` 依分團寫入）。前端 `ADMIN_PAGES.staff`、`renderNoCub` 的「分團功能準備中」。總團不能在 `adminUpdate`／`adminRemove` 修改。官方進程資料 `data/sections/`（未匯入）、轉換程式 `tools/sections-convert.py`。測試 `tests/web/sections.js`。**新增任何後台功能都要想清楚屬於哪個分團**；目前 `loadAdmins_()` 等於「小狼」。
+- 後端版本檢查（SPEC 附錄第 72 點）：`APP_VERSION` 在 `gas/Config.js` 與 `web/index.html` 各一份，**改任何 gas/ 程式都要把兩邊一起改成新版本號**（格式 `YYYY-MM-DD` 加小寫字母，npm test 檢查一致）；`me.serverVersion`、`ping.version`；不一致時團長後台首頁紅色提醒。網站後端網址 2026-11-19 改連團長維護中的專案（原網址屬另一個舊專案）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -158,7 +159,7 @@
 - 簽核人、建立人等欄位存「帳號ID」，顯示時再換成管理員姓名；帳號ID 不可送到家長端。
 
 ## 前端（web/index.html）
-- 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）。
+- 單一檔案、原生 JS，**唯一設定值是最上方的 `GAS_URL`**（repo 公開，不可放其他任何設定或金鑰）；下一行的 `APP_VERSION` 是版本號，不是設定（附錄第 72 點）。
 - 版面（SPEC 附錄第 44 點）：`#tabs` 在 `header.top` 內，<760px 用 CSS 固定在螢幕下方；`setTabs()` 清單可含分組標題 `['#','',標題]`（只在電腦版後台側欄顯示）；寬螢幕（`isWide()`，≥1000px）後台用 `adminSideTabs()` 左側分組選單，手機用 `ADMIN_TABS`＋分組的「更多」。家長 `PARENT_TABS` 四個分頁（首頁、公佈欄、進度、我的；公開 `PUBLIC_TABS` 也有公佈欄，附錄第 55 點），「進度」內用 `state.seg`（map/badges/attendance）切換。簽核是 `st.step` 1～3 的精靈。小狼頁 `params.tab`（prog/badges/bind）。樣式集中在 CSS 的「2026-11 改版」區塊。未登入預設 `renderHome()`。e2e 另有一段 1280px 寬螢幕檢查。
 - 結構：工具函式 → 登入／註冊 → 家長畫面（`viewHome` 首頁、`viewMap` 闖關、`viewBadges` 徽章、`viewStamps` 出席、`renderMine`）→ `printSheets` → 後台（`ADMIN_PAGES` 物件，每個鍵是一頁；`goAdmin(頁名, 參數)` 切換）。
 - 後台需要確認的操作（頒章、修改頒章）用 `withConfirm()`：後端回 `needConfirm` 時跳確認視窗再帶 `confirm:true` 重送。
