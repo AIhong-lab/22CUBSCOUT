@@ -27,7 +27,8 @@ function handlePairing_(code, lineUserId, replyToken) {
   if (!accountId) return;
   cache.remove('PAIR_' + code);
   var name = withLock_(function () {
-    var a = loadAdmins_().filter(function (x) { return x.accountId === accountId; })[0];
+    // 寫在這個人的第一列（LINE 跟著人走，任何分團的列都算）
+    var a = loadAdminRows_().filter(function (x) { return x.accountId === accountId; })[0];
     if (!a) return null;
     var row = a._raw.slice(0, HEADERS[SHEET.ADMINS].length);
     row[5] = lineUserId; row[6] = new Date();
@@ -35,7 +36,7 @@ function handlePairing_(code, lineUserId, replyToken) {
     logOp_(accountId, '連結 LINE 通知', a.name, '', ''); // 不記 userId
     return a.name;
   });
-  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團幼童軍進程系統的通知。之後小狼達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
+  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團系統的通知。之後團員達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
 }
 
 /** 回覆訊息（不計入推播額度） */

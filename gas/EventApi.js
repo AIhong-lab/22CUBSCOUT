@@ -11,7 +11,7 @@ function loadEvents_() {
     return {
       id: Logic.clean(r[0]), title: Logic.clean(r[1]), desc: String(r[2] === undefined || r[2] === null ? '' : r[2]),
       date: dateStr_(r[3]), endDate: dateStr_(r[4]), regStart: Logic.clean(r[5]), regEnd: Logic.clean(r[6]),
-      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', sheetId: Logic.clean(r[12]), archived: !!Logic.clean(r[13]), _row: r._row, _raw: r
+      fee: Number(r[7]) || 0, questions: parseJson_(r[8], []), enabled: Logic.clean(r[9]) !== '關閉', sheetId: Logic.clean(r[12]), archived: !!Logic.clean(r[13]), targets: Logic.parseTargets(r[14]), _row: r._row, _raw: r
     };
   });
 }
@@ -31,7 +31,7 @@ function regState_(ev, now) { return !ev.enabled ? '已關閉' : now < ev.regSta
 
 /** 給報名的人看的活動資料（白名單） */
 function eventView_(ev, now) {
-  return { id: ev.id, title: ev.title, desc: ev.desc, date: ev.date, endDate: ev.endDate, regStart: ev.regStart, regEnd: ev.regEnd, fee: ev.fee, state: regState_(ev, now) };
+  return { id: ev.id, title: ev.title, desc: ev.desc, date: ev.date, endDate: ev.endDate, regStart: ev.regStart, regEnd: ev.regEnd, fee: ev.fee, targets: ev.targets.slice(), state: regState_(ev, now) };
 }
 
 /** 公開（月曆與活動頁用）：啟用中、還沒結束的活動；不含題目與任何報名資料 */
@@ -43,18 +43,31 @@ function publicEvents_() {
 
 // ───────────── 報名（要登入；家長、服務員、團長都可以） ─────────────
 
-/** 可以報名的人：團長、服務員，或有綁定「在團／體驗中」孩子的帳號（SPEC 附錄第 52 點） */
-function canRegisterEvents_(who) {
-  if (who.admin) return true;
+/**
+ * 這個帳號屬於哪些分團（活動報名資格用，附錄第 73 點⑮）：
+ * 擔任團長、服務員的分團（admin、總團＝全部），以及綁定「在團／體驗中」孩子所在的分團。
+ */
+function accountSections_(who) {
+  var set = {};
+  (who.sections || []).forEach(function (x) { set[x.section] = true; });
   var active = {};
-  loadCubs_().forEach(function (c) { if (c.status === '在團' || c.status === Logic.TRIAL) active[c.cubId] = true; });
-  return loadBindings_().some(function (b) { return b.accountId === who.account.accountId && active[b.cubId]; });
+  loadCubs_().forEach(function (c) { if (c.status === '在團' || c.status === Logic.TRIAL) active[c.cubId] = c.section; });
+  loadBindings_().forEach(function (b) { if (b.accountId === who.account.accountId && active[b.cubId]) set[active[b.cubId]] = true; });
+  return Object.keys(set);
+}
+/** 可以報名的人：團長、服務員，或有綁定「在團／體驗中」孩子的帳號（SPEC 附錄第 52 點）；有指定 ev 時還要在活動開放的分團 */
+function canRegisterEvents_(who, ev, secs) {
+  secs = secs || accountSections_(who);
+  if (!secs.length) return false;
+  if (!ev) return true;
+  return secs.some(function (sec) { return Logic.targetsInclude(ev.targets, sec); });
 }
 var EVENT_NOT_ELIGIBLE = '活動報名只開放 22 團的家長、團長與服務員。如果你是 22 團的家長，請等團長審核通過後再報名。';
 
 function apiEventList_(req, who) {
-  var now = nowStamp_(), today = now.slice(0, 10), eligible = canRegisterEvents_(who);
-  var events = loadEvents_().filter(function (e) { return e.enabled && (e.endDate || e.date) >= today; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  var now = nowStamp_(), today = now.slice(0, 10), secs = accountSections_(who), eligible = canRegisterEvents_(who, null, secs);
+  // 有身分的人只看開放給自己分團的活動；還沒有任何分團的人照舊看全部（但不能報名）
+  var events = loadEvents_().filter(function (e) { return e.enabled && (e.endDate || e.date) >= today && (!eligible || canRegisterEvents_(who, e, secs)); }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
   var mine = loadRegs_().filter(function (r) { return r.accountId === who.account.accountId && r.active; });
   return {
     identities: Logic.EVENT_IDENTITIES, eligible: eligible, notice: eligible ? '' : EVENT_NOT_ELIGIBLE,
@@ -73,6 +86,7 @@ function apiEventRegister_(req, who) {
     if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
     if (!ev || !ev.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+    if (!canRegisterEvents_(who, ev)) throw new ApiError(ERR.FORBIDDEN, '這個活動只開放給' + ev.targets.join('、') + '報名。');
     var st = regState_(ev, nowStamp_());
     if (st !== '報名中') throw new ApiError(ERR.BAD_INPUT, '這個活動' + (st === '尚未開始' ? '還沒開始報名。' : '已經截止報名，請聯絡團長。'));
     var v = Logic.validateEventPeople(req.people, ev.questions);
@@ -112,14 +126,42 @@ AUTHED_ACTIONS.eventCancel = apiEventCancel_;
 
 // ───────────── 後台：活動設定、報名名單、繳費紀錄（團長） ─────────────
 
-registerAdmin_('eventAdminList', 'manageEvents', function () {
+/**
+ * 活動對象（附錄第 73 點⑮，團長 2026-11-19 決定）：「全團」或一個以上的分團。
+ * 全團活動只有管理員或總團能開、能改；分團活動由對象裡任一分團的團長管理。
+ */
+function canManageEvent_(who, ev) {
+  if (canManageAll_(who)) return true;
+  return ev.targets.indexOf(Logic.ALL) < 0 && ev.targets.indexOf(curSec_()) >= 0;
+}
+function findManagedEvent_(who, eventId) {
+  var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(eventId); })[0];
+  if (!ev || !Logic.targetsInclude(ev.targets, curSec_())) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+  if (!canManageEvent_(who, ev)) throw new ApiError(ERR.FORBIDDEN, '全團活動由管理員或總團管理。');
+  return ev;
+}
+/** 送來的活動對象 → 存進試算表的字串（「全團」或「童軍、行義」） */
+function eventTargets_(who, v) {
+  if (v === undefined || v === null) return curSec_();
+  var list = (Array.isArray(v) ? v : [v]).map(Logic.clean).filter(String);
+  if (list.indexOf(Logic.ALL) >= 0) {
+    if (!canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '全團活動由管理員或總團開設。');
+    return Logic.ALL;
+  }
+  var out = Logic.SECTIONS.filter(function (s) { return list.indexOf(s) >= 0; });
+  if (!out.length || out.length !== list.length) throw new ApiError(ERR.BAD_INPUT, '請選擇活動開放的分團。');
+  if (out.indexOf(curSec_()) < 0 && !canManageAll_(who)) throw new ApiError(ERR.BAD_INPUT, '活動對象要包含你自己的分團（' + curSec_() + '）。');
+  return out.join('、');
+}
+
+registerAdmin_('eventAdminList', 'manageEvents', function (req, who) {
   var now = nowStamp_(), regs = loadRegs_().filter(function (r) { return r.active; });
   return {
-    identities: Logic.EVENT_IDENTITIES,
-    events: loadEvents_().sort(function (a, b) { return a.date < b.date ? 1 : -1; }).map(function (e) {
+    identities: Logic.EVENT_IDENTITIES, section: curSec_(), sections: Logic.SECTIONS, canManageAll: canManageAll_(who),
+    events: loadEvents_().filter(function (e) { return Logic.targetsInclude(e.targets, curSec_()); }).sort(function (a, b) { return a.date < b.date ? 1 : -1; }).map(function (e) {
       var mine = regs.filter(function (r) { return r.eventId === e.id; });
       var v = eventView_(e, now);
-      v.questions = e.questions; v.enabled = e.enabled; v.archived = e.archived;
+      v.questions = e.questions; v.enabled = e.enabled; v.archived = e.archived; v.canEdit = canManageEvent_(who, e);
       v.count = mine.length; v.paidCount = mine.filter(function (r) { return r.paid; }).length;
       return v;
     })
@@ -134,25 +176,25 @@ registerAdmin_('eventSave', 'manageEvents', function (req, who) {
     var list = loadEvents_();
     var cells = [e.title, e.desc, e.date, e.endDate, e.regStart, e.regEnd, e.fee, JSON.stringify(e.questions), req.enabled === false ? '關閉' : '開放'];
     if (req.id) {
-      var cur = list.filter(function (x) { return x.id === Logic.clean(req.id); })[0];
-      if (!cur) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+      var cur = findManagedEvent_(who, req.id);
       if (cur.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經結束並封存，不能再修改；資料請看存檔試算表。');
       var row = cur._raw.slice(0, HEADERS[SHEET.EVENTS].length);
+      while (row.length < HEADERS[SHEET.EVENTS].length) row.push('');
       cells.forEach(function (c, i) { row[i + 1] = c; });
+      if (req.targets !== undefined) row[14] = eventTargets_(who, req.targets);
       updateRows_(SHEET.EVENTS, [{ row: cur._row, values: row }]);
       logOp_(who.account.accountId, '修改活動', cur.id, cur.title, e.title + (req.enabled === false ? '（關閉）' : ''));
       return { id: cur.id, _ev: cur.id };
     }
     var id = newId_('E', list.map(function (x) { return x.id; }));
-    appendRows_(SHEET.EVENTS, [[id].concat(cells, [who.account.accountId, new Date()])]);
+    appendRows_(SHEET.EVENTS, [[id].concat(cells, [who.account.accountId, new Date(), '', '', eventTargets_(who, req.targets)])]);
     logOp_(who.account.accountId, '新增活動', id, '', e.title);
     return { id: id, _ev: id };
   }));
 });
 
-registerAdmin_('eventRegs', 'manageEvents', function (req) {
-  var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
-  if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+registerAdmin_('eventRegs', 'manageEvents', function (req, who) {
+  var ev = findManagedEvent_(who, req.eventId);
   var acc = accountsById_();
   var v = eventView_(ev, nowStamp_());
   v.questions = ev.questions; v.enabled = ev.enabled; v.archived = ev.archived;
@@ -170,8 +212,11 @@ registerAdmin_('eventPay', 'manageEvents', function (req, who) {
   if (!updates.length || updates.length > 300) throw new ApiError(ERR.BAD_INPUT, '沒有要儲存的變更。');
   return afterSync_(withLock_(function () {
     var regs = loadRegs_(), ups = [], now = new Date();
+    var first = regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId) && x.active; })[0];
+    if (!first) throw new ApiError(ERR.NOT_FOUND, '找不到其中一筆報名，請重新整理。');
+    findManagedEvent_(who, first.eventId);
     updates.forEach(function (u) {
-      var r = regs.filter(function (x) { return x.id === Logic.clean(u.regId) && x.active; })[0];
+      var r = regs.filter(function (x) { return x.id === Logic.clean(u.regId) && x.active && x.eventId === first.eventId; })[0];
       if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到其中一筆報名，請重新整理。');
       var amount = Number(u.amount);
       if (!isFinite(amount) || amount < 0 || amount > 1000000 || Math.floor(amount) !== amount) throw new ApiError(ERR.BAD_INPUT, r.name + '：金額需為 0～1000000 的整數。');
@@ -191,6 +236,7 @@ registerAdmin_('eventRegRemove', 'manageEvents', function (req, who) {
   return afterSync_(withLock_(function () {
     var r = loadRegs_().filter(function (x) { return x.id === Logic.clean(req.regId) && x.active; })[0];
     if (!r) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
+    findManagedEvent_(who, r.eventId);
     var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
     row[9] = '取消'; row[10] = who.account.accountId; row[11] = new Date();
     updateRows_(SHEET.EVENT_REGS, [{ row: r._row, values: row }]);
@@ -268,8 +314,8 @@ function afterSync_(res) {
 }
 
 /** 團長手動同步（或補建）存檔試算表 */
-registerAdmin_('eventSheetSync', 'manageEvents', function (req) {
-  var id = Logic.clean(req.eventId);
+registerAdmin_('eventSheetSync', 'manageEvents', function (req, who) {
+  var id = findManagedEvent_(who, req.eventId).id;
   try { return { sheetUrl: syncEventSheet_(id) }; }
   catch (e) { if (e instanceof ApiError) throw e; throw new ApiError(ERR.BAD_INPUT, '存檔試算表建立或更新失敗，請稍後再試一次。'); }
 });

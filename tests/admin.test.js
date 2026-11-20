@@ -166,21 +166,31 @@ test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他�
   const made = env.ctx.ensureDefaultAdmin_();
   const O = env.api({ action: 'login', username: made.username, password: made.password }).token;
   assert.equal(call(O, 'me').canManageStaff, true);
-  // 童軍服務員：用邀請碼註冊即生效，但沒有任何小狼權限
+  // 童軍服務員：用邀請碼註冊即生效；進的是童軍的後台（附錄第 73 點），碰不到小狼
   const inv = call(O, 'inviteCreate', { section: '童軍', role: '服務員', title: '副團長', name: '王童軍' });
   assert.match(inv.code, /^[A-Z2-9]{8}$/);
   const S = env.api({ action: 'register', code: inv.code, childName: '', username: 'scout01', password: 'scoutpass1', nickname: '王' }).token;
   const me = call(S, 'me');
-  assert.equal(me.role, null);
+  assert.equal(me.role, '服務員');
+  assert.equal(me.section, '童軍');
+  assert.deepEqual(me.sections, [{ section: '童軍', role: '服務員' }]);
   assert.deepEqual(me.staff, [{ section: '童軍', role: '服務員', title: '副團長' }]);
-  for (const x of ['adminHome', 'cubList', 'signoffData', 'meetingList', 'adminList']) assert.equal(call(S, x).code, 'FORBIDDEN', '童軍服務員：' + x);
+  assert.deepEqual(call(S, 'cubList').cubs, [], '童軍的名單裡沒有小狼');
+  assert.equal(call(S, 'cubList', { _sec: '小狼' }).cubs.length, 0, '送 _sec=小狼 也沒用，後端只認自己有身分的分團');
+  assert.equal(call(S, 'cubAdminDetail', { cubId: env.rows('小狼名單')[0][0] }).code, 'NOT_FOUND', '別的分團的團員找不到');
+  for (const x of ['signoffData', 'overview']) assert.equal(call(S, x).code, 'FORBIDDEN', '童軍進程準備中：' + x);
+  assert.equal(call(S, 'adminList').code, 'FORBIDDEN', '服務員不能管理管理員');
   assert.ok(!call(L, 'adminList').admins.some((a) => a.name === '王童軍'), '小狼管理員名單不列其他分團');
   // 小狼服務員另外加一個童軍團長身分：小狼權限不變
-  const helperId = call(L, 'accountList').accounts.find((a) => a.username === 'helper01').accountId;
+  const helperId = call(O, 'accountList').accounts.find((a) => a.username === 'helper01').accountId;
   assert.equal(call(O, 'staffSave', { type: 'add', accountId: helperId, section: '童軍', role: '團長', title: '團長' }).ok, true);
   assert.equal(call(O, 'staffSave', { type: 'add', accountId: helperId, section: '童軍', role: '服務員' }).code, 'BAD_INPUT', '同一分團不重複');
   assert.equal(call(A, 'adminList').code, 'FORBIDDEN');
   assert.equal(call(A, 'signoffData').ok, true);
+  // 兼任：切到童軍就是童軍團長（分團切換，_sec）
+  assert.deepEqual(call(A, 'me').sections.map((x) => x.section + x.role), ['小狼服務員', '童軍團長']);
+  assert.equal(call(A, 'me', { _sec: '童軍' }).role, '團長');
+  assert.equal(call(A, 'adminList', { _sec: '童軍' }).ok, true);
   assert.equal(call(O, 'staffList').staff.filter((x) => x.accountId === helperId).length, 2);
   // 總團：小狼的團長權限；小狼管理員頁不能改他
   const inv2 = call(O, 'inviteCreate', { role: '總團', title: '團部' });
@@ -201,7 +211,8 @@ test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他�
   // 刪除帳號時，所有分團身分一起刪除（不能只刪小狼那一列）
   const scoutId = call(O, 'staffList').staff.find((x) => x.name === '王童軍').accountId;
   assert.equal(call(O, 'staffSave', { type: 'add', accountId: scoutId, section: '行義', role: '服務員' }).ok, true);
-  assert.equal(call(L, 'accountDelete', { accountId: scoutId, confirmUsername: 'scout01' }).ok, true);
+  assert.equal(call(L, 'accountDelete', { accountId: scoutId, confirmUsername: 'scout01' }).code, 'FORBIDDEN', '有 admin 後帳號管理預設只有 admin、總團');
+  assert.equal(call(O, 'accountDelete', { accountId: scoutId, confirmUsername: 'scout01' }).ok, true);
   assert.equal(env.rows('管理員').filter((r) => r[0] === scoutId).length, 0, '其他分團的身分也要刪掉');
   // 之前留下的舊邀請碼（沒有分團欄）視為小狼，可以作廢
   const sh = env.sheet('管理員邀請');
@@ -901,7 +912,7 @@ test('公告欄：團長與服務員可發、不用登入就看得到、置頂�
   assert.equal(pub.ok, true);
   assert.deepEqual(pub.notices.map((x) => x.title), ['重要：場地更改', '一般公告', '12/6 團集會通知']);
   assert.deepEqual(pub.notices[2].meeting, { date: '2026-12-06', name: '團集會' });
-  assert.deepEqual(Object.keys(pub.notices[0]).sort(), ['content', 'date', 'id', 'meeting', 'pinned', 'title']);
+  assert.deepEqual(Object.keys(pub.notices[0]).sort(), ['content', 'date', 'id', 'meeting', 'pinned', 'target', 'title']);
   assert.ok(!/U[A-Z2-9]{8}/.test(JSON.stringify(pub)), '公開資料不含帳號ID');
   call(L, 'noticeSave', { id: n2.id, title: '一般公告', content: '內容', visible: false });
   assert.equal(env.api({ action: 'notices' }).notices.length, 2);
@@ -959,6 +970,11 @@ test('最高權限鎖在 admin：只有 admin 能指定或取消團長，admin �
   const owner = acc('admin');
   assert.equal(call(O, 'me').isOwner, true);
   assert.equal(call(L, 'me').isOwner, false);
+  // 有 admin 之後，帳號管理預設只有 admin 與總團（附錄第 73 點）；admin 可以開放給各分團團長
+  assert.equal(call(L, 'accountList').code, 'FORBIDDEN');
+  assert.equal(call(L, 'settingsSave', { changes: { '共用功能權限：帳號管理': '團長' } }).code, 'FORBIDDEN', '只有 admin 能改共用功能權限');
+  assert.equal(call(O, 'settingsSave', { changes: { '共用功能權限：帳號管理': '團長' } }).ok, true);
+  assert.equal(call(L, 'accountList').ok, true);
   const list = call(L, 'adminList');
   assert.equal(list.ownerExists, true);
   assert.equal(list.admins.find((a) => a.accountId === owner).owner, true);
@@ -1017,7 +1033,7 @@ test('網站內容（附錄第 49 點）：公開的活動時間與了解幼童�
   const d1 = pub();
   assert.deepEqual(d1.meetings.filter((m) => m.date > '2099').map((m) => [m.date, m.name]), [['2099-03-07', '三月團集會'], ['2099-03-21', '露營']]);
   assert.ok(!d1.meetings.some((m) => m.date === '2020-01-05'), '本月以前的不列');
-  assert.deepEqual(Object.keys(d1.meetings[0]).sort(), ['date', 'name', 'note', 'type'], '只回白名單欄位，不含集會ID 與建立人');
+  assert.deepEqual(Object.keys(d1.meetings[0]).sort(), ['date', 'name', 'note', 'target', 'type'], '只回白名單欄位，不含集會ID 與建立人');
   assert.ok(!d1.meetings.some((m) => m.date === '2099-04-04'), '停用的不列');
   // 權限與檢查
   assert.equal(call(A, 'siteContentSave', { about: 'x' }).code, 'FORBIDDEN');
@@ -1050,7 +1066,7 @@ test('活動報名與繳費紀錄（附錄第 50 點）：團長設定、登入�
   assert.ok(id);
   // 公開資料：有起訖時間與費用，沒有題目和報名名單
   const pub = env.api({ action: 'siteInfo' }).events;
-  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'title']);
+  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'targets', 'title']);
   assert.equal(pub[0].state, '報名中');
   // 報名要登入
   assert.equal(env.api({ action: 'eventList' }).ok, false);
@@ -1365,7 +1381,7 @@ test('LINE 關鍵字「點名」（附錄第 63 點）：只回已連結的管�
 test('後台首頁提醒：個資說明與「了解幼童軍」還有【請填寫】範本文字（附錄第 65 點）', () => {
   const { call, L, A } = world();
   let al = call(L, 'adminHome').alerts;
-  assert.deepEqual(al.placeholders, ['個資告知內容', '了解幼童軍'], '預設文字還沒改');
+  assert.deepEqual(al.placeholders, ['個資告知內容', '認識 22 團'], '預設文字還沒改');
   assert.deepEqual(call(A, 'adminHome').alerts.placeholders, [], '服務員不顯示（改不了）');
   call(L, 'consentSave', { content: '親愛的家長您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡團長：LINE 官方帳號。' });
   call(L, 'siteContentSave', { about: '我們是 22 團，歡迎來體驗。', activity: '', fb: '' });

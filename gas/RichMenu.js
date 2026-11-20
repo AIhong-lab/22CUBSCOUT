@@ -12,7 +12,8 @@ var RICH_MENU_SIZE = { width: 2500, height: 1686 };
 var TEAM_FB_URL = 'https://www.facebook.com/profile.php?id=100064559625116';
 
 /** 六格：[按鈕名稱, 網站頁面]；第六格 FB 用「網站內容」的 FB 網址，沒填就用 22 團 FB 粉絲專頁 */
-var RICH_MENU_CELLS = [['公佈欄', 'notices'], ['進程查詢', 'progress'], ['技能章查詢', 'badges'], ['了解幼童軍', 'about'], ['活動時間', 'calendar'], ['22團 FB', 'fb']];
+/** 文字改全團通用（附錄第 73 點⑳）；連結不變，已安裝的選單不用重裝，只有圖片上的字要換 */
+var RICH_MENU_CELLS = [['公佈欄', 'notices'], ['進程查詢', 'progress'], ['章查詢', 'badges'], ['認識22團', 'about'], ['活動時間', 'calendar'], ['22團 FB', 'fb']];
 
 /** 六格的範圍與連結（純計算，方便測試） */
 function richMenuAreas_(root, fb) {

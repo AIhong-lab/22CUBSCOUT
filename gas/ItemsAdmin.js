@@ -36,7 +36,7 @@ function itemImpact_(newItems, category, unit) {
   var ctx = progressCtx_();
   var after = Object.assign({}, ctx, { items: newItems });
   var toPending = [], fromPending = [];
-  loadCubs_().filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
+  loadCubs_().filter(function (c) { return c.status === '在團' && c.section === Logic.DEFAULT_SECTION; }).forEach(function (c) {
     var pick = function (x) { return progressOf_(x, c.cubId).units.filter(function (u) { return u.category === category && u.unit === unit; })[0] || {}; };
     var b = pick(ctx).status, a = pick(after).status;
     if (b === Logic.STATUS.DONE_PENDING && a !== Logic.STATUS.DONE_PENDING) fromPending.push(c.name);

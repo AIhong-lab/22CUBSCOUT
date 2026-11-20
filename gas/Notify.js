@@ -40,7 +40,10 @@ function webUrl_() {
   if (p) return /\/$/.test(p) ? p : p + '/';
   return DEFAULT_WEB_URL;
 }
-function linkedLineIds_() { return loadAdmins_().map(function (a) { return a.lineUserId; }).filter(String); }
+/** 達標通知只推給該分團已連結 LINE 的團長、服務員（附錄第 73 點⑳；第 1 期只有小狼有進程） */
+function linkedLineIds_(section) { return loadAdmins_(section || Logic.DEFAULT_SECTION).map(function (a) { return a.lineUserId; }).filter(String); }
+/** 有進程模組的分團的在團團員（達標掃描用） */
+function progressCubs_() { return loadCubs_().filter(function (c) { return Logic.PROGRESS_SECTIONS.indexOf(c.section) >= 0; }); }
 
 /**
  * 重算達標清單，與通知紀錄比對後推播。
@@ -51,7 +54,7 @@ function syncNotifications_(opts) {
   opts = opts || {};
   return withLock_(function () {
     var ctx = progressCtx_();
-    var pending = scanCubs_(ctx, loadCubs_()).pending;
+    var pending = scanCubs_(ctx, progressCubs_()).pending;
     var byKey = {};
     pending.forEach(function (p) { byKey[p.cubId + '|' + p.unit] = p; });
     var rows = readRows_(SHEET.NOTIFY).filter(function (r) { return Logic.clean(r[0]); });
@@ -141,29 +144,35 @@ function linePush_(ids, message, token) {
 function handleKeyword_(text, lineUserId, replyToken) {
   if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
   if (text !== '可晉級' && text !== '快達標' && text !== '點名') return null;
-  if (!loadAdmins_().some(function (a) { return a.lineUserId === lineUserId; })) return null;
-  if (text === '點名') return lineReply_(replyToken, rollReplyText_());
-  var scan = scanCubs_(progressCtx_(), loadCubs_());
+  // 已連結 LINE 的管理員（任何分團）；LINE 跟著人走
+  var rows = loadAdminRows_(), me = rows.filter(function (a) { return a.lineUserId === lineUserId; })[0];
+  if (!me) return null;
+  var isOwner = (accountsById_()[me.accountId] || {}).username === DEFAULT_ADMIN_USERNAME;
+  var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
+  var home = Logic.pickSection(secs, '');
+  if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));
+  if (!secs.some(function (x) { return Logic.PROGRESS_SECTIONS.indexOf(x.section) >= 0; })) return lineReply_(replyToken, '你的分團的進程功能還在準備中。');
+  var scan = scanCubs_(progressCtx_(), progressCubs_());
   var lines;
   if (text === '可晉級') {
     lines = scan.pending.map(function (p) { return '・' + p.name + '：' + unitLabel_(p) + '（達標 ' + (p.eligibleDate || '－') + '）'; });
-    return lineReply_(replyToken, lines.length ? ('🏅 達標未頒章 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有達標未頒章的小狼。');
+    return lineReply_(replyToken, lines.length ? ('🏅 達標未頒章 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有達標未頒章的團員。');
   }
   lines = scan.near.map(function (p) { return '・' + p.name + '：' + unitLabel_(p) + '（還差 ' + p.remaining + ' 項）'; });
-  return lineReply_(replyToken, lines.length ? ('🔥 快達標 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有快達標的小狼。');
+  return lineReply_(replyToken, lines.length ? ('🔥 快達標 ' + lines.length + ' 筆\n' + lines.join('\n')).slice(0, 4500) : '目前沒有快達標的團員。');
 }
 
 /**
  * 關鍵字「點名」（SPEC 附錄第 63 點，只回已連結 LINE 的管理員）：今天或下一場集會、已請假名單、直達點名頁的連結。
  * 只列請假的孩子姓名與小隊；名單和「可晉級」一樣只會回給管理員。
  */
-function rollReplyText_() {
-  var today = today_();
-  var m = loadMeetings_().filter(function (x) { return x.enabled && Logic.isDateStr(x.date) && x.date >= today; })
+function rollReplyText_(section) {
+  var today = today_(), sec = Logic.sectionOf(section);
+  var m = loadMeetings_().filter(function (x) { return x.enabled && Logic.isDateStr(x.date) && x.date >= today && Logic.targetIncludes(x.target, sec); })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; })[0];
   if (!m) return '接下來沒有排定的集會。到網站後台「行事曆」新增：\n' + webUrl_() + 'web/';
   var inMeeting = {};
-  cubsOnDate_(m.date, m.type).forEach(function (c) { inMeeting[c.cubId] = c; });
+  cubsOnDate_(m.date, m.type, sec).forEach(function (c) { inMeeting[c.cubId] = c; });
   var leave = [], present = 0;
   loadAttendance_().forEach(function (a) {
     if (a.meetingId !== m.meetingId || !inMeeting[a.cubId]) return;

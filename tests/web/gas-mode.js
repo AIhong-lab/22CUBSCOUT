@@ -39,7 +39,7 @@ const { loadGas } = require('../gas-mock.js');
 
   // 首頁：用 google.script.run 取得資料，沒有任何 fetch
   await open({ hash: '', parameter: {} });
-  await page.getByText('什麼是「進程」？').waitFor();
+  await page.locator('#secCards').waitFor();
   await page.locator('#noticeCard').waitFor();
   await page.locator('#calCard .cal-grid').waitFor();
   assert.equal(fetches, 0, '由 GAS 提供時不用 fetch');

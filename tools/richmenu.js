@@ -41,9 +41,9 @@ const ICON = {
 
 const cells = [
   { icon: ICON.notice, t: '公佈欄', s: '最新通知・團集會', bg: '#1F4E9A', fg: '#fff', sub: '#D6E2F7' },
-  { icon: svgSize(ctx.BADGES['狼']), t: '進程查詢', s: '羚羊・狼・鹿・豹', bg: '#FFF8E6', fg: '#14213D', sub: '#5B6478' },
-  { icon: svgSize(ctx.triBadge('#1360B5', '🧭')), t: '技能章查詢', s: '服務・健身・技巧', bg: '#F5B82E', fg: '#14213D', sub: '#3D2F0A' },
-  { icon: ICON.scout, t: '了解幼童軍', s: '我們是誰・怎麼加入', bg: '#FFF8E6', fg: '#14213D', sub: '#5B6478' },
+  { icon: svgSize(ctx.BADGES['狼']), t: '進程查詢', s: '五個分團的進程', bg: '#FFF8E6', fg: '#14213D', sub: '#5B6478' },
+  { icon: svgSize(ctx.triBadge('#1360B5', '🧭')), t: '章查詢', s: '技能章・專科章', bg: '#F5B82E', fg: '#14213D', sub: '#3D2F0A' },
+  { icon: ICON.scout, t: '認識22團', s: '五個分團・怎麼加入', bg: '#FFF8E6', fg: '#14213D', sub: '#5B6478' },
   { icon: ICON.calendar, t: '活動時間', s: '團集會・活動報名', bg: '#E8473B', fg: '#fff', sub: '#FFE1DD' },
   { icon: ICON.fb, t: '22團 FB', s: '活動照片與動態', bg: '#FFF8E6', fg: '#14213D', sub: '#5B6478' },
 ];

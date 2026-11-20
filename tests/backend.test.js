@@ -185,7 +185,7 @@ test('查詢：只能看自己綁定的小狼；回傳欄位採白名單', () =>
   assert.equal(env.api({ action: 'cubDetail', token: leaderToken, cubId: 'C1' }).code, 'NOT_FOUND', '管理員的家長畫面也只看自己綁定的');
   const d = env.api({ action: 'cubDetail', token, cubId: 'C1' });
   assert.equal(d.ok, true);
-  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'role', 'squad', 'squadStaff', 'status', 'tenure', 'trialStart']);
+  assert.deepEqual(Object.keys(d.cub).sort(), ['cubId', 'currentLevel', 'joinDate', 'name', 'role', 'section', 'squad', 'squadStaff', 'status', 'tenure', 'trialStart']);
   assert.equal(d.cub.joinDate, '2025-09-01');
   assert.equal(d.cub.tenure, '1 年 2 個月');
   assert.equal(d.nextChallenge.type, 'start');
@@ -510,7 +510,7 @@ test('網頁由 GAS 提供（附錄第 56 點）：doGet 回傳頁面；訪客�
   env.html.Index = '<!doctype html><title>x</title>';
   const out = env.ctx.doGet({ parameter: {} });
   assert.equal(out.kind, 'html');
-  assert.equal(out.title, '22團幼童軍');
+  assert.equal(out.title, '22團');
   assert.match(out.meta.viewport, /width=device-width/);
   // 頁面用 google.script.run 呼叫 apiFromPage：和 doPost 同一套處理，回傳 JSON 字串
   assert.equal(JSON.parse(env.ctx.apiFromPage(JSON.stringify({ action: 'ping' }))).ok, true);

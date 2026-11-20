@@ -59,6 +59,75 @@ var Logic = (function () {
     return x || DEFAULT_SECTION;
   }
 
+  // ───────────── 全團上線（SPEC 附錄第 73 點） ─────────────
+  /** 集會、公告、活動可指定「全團」；註冊申請家長不確定分團時記「未指定」 */
+  var ALL = '全團';
+  var UNASSIGNED = '未指定';
+  /** 網址代號（#cub/progress）與完整名稱（畫面標題用） */
+  var SECTION_SLUG = { '稚齡': 'beaver', '小狼': 'cub', '童軍': 'scout', '行義': 'venture', '羅浮': 'rover' };
+  var SECTION_FULL = { '稚齡': '稚齡童軍', '小狼': '幼童軍', '童軍': '童軍', '行義': '行義童軍', '羅浮': '羅浮童軍' };
+  /** 目前有進程模組的分團（第 1 期只有小狼；簽核、頒章、項目管理只在這些分團開放） */
+  var PROGRESS_SECTIONS = ['小狼'];
+
+  function isSection(v) { return SECTIONS.indexOf(clean(v)) >= 0; }
+  /** 集會、公告的對象：「全團」或分團名稱；空白＝小狼（舊資料） */
+  function targetOf(v) { var x = clean(v); return x === ALL ? ALL : sectionOf(x); }
+  /** 某個對象在某分團看不看得到：全團都看得到 */
+  function targetIncludes(target, section) { var t = targetOf(target); return t === ALL || t === sectionOf(section); }
+  /** 活動的對象可以複選分團（「童軍、行義」）或「全團」；空白＝小狼 */
+  function parseTargets(v) {
+    var x = clean(v);
+    if (!x) return [DEFAULT_SECTION];
+    if (x === ALL) return [ALL];
+    var out = parseList(x).filter(function (s) { return SECTIONS.indexOf(s) >= 0; });
+    return out.length ? out : [DEFAULT_SECTION];
+  }
+  function targetsInclude(list, section) { return list.indexOf(ALL) >= 0 || list.indexOf(sectionOf(section)) >= 0; }
+  /** 職稱顯示：羅浮的團長稱「群長」（權限等級相同） */
+  function leaderTitle(section) { return sectionOf(section) === '羅浮' ? '群長' : ROLE.LEADER; }
+  /** 註冊申請的分團：空白＝小狼（舊資料）；「未指定」表示家長不確定，由管理員、總團或各分團團長指定 */
+  function requestSectionOf(v) { var x = clean(v); return x === UNASSIGNED ? UNASSIGNED : sectionOf(x); }
+
+  /**
+   * 這個人可以進哪些分團的後台：[{section, role, scope}]（依 SECTIONS 順序）。
+   * 管理員（admin 帳號）與總團在每個分團都是團長；其他人依管理員分頁的各分團身分。
+   */
+  function staffSections(rows, isOwner) {
+    var mine = rows || [];
+    var central = isOwner || mine.some(function (r) { return r.role === CENTRAL; });
+    var out = [];
+    SECTIONS.forEach(function (sec) {
+      if (central) { out.push({ section: sec, role: ROLE.LEADER, scope: isOwner ? '管理員' : CENTRAL }); return; }
+      var e = effectiveAdmins(mine, sec)[0];
+      if (e) out.push({ section: sec, role: e.role, scope: sec });
+    });
+    return out;
+  }
+  /** 選要進的分團：指定的那個（有權限才算），否則優先小狼，再來第一個 */
+  function pickSection(list, wanted) {
+    var w = clean(wanted);
+    var hit = list.filter(function (x) { return x.section === w; })[0];
+    if (hit) return hit;
+    return list.filter(function (x) { return x.section === DEFAULT_SECTION; })[0] || list[0] || null;
+  }
+
+  /** 全團共用的後台功能：由管理員（admin）指定誰可以用（附錄第 73 點，團長 2026-11-19 決定） */
+  var SHARED_FUNCS = ['系統設定', '網站內容', '個資告知', '帳號管理', '備份'];
+  var SHARED_LEVELS = ['管理員', CENTRAL, ROLE.LEADER];
+  /**
+   * ctx {isOwner, ownerExists, isCentral, role（目前分團的身分）}；level 為設定值
+   * 沒有 admin 帳號時照舊：團長（含總團）都可以。
+   */
+  function canShared(level, ctx) {
+    ctx = ctx || {};
+    if (ctx.isOwner) return true;
+    var leader = ctx.role === ROLE.LEADER || !!ctx.isCentral;
+    if (!ctx.ownerExists) return leader;
+    if (level === ROLE.LEADER) return leader;
+    if (level === CENTRAL) return !!ctx.isCentral;
+    return false;
+  }
+
   /**
    * 從「管理員」分頁全部列（一人可有多列），算出在某分團有效的管理員，每個帳號一筆。
    * 總團在每個分團都視為團長（scope 標記為總團）；同一人有多列時取權限較高者。
@@ -205,15 +274,15 @@ var Logic = (function () {
     { key: '登入保持天數', type: 'int', def: 30, min: 1, max: 180, desc: '勾選「記住我」時登入有效天數' },
     { key: '臨時碼有效小時數', type: 'int', def: 24, min: 1, max: 168, desc: '重設密碼用的臨時碼有效時間' },
     { key: '管理員邀請碼有效小時數', type: 'int', def: 24, min: 1, max: 720, desc: '' },
-    { key: '晉級間隔月數', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
-    { key: '晉級所需出席次數', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（遲到算、請假不算、設為不計入進程的集會不算）；填 0 表示不要求' },
-    { key: '體驗所需出席次數', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（遲到算；大活動、請假、不計入進程的集會不算）' },
-    { key: '剛入團所需出席次數', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
-    { key: '小隊清單', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
-    { key: '出席自動完成項目ID', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
-    { key: '自動完成所需出席次數', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算；進程項目只算上一級頒發後的出席）' },
-    { key: '快達標門檻（剩幾項以內）', type: 'int', def: 2, min: 1, max: 10, desc: '' },
-    { key: '未頒章再提醒天數', type: 'int', def: 14, min: 0, max: 365, desc: '填 0 表示不提醒' },
+    { key: '晉級間隔月數', scope: 'cub', type: 'int', def: 6, min: 0, max: 24, desc: '狼、鹿、豹級距上一級頒發日期需滿幾個月' },
+    { key: '晉級所需出席次數', scope: 'cub', type: 'int', def: 8, min: 0, max: 100, desc: '羚羊、狼、鹿、豹級：上一級頒發日之後需「出席」幾次（遲到算、請假不算、設為不計入進程的集會不算）；填 0 表示不要求' },
+    { key: '體驗所需出席次數', scope: 'section', type: 'int', def: 4, min: 1, max: 20, desc: '體驗者參加幾次「一般」團集會後可以入團（遲到算；大活動、請假、不計入進程的集會不算）' },
+    { key: '剛入團所需出席次數', scope: 'cub', type: 'int', def: 4, min: 0, max: 50, desc: '剛入團：入團後需「出席」幾次才能頒黃領巾（請假不算）；填 0 表示不要求' },
+    { key: '小隊清單', scope: 'section', type: 'list', def: [], desc: '小隊名稱，用頓號「、」分隔，依此順序顯示（建議在後台「更多 → 小隊設定」修改）' },
+    { key: '出席自動完成項目ID', scope: 'cub', type: 'str', def: 'P-羚羊-7', pattern: /^[PB]-\S+-\d+$/, desc: '出席滿次數後自動完成的項目（預設為羚羊「參加幼童軍團集會至少4次」）' },
+    { key: '自動完成所需出席次數', scope: 'cub', type: 'int', def: 4, min: 1, max: 50, desc: '「出席」幾次後自動完成上面那一項（請假不算；進程項目只算上一級頒發後的出席）' },
+    { key: '快達標門檻（剩幾項以內）', scope: 'cub', type: 'int', def: 2, min: 1, max: 10, desc: '' },
+    { key: '未頒章再提醒天數', scope: 'cub', type: 'int', def: 14, min: 0, max: 365, desc: '填 0 表示不提醒' },
     { key: '每日排程時間（幾點）', type: 'int', def: 8, min: 0, max: 23, desc: '' },
     { key: '每週備份', type: 'bool', def: true, desc: '是/否' },
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
@@ -221,6 +290,25 @@ var Logic = (function () {
     { key: '允許外部網頁連線', type: 'bool', def: true, desc: '是：GitHub 等外部網頁也能連到後端（舊做法）。否：只有放在 GAS 上的網頁能用（鎖在 GAS）。請先確認 GAS 版網頁可以正常登入，再改成「否」' },
     { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
+  // 各分團自己的設定（附錄第 73 點⑥⑧）：小狼用原本的鍵，其他分團的鍵後面加「（分團）」；沒填就用預設值，不算錯誤
+  SETTINGS.filter(function (s) { return s.scope === 'section'; }).forEach(function (s) {
+    SECTIONS.filter(function (sec) { return sec !== DEFAULT_SECTION; }).forEach(function (sec) {
+      SETTINGS.push({ key: s.key + '（' + sec + '）', base: s.key, section: sec, scope: 'section', optional: true, type: s.type, def: s.def, min: s.min, max: s.max, desc: sec + '：' + s.desc });
+    });
+  });
+  // 全團共用功能由誰使用（只有管理員 admin 可以改）
+  SHARED_FUNCS.forEach(function (f) {
+    SETTINGS.push({ key: '共用功能權限：' + f, scope: 'shared', optional: true, type: 'choice', options: SHARED_LEVELS, def: CENTRAL, desc: '誰可以用「' + f + '」：管理員＝只有 admin；總團＝admin 與總團；團長＝再加上各分團團長' });
+  });
+  /** 取某分團的設定值（小狼用原本的鍵） */
+  function sectionSetting(values, key, section) {
+    var sec = sectionOf(section);
+    if (sec === DEFAULT_SECTION) return values[key];
+    var v = values[key + '（' + sec + '）'];
+    return v === undefined ? values[key] : v;
+  }
+  /** 某分團這個設定的實際鍵名 */
+  function sectionSettingKey(key, section) { return sectionOf(section) === DEFAULT_SECTION ? key : key + '（' + sectionOf(section) + '）'; }
 
   /**
    * 讀取設定分頁（二維陣列，含標題列），驗證範圍。
@@ -241,6 +329,12 @@ var Logic = (function () {
         values[s.key] = parseList(f ? f.value : '');
         return;
       }
+      if (s.type === 'choice') {
+        var cv = f ? clean(f.value) : '';
+        values[s.key] = s.options.indexOf(cv) >= 0 ? cv : s.def;
+        return;
+      }
+      if (s.optional && (!f || clean(f.value) === '')) { values[s.key] = s.def; return; }
       if (!f || clean(f.value) === '') {
         values[s.key] = s.def;
         errors.push({ key: s.key, row: f ? f.row : null, value: '', reason: f ? '空白，已使用預設值' : '缺少此設定，已使用預設值' });
@@ -317,6 +411,7 @@ var Logic = (function () {
     if (!s || s.type === 'list') return { ok: false, error: '不支援修改這個設定' };
     var v = clean(raw);
     if (s.type === 'bool') return v === '是' || v === '否' ? { ok: true, stored: v } : { ok: false, error: key + '：只能選「是」或「否」' };
+    if (s.type === 'choice') return s.options.indexOf(v) >= 0 ? { ok: true, stored: v } : { ok: false, error: key + '：只能選' + s.options.join('、') };
     if (s.type === 'str') return s.pattern.test(v) ? { ok: true, stored: v } : { ok: false, error: key + '：格式不正確' };
     var n = Number(v);
     if (!/^-?\d+$/.test(v) || n < s.min || n > s.max) return { ok: false, error: key + '：需為 ' + s.min + '～' + s.max + ' 的整數' };
@@ -324,7 +419,7 @@ var Logic = (function () {
   }
 
   function defaultSettingsRows() {
-    return [['鍵', '值', '說明']].concat(SETTINGS.map(function (s) {
+    return [['鍵', '值', '說明']].concat(SETTINGS.filter(function (s) { return !s.optional; }).map(function (s) {
       return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.type === 'list' ? s.def.join('、') : s.def, s.desc];
     }));
   }
@@ -1222,7 +1317,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,

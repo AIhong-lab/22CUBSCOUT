@@ -1,7 +1,7 @@
 {
-  "name": "22團幼童軍",
-  "short_name": "22團幼童軍",
-  "description": "22團幼童軍的進程、技能章、公佈欄與活動時間",
+  "name": "22團",
+  "short_name": "22團",
+  "description": "22團（稚齡、幼童軍、童軍、行義、羅浮）的公佈欄、行事曆、活動報名與進程",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",

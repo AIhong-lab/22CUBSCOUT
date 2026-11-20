@@ -67,14 +67,57 @@ const PAGE = 'https://pages.test/web/';
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();
 
-  // ═════ 童軍服務員：用邀請碼註冊 → 準備中，沒有後台 ═════
+  // ═════ 童軍服務員：用邀請碼註冊 → 進童軍的後台（附錄第 73 點） ═════
   env.api({ action: 'register', code, childName: '', username: 'scout01', password: 'scoutpass1', nickname: '王' });
   await login('scout01', 'scoutpass1');
-  await page.getByText('分團功能準備中').waitFor();
-  assert.match(await text(), /童軍／服務員（副團長）/);
-  assert.equal(await page.locator('#toAdmin').count(), 0, '沒有後台入口');
+  await page.locator('#adminQuick').waitFor();
+  assert.match(await page.locator('#title').innerText(), /22團 童軍後台/);
+  assert.equal(await page.locator('nav.tabs button[data-v=sign]').count(), 0, '童軍沒有簽核（進程第 2 期）');
+  assert.equal(await page.locator('#secSel').count(), 0, '只有一個分團時沒有分團切換');
+  await page.locator('#hdrLogout').click();
+  await page.getByText('已登出').waitFor();
+
+  // ═════ admin：分團切換、全團總覽、在童軍發全團公告 ═════
+  await login(made.username, made.password);
+  await page.locator('#allSecs').waitFor();
+  assert.match(await page.locator('#allSecs').innerText(), /稚齡童軍[\s\S]*幼童軍[\s\S]*羅浮童軍/);
+  await page.selectOption('#secSel', '童軍');
+  await page.locator('#title', { hasText: '童軍後台' }).waitFor();
+  await page.locator('nav.tabs button[data-v=notices]').click();
+  await page.locator('form#fn select[name=target]').waitFor();
+  await page.fill('form#fn input[name=title]', '全團團慶通知');
+  await page.selectOption('form#fn select[name=target]', '全團');
+  await page.click('form#fn button[type=submit]');
+  await page.getByText('全團團慶通知').waitFor();
+  assert.equal(env.rows('公告').find((r) => r[1] === '全團團慶通知')[8], '全團');
+  await page.locator('nav.tabs button[data-v=cubs]').click();
+  await page.getByText('＋ 新增團員').click();
+  await page.fill('input[name=name]', '測試童軍甲');
+  await page.click('button[type=submit]');
+  await page.getByText('測試童軍甲').first().waitFor();
+  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試童軍甲')[11], '童軍');
+  await page.locator('#hdrLogout').click();
+  await page.getByText('已登出').waitFor();
+
+  // ═════ 首頁（團部入口）顯示全團公告；家長註冊時替孩子選分團 ═════
+  await page.locator('nav.tabs button[data-v=home]').click();
+  await page.locator('#secCards').waitFor();
+  await page.getByText('全團團慶通知').waitFor();
+  await page.locator('nav.tabs button[data-v=login]').click();
+  await page.getByText('註冊新帳號').click();
+  await page.locator('[data-id=家長]').click();
+  await page.fill('input[name=child]', '測試童軍乙');
+  await page.selectOption('select[name=childSec]', '童軍');
+  await page.fill('input[name=nickname]', '測試童軍乙媽媽');
+  await page.fill('input[name=username]', 'scoutmom');
+  await page.fill('input[name=password]', 'scoutmom12'); await page.fill('input[name=password2]', 'scoutmom12');
+  await page.click('button[type=submit]');
+  await page.locator('input[name=agree]').check();
+  await page.click('button[type=submit]');
+  await page.getByText('等待團長審核').first().waitFor();
+  assert.equal(env.rows('註冊申請').find((r) => r[3] === '測試童軍乙')[11], '童軍');
 
   assert.deepEqual(errors, [], '網頁沒有錯誤');
   await browser.close();
-  console.log('多分團網頁測試通過（後端版本提醒、分團身分頁、邀請碼、其他分團準備中畫面）');
+  console.log('多分團網頁測試通過（後端版本提醒、分團身分頁、邀請碼、童軍後台、分團切換、全團公告、註冊選分團）');
 })().catch((e) => { console.error(e); process.exit(1); });

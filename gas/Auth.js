@@ -120,7 +120,12 @@ function purgeSessions_(accountId, exceptHash) {
  * 依憑證取得登入中的帳號；無效、過期、帳號停用一律回 SESSION_EXPIRED。
  * 回傳 {account, admin, sessionHash}
  */
-function requireAccount_(token) {
+/**
+ * 以登入憑證查出帳號與「目前分團」的身分（SPEC 附錄第 73 點⑬）。
+ * section：網頁送來的目前分團（_sec）；沒有權限或沒送就用預設（優先小狼）。前端送來的只是「想看哪個分團」，
+ * 權限一律由後端依管理員分頁判斷。
+ */
+function requireAccount_(token, section) {
   var fail = new ApiError(ERR.SESSION_EXPIRED, '登入已過期，請重新登入。');
   if (!token || typeof token !== 'string' || token.length > 200) throw fail;
   var h = sha256Hex_(token);
@@ -129,10 +134,23 @@ function requireAccount_(token) {
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
   var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
-  var admin = Logic.effectiveAdmins(rows, Logic.DEFAULT_SECTION)[0] || null;
-  // staff：這個人在各分團的身分（含小狼以外，給「分團功能準備中」畫面與分團身分設定用）
+  var isOwner = isReservedUsername_(acc.username) && rows.length > 0;
+  var sections = Logic.staffSections(rows, isOwner);
+  var pick = Logic.pickSection(sections, section);
+  var admin = null;
+  if (pick) {
+    // 目前分團的身分：有該分團的列就用那一列（姓名、職稱、LINE），總團／管理員沒有就借第一列
+    var base = Logic.effectiveAdmins(rows, pick.section)[0] || rows[0];
+    var line = '';
+    rows.forEach(function (r) { if (r.lineUserId && !line) line = r.lineUserId; });
+    admin = Object.assign({}, base, { role: pick.role, scope: pick.scope, section: pick.section, lineUserId: base.lineUserId || line });
+  }
+  // staff：這個人在各分團的身分（給分團身分設定與「準備中」畫面用）
   var staff = rows.map(function (a) { return { section: a.section, role: a.role, title: a.title }; });
-  return { account: acc, admin: admin, staff: staff, isCentral: rows.some(function (a) { return a.role === Logic.CENTRAL; }), sessionHash: h };
+  return {
+    account: acc, admin: admin, staff: staff, sections: sections, section: pick ? pick.section : null, isOwner: isOwner,
+    isCentral: rows.some(function (a) { return a.role === Logic.CENTRAL; }), sessionHash: h
+  };
 }
 
 function setPassword_(acc, password) {
