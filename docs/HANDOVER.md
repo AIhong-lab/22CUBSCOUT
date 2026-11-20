@@ -58,10 +58,17 @@
 
 **方式 B（備案）**：總團帳號把試算表「建立副本」→ 副本的 Apps Script 貼 `dist/Code.gs` → 設 Script Properties（`SPREADSHEET_ID` 改成新試算表）→ setup → 新部署。網址一定會變（要改 `GAS_URL` 與 LINE webhook）；複製完舊試算表要立刻停用，避免兩份資料分岔。
 
-**要先決定**
-- 總團帳號是一般 Gmail 還是 Google Workspace（學校或機構帳號）？Workspace 帳號有時不能接受外部轉來的擁有權，只能用方式 B。
-- 搬家的時間點（避開團集會前一天；整個過程大約 1～2 小時）。
-- GitHub repo、LINE 官方帳號要不要一起移交給總團。
+**已決定（2026-11-20）**
+- 總團帳號是**一般 Gmail** → 用**方式 A（轉移擁有權）**。Gmail 對 Gmail 可以轉移擁有權（對方要按接受）。
+- **GitHub repo 與 LINE 官方帳號也一起移交給總團**；移交後現任團長只當**維護者與管理員**：
+  - GitHub：總團成為 repo（或 organization）的擁有者，現任團長留在 Collaborators 當維護者。repo 改名或換擁有者後網站網址可能會變，要一起確認（`https://<擁有者>.github.io/<repo>/`），並更新 LINE 選單與手冊裡的網址。
+  - LINE 官方帳號：總團成為 LINE Official Account Manager 的管理員與 LINE Developers 的 Provider 擁有者，現任團長留為管理員；Messaging API 的 token 若重發，要重新貼到 Script Properties。
+  - 網站裡的 `admin` 帳號（最高權限）：交給誰保管由總團決定；現任團長維持管理員身分。
+- **整套系統做完再搬**；確切時間等總團決定。
+
+**還沒決定**
+- 搬家日期（避開團集會前一天；整個過程大約 1～2 小時）。
+- 總團希望 GitHub 與 LINE 用什麼方式移交（等現任團長詢問總團）。
 
 ## 五、每年固定要做的事
 | 時機 | 要做的事 |
