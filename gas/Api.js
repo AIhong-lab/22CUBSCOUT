@@ -34,7 +34,7 @@ function bootData_() {
   if (JSON.stringify(images).length > 300000) images = null;
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
-  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url };
+  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url, publicTabs: Logic.resolvePermissions(loadPermRules_(), { loggedIn: false }).tabs };
 }
 
 /** 公開資料快取（5 分鐘）：公佈欄、月曆與活動。後台任何動作之後由 clearPublicCache_ 清掉 */
@@ -81,7 +81,12 @@ function doPost(e) {
   var open = true;
   try { DB_CACHE_ = {}; open = loadSettings_().values['允許外部網頁連線'] !== false; } catch (e0) { open = true; }
   if (open) out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
-  else out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + webUrl_() };
+  else {
+    // [修補] 優先回傳 GAS Web App 網址，避免又指向被停用的外部 GitHub Pages 網址
+    var gasUrl = '';
+    try { gasUrl = ScriptApp.getService().getUrl() || ''; } catch (e1) { gasUrl = ''; }
+    out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + (gasUrl || webUrl_()) };
+  }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -202,23 +207,30 @@ function apiCheckCode_(req) {
 }
 
 /** 綁定一位小狼（寫入綁定紀錄、綁定碼次數 −1）；已綁定過則只更新同意版本 */
-function bindCub_(accountId, cub, consentVersion) {
+function bindCub_(accountId, cub, consentVersion, relation, skipCodeDecrement) {
   var now = new Date();
-  var existing = loadBindings_().filter(function (b) { return b.accountId === accountId && b.cubId === cub.cubId; })[0];
+  var rel = relation === Logic.RELATION.SELF ? Logic.RELATION.SELF : Logic.RELATION.PARENT;
+  var allMine = loadBindings_().filter(function (b) { return b.accountId === accountId; });
+  if (allMine.some(function (b) { return b.relation === Logic.RELATION.SELF && b.cubId !== cub.cubId; })) {
+    throw new ApiError(ERR.BAD_INPUT, '童軍本人帳號僅限綁定自己的資料，不能綁定其他團員。');
+  }
+  var existing = allMine.filter(function (b) { return b.cubId === cub.cubId; })[0];
   if (existing) {
     var row = existing._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
     row[3] = now; row[4] = consentVersion;
+    if (relation) row[5] = rel;
     updateRows_(SHEET.BINDINGS, [{ row: existing._row, values: row }]);
     return false;
   }
-  appendRows_(SHEET.BINDINGS, [[accountId, cub.cubId, now, now, consentVersion]]);
-  var cubRow = cub._raw.slice(0, HEADERS[SHEET.CUBS].length);
-  cubRow[6] = Math.max(0, cub.codeUsesLeft - 1);
-  updateRows_(SHEET.CUBS, [{ row: cub._row, values: cubRow }]);
+  appendRows_(SHEET.BINDINGS, [[accountId, cub.cubId, now, now, consentVersion, rel]]);
+  if (!skipCodeDecrement) {
+    var cubRow = cub._raw.slice(0, HEADERS[SHEET.CUBS].length);
+    cubRow[6] = Math.max(0, cub.codeUsesLeft - 1);
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: cubRow }]);
+  }
   return true;
 }
 
-/** 使用邀請碼成為管理員 */
 /** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
 function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
@@ -230,7 +242,6 @@ function redeemInvite_(accountId, invite, nickname) {
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
   updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
-  // 推播通知建立邀請碼的團長：階段 5 實作
 }
 
 function requireConsentVersion_(agreedVersion) {
@@ -275,13 +286,16 @@ function apiRegister_(req) {
 }
 
 function apiLogin_(req) {
+  var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+  var pw = String(req.password || '');
+  // [修補] 帳號或密碼空白直接回傳錯誤，避免浪費 2000 次 HMAC 運算與寫入空目標失敗紀錄
+  if (!name || !pw) throw new ApiError(ERR.BAD_LOGIN, '帳號或密碼錯誤。');
   return withLock_(function () {
     var settings = loadSettings_().values;
-    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
     assertNotLocked_('登入', name, settings);
     var acc = findAccountByName_(name);
     // 帳號不存在也照樣做一次雜湊，讓回應時間一致
-    var ok = Logic.verifyPassword(String(req.password || ''), acc ? acc.salt : 'x', acc ? acc.passwordHash : HASH_ITERATIONS + '$x', hmacHex_);
+    var ok = Logic.verifyPassword(pw, acc ? acc.salt : 'x', acc ? acc.passwordHash : HASH_ITERATIONS + '$x', hmacHex_);
     if (!acc || !ok || acc.status !== '啟用') {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或密碼錯誤。');
@@ -297,13 +311,15 @@ function apiLogin_(req) {
 
 /** 忘記密碼：帳號名稱＋團長給的臨時碼＋新密碼 */
 function apiResetPassword_(req) {
+  var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+  var code = Logic.normalizeCode(req.tempCode);
+  if (!name || !code) throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
   return withLock_(function () {
     var settings = loadSettings_().values;
-    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
     assertNotLocked_('登入', name, settings);
     var acc = findAccountByName_(name);
-    var code = Logic.normalizeCode(req.tempCode);
-    if (!acc || !Logic.isTempCodeValid(acc, Date.now()) || sha256Hex_(code) !== acc.tempCodeHash || acc.status !== '啟用') {
+    // [修補] 使用常數時間比對臨時碼雜湊
+    if (!acc || !Logic.isTempCodeValid(acc, Date.now()) || !Logic.constantTimeEqual(sha256Hex_(code), acc.tempCodeHash) || acc.status !== '啟用') {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
     }
@@ -401,7 +417,6 @@ function apiUnbind_(req, who) {
 
 // ───────────── 查詢 ─────────────
 
-/** 登入者的基本資訊、身分、綁定的小狼 */
 /**
  * 新的註冊方式（SPEC 附錄第 31 點）：選身分（家長／服務員）、填孩子姓名 → 建立帳號並送出申請，
  * 團長在後台核准後才綁定孩子或成為服務員。帳號可以先登入，看到「等待審核」。
@@ -505,14 +520,26 @@ function apiMe_(req, who) {
   mine.forEach(function (b) {
     var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0];
     if (!c) return;
-    list.push({ cubId: c.cubId, name: c.name, section: c.section, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
+    list.push({ cubId: c.cubId, name: c.name, section: c.section, relation: b.relation || Logic.RELATION.PARENT, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
   });
+  var hasParentBinding = list.some(function (x) { return x.relation !== Logic.RELATION.SELF; });
+  var isScoutSelf = !who.admin && list.length > 0 && !hasParentBinding;
+  var mySec = who.section || (list[0] ? list[0].section : '');
+  var permView = resolveWhoPerms_(who, hasParentBinding, isScoutSelf, mySec);
+  var allowedSections = (who.isOwner || who.isCentral)
+    ? Logic.SECTIONS.slice()
+    : (who.admin ? (who.sections || []).map(function (x) { return x.section; })
+      : list.map(function (x) { return x.section; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }));
+  var accountType = who.isOwner ? 'owner' : (who.isCentral ? 'central' : (who.admin ? (who.admin.role === Logic.ROLE.LEADER ? 'leader' : 'assistant') : (isScoutSelf ? 'scout_self' : (hasParentBinding ? 'parent' : 'guest'))));
   return {
     username: who.account.username,
     nickname: who.account.nickname,
     role: who.admin ? who.admin.role : null,
-    isOwner: !!who.admin && isReservedUsername_(who.account.username),
-    ownerExists: who.admin ? !!findAccountByName_(DEFAULT_ADMIN_USERNAME) : undefined,
+    isOwner: !!who.isOwner,
+    ownerExists: who.admin ? !!ownerId_() : undefined,
+    isScoutSelf: isScoutSelf,
+    accountType: accountType,
+    allowedSections: allowedSections,
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId, who.section) : [],
@@ -522,10 +549,14 @@ function apiMe_(req, who) {
     title: who.admin ? (who.admin.title || '') : '',
     canManageAll: who.admin ? canManageAll_(who) : false,
     shared: who.admin ? Logic.SHARED_FUNCS.filter(function (f) { return canShared_(who, f); }) : [],
+    // [新增] 依動態權限設定算出本帳號可顯示的分頁與可用動作，前端可直接用來切換分頁與內容
+    tabs: permView.tabs,
+    visibleTabs: permView.visibleTabs,
+    permissions: permView.actions,
     // 各分團身分（SPEC 附錄第 68 點）：staff 給「分團功能準備中」畫面；canManageStaff 決定後台是否顯示「分團身分」頁
     staff: who.staff || [],
     isCentral: !!who.isCentral,
-    canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
+    canManageStaff: !!who.isCentral || !!who.isOwner,
     serverVersion: APP_VERSION, // 網頁用來檢查後端是否已部署新版本（附錄第 72 點）
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
@@ -554,7 +585,13 @@ function apiCubDetail_(req, who) {
   }
   var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
   if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  return buildCubView_(cub, today_());
+  var isSelf = binding.relation === Logic.RELATION.SELF;
+  var pv = resolveWhoPerms_(who, !isSelf, isSelf, cub.section);
+  var view = buildCubView_(cub, today_());
+  view.relation = binding.relation || Logic.RELATION.PARENT;
+  if (!pv.tabs.member_progress) { view.hasProgress = false; view.units = []; view.nextChallenge = null; view.progressDisabledByPerm = true; }
+  if (!pv.tabs.member_attendance) { view.attendanceDisabledByPerm = true; view.attendance = { meetings: [], upcoming: [], counts: { attended: 0, late: 0, leave: 0 }, rate: null }; }
+  return view;
 }
 
 /** 組出家長畫面要的資料（也供後台列印簽核單共用） */
@@ -578,12 +615,12 @@ function buildCubView_(cub, today) {
     intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
     autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
     levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數'],
-    newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null
+    newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null,
+    joinDate: cub.joinDate
   });
 
-  // 簽核人帳號ID → 管理員姓名
-  var names = {};
-  loadAdmins_().forEach(function (a) { names[a.accountId] = a.name; });
+  // [修補] 簽核人帳號ID → 管理員姓名：改用全分團 adminNames_()，避免總團或他分團服務員簽核時顯示空白
+  var names = adminNames_();
 
   var unitViews = progress.units.map(function (u) {
     var info = units[u.category + '|' + u.unit] || {};

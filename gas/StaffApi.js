@@ -58,6 +58,15 @@ AUTHED_ACTIONS.staffSave = function (req, who) {
       logOp_(who.account.accountId, '修改分團身分', target.username, before, desc(v.role, v.section, title));
     } else {
       deleteRows_(SHEET.ADMINS, [v.row._row]);
+      // [修補] 移除分團身分時，若該人在該分團已無有效管理員身分則一併清理小隊輔
+      if (v.row.role !== Logic.CENTRAL) {
+        var remaining = loadAdminRows_();
+        var stillAdmin = Logic.effectiveAdmins(remaining, v.row.section).some(function (a) { return a.accountId === target.accountId; });
+        if (!stillAdmin) {
+          var stRows = loadSquadStaff_().filter(function (s) { return s.accountId === target.accountId && s.section === v.row.section; }).map(function (s) { return s._row; });
+          if (stRows.length) deleteRows_(SHEET.SQUAD_STAFF, stRows);
+        }
+      }
       logOp_(who.account.accountId, '移除分團身分', target.username, desc(v.row.role, v.row.section, v.row.title), '');
     }
     return {};

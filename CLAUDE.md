@@ -59,6 +59,12 @@
   - 帳號申請：`Logic.UNASSIGNED`（未指定）、`requestSection_`、`childSections_`（`childSections` 與 `childNames` 對應、`staffSection`）、`requestVisible_`、`requestAssign`；核准時第 12 欄寫實際分團。
   - 前端：`SECTIONS`／`SEC_INFO`（full、slug、icon）、`secFull`、`roleName`（羅浮群長）、`targetSel`／`targetPill`、`switchSection`（`#secSel`）、`adminTabs()`／`secHasProgress()`／`canShared()`／`pageOk()`；公開 `renderHome`（團部入口 `#secCards`）、`renderSectionPage(sec)`（`#cub` 等）、`renderCatalog(view, {sec})`（`#secTabs`、`#scout/progress`）、`mountNotices(max, after, secs)`／`noticesFor`、`drawCalendar(el, site, ym, secs)`、`mountCalendarAndFb`；家長 `viewHomeBasic`（非小狼）、`mySecs()`；註冊 `secSelectHtml`／`childSecsOf`。測試 `tests/sections.test.js`、`tests/web/sections.js`。
 
+- **權限設定、移交中心、童軍本人帳號、選單精簡（SPEC 附錄第 76 點，2026-11-23 拆回團長交接包，模擬測試通過、未在真實環境驗證）**：
+  - 權限：`Logic.PERM_FEATURES`（33 項，`scope` public／parent／admin，`actions` 對應後端動作，`sharedFunc` 對應共用功能，`locked`）、`defaultPermRows`、`parsePermRules(rows, settingsValues)`（讀試算表二維陣列；沒有那一列的共用功能沿用「共用功能權限：○○」）、`validatePermUpdate`、`allowsFeature`（沒有最高管理員時團長照舊可用總團級功能）、`resolvePermissions`。後端 `loadPermRules_()`、`resolveWhoPerms_(who, isParent, isScoutSelf, section)`；`requireRole_` 先看權限表的 `actions`，沒列的動作才用 `Logic.can`；`canShared_` 也走權限表。API `permSettingsGet`／`permSettingsSave`（同步寫回共用功能權限設定）；`me.tabs`／`visibleTabs`／`permissions`／`accountType`／`allowedSections`；公開資料帶 `publicTabs`（只隱藏入口，不是保密）。**「全團系統參數設定」(tab_settings) 不綁 manageSettings**，分團團長仍可改自己分團的設定。
+  - 最高管理員：`ownerId_()` 先讀設定分頁原始列「最高管理員帳號ID」（`OWNER_SETTING_KEY`，不在 `Logic.SETTINGS`、設定頁看不到），沒有才是 admin；`loadAdmins_` 合成列用 `ownerId_()` 並標 `_synthetic`（`adminUpdate` 拒絕改合成列）。API `handoverSummary`、`handoverTransfer`（重新讀帳號核對密碼、失敗計入登入鎖定、確認帳號名稱、接任者加總團、原管理員可保留總團）。
+  - 童軍本人：`Logic.SCOUT_SELF`／`SELF_ELIGIBLE_SECTIONS`；`bindCub_(accountId, cub, version, relation, skipCodeDecrement)`（有「本人」綁定的帳號不能再綁別人）；`apiParentCreateScoutAccount_`（TeamApi）；`apiCubDetail_` 依 `member_progress`／`member_attendance` 過濾；`parentLeave`、`eventRegister` 依 `parent_leave`／`parent_events`。
+  - 前端：`hasTab(id, fallback)`、`state.publicTabs`、`isTopAdmin()`、`myAllowedSecs()`、`PARENT_TABS()`／`PARENT_SEGS()`（函式）、`pageOk(k)`、`firstPageOf`、`PAGE_GROUPS`（6 組：集會、進程、團員、公告活動、帳號權限、團務設定）、`adminMoreItems`／`adminSideTabs`（8 入口）、`ADMIN_PAGES.perms`／`handover`、`ADMIN_PAGES.mine` 含 LINE 連結。後台首頁不再呼叫 `homeIntroHtml`。e2e 用 `openPage(k)` 進頁面。測試 `tests/perms.test.js`。
+
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
 - 後端：Google Apps Script Web App（`gas/`，用 clasp 管理），資料庫是 Google 試算表。
@@ -121,7 +127,8 @@
 | 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼） |
 | 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間 |
-| 設定 | 鍵、值、說明 |
+| 設定 | 鍵、值、說明（另有「最高管理員帳號ID」一列，只能由移交中心寫入） |
+| 權限設定 | 功能代碼、功能名稱、分類、最低權限、停用分團、更新人、更新時間（系統分頁，由後台權限設定頁維護） |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 
 - 試算表只顯示 `EDITABLE_SHEETS`（Config.js）的 5 個分頁，其他系統分頁由 setup() 隱藏（SPEC 附錄第 30 點）；新增分頁時要決定它屬於哪一種。

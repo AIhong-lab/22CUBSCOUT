@@ -117,10 +117,6 @@ function purgeSessions_(accountId, exceptHash) {
 }
 
 /**
- * 依憑證取得登入中的帳號；無效、過期、帳號停用一律回 SESSION_EXPIRED。
- * 回傳 {account, admin, sessionHash}
- */
-/**
  * 以登入憑證查出帳號與「目前分團」的身分（SPEC 附錄第 73 點⑬）。
  * section：網頁送來的目前分團（_sec）；沒有權限或沒送就用預設（優先小狼）。前端送來的只是「想看哪個分團」，
  * 權限一律由後端依管理員分頁判斷。
@@ -134,7 +130,8 @@ function requireAccount_(token, section) {
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
   var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
-  var isOwner = isReservedUsername_(acc.username) && rows.length > 0;
+  var oid = ownerId_();
+  var isOwner = oid ? (acc.accountId === oid && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
   var sections = Logic.staffSections(rows, isOwner);
   var pick = Logic.pickSection(sections, section);
   var admin = null;

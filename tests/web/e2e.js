@@ -85,6 +85,14 @@ function seed(env) {
   const noHScroll = async (where) => assert.ok(!(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)), '不可橫向捲動：' + where);
   const text = () => page.locator('#app').innerText();
   const tab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
+  /** 打開後台某一頁：導覽列有就點導覽列，否則點頁面上方的分段切換，再不然直接切換（附錄第 76 點：選單收斂成 8 個入口） */
+  const openPage = async (k) => {
+    const b = page.locator(`nav.tabs button[data-v=${k}]`);
+    if (await b.count() && await b.first().isVisible()) return b.first().click();
+    const g = page.locator(`#gseg button[data-g=${k}]`);
+    if (await g.count() && await g.first().isVisible()) return g.first().click();
+    await page.evaluate((x) => goAdmin(x), k);
+  };
   /** 家長「進度」分頁裡的切換：map（闖關）、badges（徽章）、attendance（出席） */
   const seg = async (k) => { await page.locator('nav.tabs button[data-v=progress]').click(); await page.locator(`#pseg button[data-seg=${k}]`).click(); };
 
@@ -367,16 +375,16 @@ function seed(env) {
   await page.locator('#sysTips').evaluate((el) => { el.parentNode.open = true; });
   const ah = await text();
   assert.match(ah, /今天沒有集會/);
-  // 後台首頁上半部和網站首頁一樣，下面才是後台（附錄第 48 點）
-  assert.match(ah, /進程查詢[\s\S]*技能章查詢[\s\S]*什麼是「進程」？[\s\S]*後台：今天要做的事[\s\S]*今天沒有集會[\s\S]*系統提示/);
+  // 後台首頁直接顯示今天要做的事，不再疊公開網站介紹（附錄第 76 點，取代第 48 點）
+  assert.match(ah, /今天沒有集會[\s\S]*系統提示/);
+  assert.doesNotMatch(ah, /什麼是「進程」？/);
   assert.ok(!/怎麼登入？/.test(ah), '已登入不用再看怎麼登入');
   assert.match(ah, /測試小狼甲[\s\S]*環保/, '待頒章列出環保章');
   assert.match(ah, /還沒有備份紀錄/, 'setup 已自動建立備份資料夾，只是還沒備份過');
   await shot('10-admin-home'); await noHScroll('後台首頁');
 
   // 行事曆：新增今天的集會
-  await tab('more');
-  await page.locator('.menu-grid button[data-p=calendar]').click();
+  await openPage('calendar');
   await page.fill('textarea[name=lines]', '2026-11-14 團集會\n2026-11-21 露營');
   await page.click('form#f button[type=submit]');
   await page.getByText('露營').first().waitFor();
@@ -429,8 +437,7 @@ function seed(env) {
   await shot('12-cub'); await noHScroll('小狼頁');
 
   // 小隊設定：新增
-  await tab('more');
-  await page.locator('.menu-grid button[data-p=squads]').click();
+  await openPage('squads');
   await page.locator('[data-rn=二小隊]').waitFor();
   assert.match(await text(), /一小隊[\s\S]*在團 1 位[\s\S]*二小隊[\s\S]*在團 2 位/);
   await page.fill('form#f input[name=name]', '黑豹小隊');
@@ -474,15 +481,13 @@ function seed(env) {
   assert.ok(env.rows('頒章紀錄').some((r) => r[1] === '環保' && r[3] === '11 月團集會'));
 
   // 進程總覽
-  await tab('more');
-  await page.locator('.menu-grid button[data-p=overview]').click();
+  await openPage('overview');
   await page.locator('table.tbl').waitFor();
   assert.equal(await page.locator('table.tbl tbody tr').count(), 3);
   await shot('14-overview');
 
   // ═════ 後台也能改密碼（修正：原本只有家長畫面的「我的」才有） ═════
-  await tab('more');
-  await page.locator('.menu-grid button[data-p=mine]').click();
+  await openPage('mine');
   await page.getByText('🔒 修改密碼').click();
   await page.fill('#fp input[name=oldPassword]', 'leaderpass1');
   await page.fill('#fp input[name=newPassword]', 'leaderpass2'); await page.fill('#fp input[name=newPassword2]', 'leaderpass2');
@@ -490,7 +495,7 @@ function seed(env) {
   await page.getByText('密碼已修改').waitFor();
   assert.equal(env.api({ action: 'login', username: 'leader01', password: 'leaderpass2' }).ok, true);
   await page.locator('[data-back]').click();
-  await page.locator('.menu-grid').first().waitFor();
+  await page.locator('#app section').first().waitFor();
 
   // ═════ 名單直接編輯：表格裡改小隊，一次儲存 ═════
   await tab('cubs');
@@ -522,8 +527,7 @@ function seed(env) {
   assert.ok(dialogs.some((m) => /0／4 次一般團集會/.test(m)), '未滿 4 次先確認');
 
   // ═════ 4B：項目管理與設定 ═════
-  await tab('more');
-  await page.locator('.menu-grid button[data-p=items]').click();
+  await openPage('items');
   await page.getByText('📝 項目管理').waitFor();
   assert.match(await text(), /剛入團任務|任務（5 項啟用）/);
   await page.locator('[data-cat=技能章]').click();
@@ -548,8 +552,7 @@ function seed(env) {
   assert.equal(await page.locator('.sheet [data-key]').count(), 4);
   await page.locator('.sheet [data-close]').click();
   // 設定
-  await page.locator('[data-back]').click();
-  await page.locator('.menu-grid button[data-p=settings]').click();
+  await openPage('settings');
   await page.getByText('⚙️ 設定').waitFor();
   const inp = page.locator('[data-k="晉級所需出席次數"]');
   assert.equal(await inp.inputValue(), '8');
@@ -559,7 +562,7 @@ function seed(env) {
   assert.equal(env.ctx.loadSettings_().values['晉級所需出席次數'], 6);
   await shot('41-settings'); await noHScroll('設定');
   await page.locator('[data-back]').click();
-  await page.locator('.menu-grid').first().waitFor();
+  await page.locator('#app section').first().waitFor();
 
   // 切換到家長畫面
   await page.locator('#toParent').click();
@@ -589,9 +592,12 @@ function seed(env) {
   const side = await page.locator('nav.tabs').boundingBox();
   assert.ok(side.x < 5 && side.width < 260 && side.height > 500, '後台在寬螢幕是左側選單：' + JSON.stringify(side));
   assert.equal(await page.locator('nav.tabs button[data-v=more]').count(), 0, '寬螢幕不需要「更多」');
-  await page.locator('nav.tabs button[data-v=overview]').click();
+  // 左側選單收斂成幾個主入口，進入後用上方分段切換（附錄第 76 點）
+  assert.ok(await page.locator('nav.tabs button').count() <= 10, '左側選單精簡');
+  await page.locator('nav.tabs button[data-v=sign]').click();
+  await page.locator('#gseg button[data-g=overview]').click();
   await page.locator('table.tbl').waitFor();
-  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'overview');
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'sign', '合併頁面亮同一個入口');
   await shot('20-desktop-admin'); await noHScroll('寬螢幕後台');
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();
@@ -665,7 +671,7 @@ function seed(env) {
   assert.ok(newCub, '核准後新增小狼');
 
   // ═════ 公告欄、小隊輔、批次匯入、正副小隊長、升團（團長，寬螢幕） ═════
-  const sideTab = (v) => page.locator(`nav.tabs button[data-v=${v}]`).click();
+  const sideTab = openPage;
   await sideTab('notices');
   await page.getByText('發布公告').waitFor();
   await page.fill('form#fn input[name=title]', '12 月團集會通知');
@@ -724,12 +730,13 @@ function seed(env) {
   assert.match(csvText, /^\ufeff姓名,小隊,剛入團,羚羊,狼,鹿,豹,技能章數,出席次數\r\n/, 'CSV 有 BOM 與標題列');
   assert.match(csvText, /測試小狼甲,一小隊/);
 
-  // 選單合併（附錄第 47 點）：總覽內切換進程／出席；行事曆內切換年度出席；帳號與權限內切換所有帳號
+  // 選單收斂（附錄第 76 點，取代第 47 點）：8 個主入口，入口內用上方分段切換
   assert.equal(await page.locator('nav.tabs button[data-v=attOverview], nav.tabs button[data-v=periods], nav.tabs button[data-v=accounts]').count(), 0, '合併後選單不再各自一項');
-  assert.match(await page.locator('nav.tabs').innerText(), /帳號申請[\s\S]*總覽[\s\S]*列印紙本[\s\S]*帳號與權限/);
+  assert.match(await page.locator('nav.tabs').innerText(), /集會與點名[\s\S]*進程與頒章[\s\S]*團員管理[\s\S]*公告與活動[\s\S]*帳號與權限[\s\S]*團務設定/);
+  await page.locator('nav.tabs button[data-v=cubs]').click();
   await page.locator('#gseg button[data-g=attOverview]').click();
-  await page.getByText('出席總覽').waitFor();
-  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'overview', '切到出席時選單仍亮「總覽」');
+  await page.getByText('出席總覽').first().waitFor();
+  assert.equal(await page.locator('nav.tabs button.on').getAttribute('data-v'), 'cubs', '切到出席總覽時選單仍亮「團員管理」');
   assert.equal(await page.locator('#gseg button.on').getAttribute('data-g'), 'attOverview');
   await sideTab('calendar');
   await page.locator('#gseg button[data-g=periods]').click();
@@ -780,7 +787,7 @@ function seed(env) {
   await sideTab('admins');
   await page.locator('#ownerNote').waitFor();
   assert.match(await text(), /🔒 最高權限/);
-  assert.equal(await page.locator('#gseg button').count(), 2, '帳號與權限：管理員｜所有帳號');
+  assert.equal(await page.locator('#gseg button[data-g=admins]').count(), 1, '帳號與權限入口內有分頁切換');
   assert.equal(await page.locator('.list-row', { hasText: '帳號 admin' }).locator('[data-ad]').count(), 0, 'admin 不能被管理');
   assert.equal(await page.locator('.list-row', { hasText: '帳號 leader01' }).locator('[data-ad]').count(), 0, '一般團長不能動團長');
   await page.locator('[data-pick]').first().click();

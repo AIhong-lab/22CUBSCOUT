@@ -32,6 +32,13 @@ function setupCore_() {
     }
     if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
 
+    // 權限設定：只在分頁沒有資料列時匯入預設權限表
+    if (dataRowCount_(SHEET.PERMS) === 0) {
+      var permRows = Logic.defaultPermRows().slice(1);
+      appendRows_(SHEET.PERMS, permRows);
+      report.seeded.push(SHEET.PERMS + ' ' + permRows.length + ' 項');
+    }
+
     // 設定：只補上缺少的鍵，不改既有值
     var have = {};
     readRows_(SHEET.SETTINGS).forEach(function (r) { have[Logic.clean(r[0])] = true; });
@@ -95,7 +102,7 @@ function ensureFirstLeaderInvite_() {
   var len = loadSettings_().values['綁定碼長度'] + 2;
   var code = Logic.generateCode(len, randInt_, allCodes_());
   var exp = new Date(now + FIRST_LEADER_INVITE_HOURS * 3600000);
-  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '']]);
+  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '', Logic.DEFAULT_SECTION, '']]);
   return { code: code, expiresAt: exp.getTime(), reused: false };
 }
 
