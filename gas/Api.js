@@ -129,15 +129,18 @@ function dispatch_(req) {
  * 公開標準查詢（不用登入，SPEC 附錄第 21 點）：只回傳啟用中的進程與技能章項目、說明與晉級條件。
  * 不含任何小狼、家長或管理員的資料。結果快取 5 分鐘以加快速度。
  */
-function apiCatalog_() {
-  var cache = CacheService.getScriptCache();
-  var hit = cache.get('CATALOG2');
+function apiCatalog_(req) {
+  // 分團（附錄第 75 點）：沒帶或不是有進程的分團時是小狼（舊網址 #progress、#badges）
+  var sec = Logic.sectionOf(req && req.section);
+  if (!Logic.progressModule(sec)) return { units: [], section: sec, levels: [] };
+  var cache = CacheService.getScriptCache(), ckey = 'CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec);
+  var hit = cache.get(ckey);
   if (hit) return JSON.parse(hit);
-  var unitsInfo = loadUnits_();
+  var unitsInfo = loadUnits_(sec);
   var byItem = loadDetails_().byItem;
   var groups = {}, order = [];
   loadItems_().items.forEach(function (it) {
-    if (!it.enabled) return;
+    if (!it.enabled || it.sec !== sec) return;
     var k = it.category + '|' + it.unit;
     if (!groups[k]) {
       var info = unitsInfo[k] || {};
@@ -146,8 +149,8 @@ function apiCatalog_() {
     }
     groups[k].items.push({ section: it.section, text: it.text, details: detailsView_(byItem, it.id) });
   });
-  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }) };
-  try { cache.put('CATALOG2', JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
+  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }), section: sec, levels: Logic.levelsOf(sec), badgeGroups: Logic.progressModule(sec).badgeGroups };
+  try { cache.put(ckey, JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
   return out;
 }
 
@@ -561,7 +564,7 @@ function apiCubDetail_(req, who) {
 function buildCubView_(cub, today) {
   var settings = loadSettings_().values;
   var items = loadItems_().items;
-  var units = loadUnits_();
+  var units = loadUnits_(cub.section);
   var byItem = loadDetails_().byItem;
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date); });
   var mById = {};
@@ -571,15 +574,16 @@ function buildCubView_(cub, today) {
   var att = loadAttendance_().filter(function (a) { return a.cubId === cub.cubId && mById[a.meetingId]; });
   var attRecords = att.map(function (a) { return { date: mById[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: mById[a.meetingId].type, counts: mById[a.meetingId].counts }; });
 
-  // 第 1 期只有小狼有進程模組；其他分團的孩子只顯示出席，進程畫面寫「準備中」（附錄第 73 點）
+  // 有進程模組的分團（小狼、稚齡）依各自的規則計算；其他分團的孩子只顯示出席，進程畫面寫「準備中」（附錄第 73 點）
   var hasProgress = Logic.PROGRESS_SECTIONS.indexOf(cub.section) >= 0;
-  var progress = !hasProgress ? { units: [], currentLevel: '' } : Logic.computeCubProgress({
+  // 家長畫面不帶完成期限（附錄第 75 點：期限只在後台提醒）
+  var params = hasProgress ? Logic.progressParams(settings, cub.section) : null;
+  if (params) delete params.deadlines;
+  var progress = !hasProgress ? { units: [], currentLevel: '' } : Logic.computeCubProgress(Object.assign(params, {
     cubId: cub.cubId, items: items, completions: loadCompletions_(), awards: loadAwards_(),
-    intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
-    autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
-    levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數'],
+    today: today, attendance: attRecords,
     newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null
-  });
+  }));
 
   // 簽核人帳號ID → 管理員姓名
   var names = {};
@@ -621,7 +625,7 @@ function buildCubView_(cub, today) {
       tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart,
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
-    hasProgress: hasProgress,
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位

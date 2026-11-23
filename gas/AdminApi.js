@@ -20,7 +20,7 @@ function secCubs_() { var sec = curSec_(); return loadCubs_().filter(function (c
 function squadListOf_(section) { return Logic.sectionSetting(loadSettings_().values, '小隊清單', section || curSec_()).slice(); }
 function sectionSettingOf_(key, section) { return Logic.sectionSetting(loadSettings_().values, key, section || curSec_()); }
 
-/** 只有有進程模組的分團（第 1 期只有小狼）才能用的後台動作 */
+/** 只有有進程模組的分團（Logic.PROGRESS_SECTIONS：小狼、稚齡）才能用的後台動作 */
 var PROGRESS_ACTIONS = ['signoffData', 'signoff', 'signoffRevoke', 'overview', 'award', 'awardEdit', 'awardRevoke', 'backfill', 'printData',
   'itemsTree', 'itemSave', 'itemToggle', 'itemMove', 'sectionRename', 'unitSave', 'detailSave', 'detailToggle', 'itemsExport', 'itemsReload', 'unitImageSave'];
 /** 全團共用功能（由管理員指定誰可以用）：動作 → 功能名稱 */
@@ -98,32 +98,33 @@ function progressCtx_() {
     if (!meetings[a.meetingId]) return;
     (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: meetings[a.meetingId].type, counts: meetings[a.meetingId].counts });
   });
-  var trialEnd = {};
-  loadCubs_().forEach(function (c) { if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate; });
+  var trialEnd = {}, secOf = {}, joinOf = {};
+  loadCubs_().forEach(function (c) { if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate; secOf[c.cubId] = c.section; joinOf[c.cubId] = c.joinDate; });
   return {
-    trialEnd: trialEnd,
+    trialEnd: trialEnd, secOf: secOf, joinOf: joinOf,
     settings: settings, items: loadItems_().items, completions: loadCompletions_(), awards: loadAwards_(),
     meetings: meetings, attByCub: attByCub, today: today_()
   };
 }
 
+/** 一位團員的進度：依他所屬分團的進程模組與該分團的設定計算（附錄第 75 點） */
 function progressOf_(ctx, cubId) {
-  return Logic.computeCubProgress({
+  var sec = (ctx.secOf || {})[cubId] || Logic.DEFAULT_SECTION;
+  var p = Logic.progressParams(ctx.settings, sec) || { section: sec };
+  return Logic.computeCubProgress(Object.assign(p, {
     cubId: cubId, items: ctx.items, completions: ctx.completions, awards: ctx.awards,
-    intervalMonths: ctx.settings['晉級間隔月數'], today: ctx.today, attendance: ctx.attByCub[cubId] || [],
-    autoItemId: ctx.settings['出席自動完成項目ID'], autoCount: ctx.settings['自動完成所需出席次數'],
-    levelAttendCount: ctx.settings['晉級所需出席次數'], newbieAttendCount: ctx.settings['剛入團所需出席次數'],
-    newbieAfter: (ctx.trialEnd || {})[cubId] || null
-  });
+    today: ctx.today, attendance: ctx.attByCub[cubId] || [],
+    newbieAfter: (ctx.trialEnd || {})[cubId] || null, joinDate: (ctx.joinOf || {})[cubId] || ''
+  }));
 }
 
-/** 依頒章紀錄重算目前級別（頒章、撤銷、補登後呼叫） */
+/** 進程級別的顯示名稱（剛入團不加「級」） */
+function levelLabel_(lv) { return lv === Logic.NEWBIE ? lv : lv + '級'; }
+
+/** 依頒章紀錄重算目前級別（頒章、撤銷、補登後呼叫；只看這位團員所屬分團的級別） */
 function refreshCubLevel_(cubId) {
   var cub = findCub_(cubId);
-  var lv = '';
-  var awarded = {};
-  loadAwards_().forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = true; });
-  Logic.LEVELS.forEach(function (l) { if (awarded[l]) lv = l; });
+  var lv = Logic.currentLevelOf(loadAwards_().filter(function (a) { return a.cubId === cubId; }), cub.section);
   if (cub.level !== lv) {
     var row = cubRow_(cub);
     row[4] = lv;
@@ -136,9 +137,9 @@ function refreshCubLevel_(cubId) {
 registerAdmin_('adminHome', 'viewOverview', function (req, who) {
   var ctx = progressCtx_();
   var cubs = secCubs_();
-  // 第 1 期只有小狼有進程：其他分團沒有待頒章、快達標
+  // 只有有進程模組的分團才有待頒章、快達標、期限提醒
   var hasProgress = Logic.PROGRESS_SECTIONS.indexOf(curSec_()) >= 0;
-  var scan = hasProgress ? scanCubs_(ctx, cubs) : { pending: [], near: [], waiting: [] };
+  var scan = hasProgress ? scanCubs_(ctx, cubs) : { pending: [], near: [], waiting: [], due: [] };
   var pending = scan.pending, near = scan.near, waiting = scan.waiting;
   // 體驗者：一般團集會出席滿設定次數 → 提醒團長「轉為入團」
   var trialNeed = sectionSettingOf_('體驗所需出席次數');
@@ -154,7 +155,8 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
     section: curSec_(), hasProgress: hasProgress,
     // 全團總覽（附錄第 73 點⑯）：管理員、總團看得到各分團的人數與待辦
     allSections: (who.isOwner || who.isCentral) ? allSectionsSummary_() : null,
-    pending: pending, waiting: waiting, near: near, trials: trials,
+    pending: pending, waiting: waiting, near: near, trials: trials, levels: Logic.levelsOf(curSec_()),
+    due: scan.due.map(function (d) { return { cubId: d.cubId, name: d.name, squad: d.squad, unit: d.unit, deadline: d.deadline, over: d.over, done: d.done, total: d.total }; }),
     alerts: {
       itemErrors: loadItems_().errors,
       settingErrors: loadSettings_().errors,
@@ -380,7 +382,7 @@ registerAdmin_('cubUnbind', 'manageBindCodes', function (req, who) {
 
 /** 簽核畫面需要的資料：啟用項目、在團小狼、我最近簽過的項目 */
 registerAdmin_('signoffData', 'signoff', function (req, who) {
-  var items = loadItems_().items.filter(function (i) { return i.enabled; }).map(function (i) {
+  var items = sectionItems_(curSec_()).filter(function (i) { return i.enabled; }).map(function (i) {
     return { id: i.id, category: i.category, unit: i.unit, section: i.section, text: i.text };
   });
   var cubs = secCubs_().filter(function (c) { return c.status === '在團'; }).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad }; });
@@ -405,7 +407,7 @@ registerAdmin_('signoff', 'signoff', function (req, who) {
     var active = {};
     secCubs_().forEach(function (c) { if (c.status === '在團') active[c.cubId] = true; });
     var enabled = {};
-    loadItems_().items.forEach(function (i) { if (i.enabled) enabled[i.id] = true; });
+    sectionItems_(curSec_()).forEach(function (i) { if (i.enabled) enabled[i.id] = true; });
     if (cubIds.some(function (c) { return !active[c]; })) throw new ApiError(ERR.BAD_INPUT, '名單中有不在團的小狼，請重新整理後再試。');
     if (itemIds.some(function (i) { return !enabled[i]; })) throw new ApiError(ERR.BAD_INPUT, '項目中有已停用的項目，請重新整理後再試。');
     var plan = Logic.planBatchSignoff(loadCompletions_(), cubIds, itemIds, date, who.account.accountId, Logic.clean(req.note).slice(0, 100));
@@ -444,7 +446,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
   var names = adminNames_();
   var signerOf = {};
   ctx.completions.forEach(function (c) { if (c.cubId === cub.cubId && Logic.isCountedCompletion(c)) signerOf[c.itemId] = c.signer; });
-  var units = loadUnits_();
+  var units = loadUnits_(cub.section);
   var byItem = loadDetails_().byItem;
   var att = ctx.attByCub[cub.cubId] || [];
   var period = sectionPeriod_(cub.section, ctx.today);
@@ -456,7 +458,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
   }
   return {
     cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section },
-    hasProgress: hasProgress,
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
     roles: roleHistory_(cub.cubId),
     trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, sectionSettingOf_('體驗所需出席次數', cub.section)) : null,
     units: p.units.map(function (u) {
@@ -464,6 +466,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
       return {
         category: u.category, unit: u.unit, group: info.group || '', order: info.order || 9999, status: u.status, done: u.done, total: u.total,
         eligible: u.eligible, eligibleDate: u.eligibleDate, waitingUntil: u.waitingUntil || '', attendRequired: u.attendRequired || 0, attendSinceLast: u.attendSinceLast || 0,
+        deadline: u.deadline || '', deadlineState: u.deadlineState || '',
         lastCompletionDate: u.lastCompletionDate, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
         items: u.items.map(function (i) {
           var s = signerOf[i.id];
@@ -489,7 +492,7 @@ registerAdmin_('overview', 'viewOverview', function () {
     var att = Logic.attendanceCounts(ctx.attByCub[c.cubId] || []);
     return { cubId: c.cubId, name: c.name, squad: c.squad, currentLevel: p.currentLevel || '', levels: levels, badges: badges, attended: att.attended };
   });
-  return { rows: rows, squads: squadsOf_(secCubs_()) };
+  return { rows: rows, squads: squadsOf_(secCubs_()), levels: Logic.levelsOf(curSec_()) };
 });
 
 // ───────────── 頒章、修改、撤銷、補登 ─────────────
@@ -517,9 +520,10 @@ registerAdmin_('award', 'award', function (req, who) {
       if (!u) { errors.push(label + '：找不到這個級別或技能章'); return; }
       if (u.status === Logic.STATUS.AWARDED) { errors.push(label + '：已經頒發過了'); return; }
       if (u.status !== Logic.STATUS.DONE_PENDING) { errors.push(label + '：項目還沒全部完成（已完成 ' + u.done + '／' + u.total + '）；上線前已有的章請用「補登」'); return; }
-      if (u.category === Logic.CATEGORY.PROGRESS && u.unit !== Logic.LEVELS[0]) {
-        var prev = Logic.LEVELS[Logic.LEVELS.indexOf(u.unit) - 1];
-        if (!ctx.awards.some(function (a) { return a.cubId === cub.cubId && a.unit === prev; })) { errors.push(label + '：' + prev + (prev === Logic.NEWBIE ? '' : '級') + '還沒有頒發紀錄，請先頒發或補登'); return; }
+      var LV = Logic.levelsOf(cub.section);
+      if (u.category === Logic.CATEGORY.PROGRESS && u.unit !== LV[0]) {
+        var prev = LV[LV.indexOf(u.unit) - 1];
+        if (!ctx.awards.some(function (a) { return a.cubId === cub.cubId && a.unit === prev && a.sec === cub.section; })) { errors.push(label + '：' + levelLabel_(prev) + '還沒有頒發紀錄，請先頒發或補登'); return; }
       }
       var v = Logic.validateAwardDate(date, u.lastCompletionDate, ctx.today);
       if (!v.ok) { errors.push(label + '：' + v.error); return; }
@@ -531,7 +535,7 @@ registerAdmin_('award', 'award', function (req, who) {
     if (errors.length) throw new ApiError(ERR.BAD_INPUT, errors.join('\n'));
     if (warnings.length && !req.confirm) return { needConfirm: true, warnings: warnings };
     var now = new Date();
-    appendRows_(SHEET.AWARDS, ok.map(function (x) { return [x.cub.cubId, x.unit.unit, date, occasion, note, who.account.accountId, now]; }));
+    appendRows_(SHEET.AWARDS, ok.map(function (x) { return [x.cub.cubId, x.unit.unit, date, occasion, note, who.account.accountId, now, secCell_(x.cub.section)]; }));
     var touched = {};
     ok.forEach(function (x) {
       logOp_(who.account.accountId, '頒章', x.cub.cubId, '', x.unit.unit + ' ' + date + (occasion ? ' ' + occasion : ''));
@@ -544,7 +548,8 @@ registerAdmin_('award', 'award', function (req, who) {
 });
 
 function findAward_(cubId, unit) {
-  var a = loadAwards_().filter(function (x) { return x.cubId === Logic.clean(cubId) && x.unit === Logic.clean(unit); })[0];
+  var cub = findCub_(cubId); // 只找得到目前分團的團員
+  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit) && x.sec === cub.section; })[0];
   if (!a) throw new ApiError(ERR.NOT_FOUND, '找不到這筆頒章紀錄。');
   return a;
 }
@@ -573,7 +578,7 @@ registerAdmin_('awardRevoke', 'award', function (req, who) {
     var a = findAward_(req.cubId, req.unit);
     deleteRows_(SHEET.AWARDS, [a._row]);
     logOp_(who.account.accountId, '撤銷頒章', a.cubId, [a.unit, a.date, a.occasion, a.note, a.signer].join('／'), '');
-    if (Logic.LEVELS.indexOf(a.unit) >= 0) refreshCubLevel_(a.cubId);
+    if (Logic.isLevelOf(a.sec, a.unit)) refreshCubLevel_(a.cubId);
     // 階段 5：重算達標、清除不再達標的通知紀錄
     return {};
   });
@@ -588,25 +593,25 @@ registerAdmin_('backfill', 'backfill', function (req, who) {
   var date = requireDate_(Logic.clean(req.date), '頒發日期');
   if (date > today_()) throw new ApiError(ERR.BAD_INPUT, '補登的頒發日期不可以是未來的日期。');
   var unit = Logic.clean(req.unit);
-  var category = Logic.LEVELS.indexOf(unit) >= 0 ? Logic.CATEGORY.PROGRESS : Logic.CATEGORY.BADGE;
   return withLock_(function () {
     var cub = findCub_(req.cubId);
-    var items = loadItems_().items;
+    var category = Logic.isLevelOf(cub.section, unit) ? Logic.CATEGORY.PROGRESS : Logic.CATEGORY.BADGE;
+    var items = sectionItems_(cub.section);
     if (!items.some(function (i) { return i.unit === unit && i.category === category; })) throw new ApiError(ERR.BAD_INPUT, '找不到這個級別或技能章。');
-    var plan = Logic.planBackfill({ cubId: cub.cubId, category: category, unit: unit, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() });
+    var plan = Logic.planBackfill({ cubId: cub.cubId, section: cub.section, category: category, unit: unit, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() });
     if (plan.alreadyAwarded) throw new ApiError(ERR.BAD_INPUT, cub.name + ' 的' + unit + '已經有頒章紀錄了。');
     if (plan.missingLowerLevels.length && req.includeLower === undefined) return { needConfirm: true, missingLowerLevels: plan.missingLowerLevels };
     var plans = [plan];
     if (req.includeLower === true) {
       // 較低級別依級別順序（由低到高）排在前面
       plans = plan.missingLowerLevels.map(function (lv) {
-        return Logic.planBackfill({ cubId: cub.cubId, category: Logic.CATEGORY.PROGRESS, unit: lv, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() });
+        return Logic.planBackfill({ cubId: cub.cubId, section: cub.section, category: Logic.CATEGORY.PROGRESS, unit: lv, date: date, occasion: Logic.clean(req.occasion), signer: who.account.accountId, items: items, completions: loadCompletions_(), awards: loadAwards_() });
       }).concat(plans);
     }
     var comps = [], awards = [], now = new Date();
     plans.forEach(function (p) {
       p.newCompletions.forEach(function (c) { comps.push(Logic.completionToRow(c)); });
-      awards.push([p.award.cubId, p.award.unit, p.award.date, p.award.occasion, p.award.note, p.award.signer, now]);
+      awards.push([p.award.cubId, p.award.unit, p.award.date, p.award.occasion, p.award.note, p.award.signer, now, secCell_(cub.section)]);
     });
     appendRows_(SHEET.COMPLETIONS, comps);
     appendRows_(SHEET.AWARDS, awards);
@@ -835,6 +840,7 @@ function settingGroupFor_(def, who) {
   if (!def || def.type === 'list') return null;
   if (def.scope === 'shared') return who.isOwner || (!ownerId_() && who.isCentral) ? '權限' : null;
   if (def.scope === 'cub') return curSec_() === Logic.DEFAULT_SECTION ? '分團' : null;
+  if (def.scope === 'progress') return def.section === curSec_() ? '分團' : null;
   if (def.scope === 'section') return def.key === Logic.sectionSettingKey(def.base || def.key, curSec_()) ? '分團' : null;
   return canShared_(who, '系統設定') ? '全團' : null;
 }
@@ -1321,13 +1327,13 @@ registerAdmin_('lineUnlink', 'linkLine', function (req, who) {
 /** 一個進程級別、多位小狼的簽核單資料 */
 registerAdmin_('printData', 'printSheet', function (req) {
   var unit = Logic.clean(req.unit);
-  if (Logic.LEVELS.indexOf(unit) < 0) throw new ApiError(ERR.BAD_INPUT, '請選擇進程級別。');
+  if (!Logic.isLevelOf(curSec_(), unit)) throw new ApiError(ERR.BAD_INPUT, '請選擇進程級別。');
   var ids = (req.cubIds || []).map(Logic.clean);
   var ctx = progressCtx_();
   var names = adminNames_();
   var signerOf = {};
   ctx.completions.forEach(function (c) { if (Logic.isCountedCompletion(c)) signerOf[c.cubId + '|' + c.itemId] = c.signer; });
-  var info = loadUnits_()[Logic.CATEGORY.PROGRESS + '|' + unit] || {};
+  var info = loadUnits_(curSec_())[Logic.CATEGORY.PROGRESS + '|' + unit] || {};
   var sheets = secCubs_().filter(function (c) { return ids.indexOf(c.cubId) >= 0; }).map(function (c) {
     var u = progressOf_(ctx, c.cubId).units.filter(function (x) { return x.category === Logic.CATEGORY.PROGRESS && x.unit === unit; })[0];
     return {

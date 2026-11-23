@@ -359,34 +359,43 @@ function deleteRegsOfAccount_(accountId) {
 
 // ───────────── 進程章與技能章的圖片（團長上傳，公開顯示） ─────────────
 
-function loadUnitImages_() {
-  var map = {};
+/** 某分團的章圖：{ '類別|名稱': {image, _row} }（第 6 欄分團，空白＝小狼） */
+function loadUnitImages_(section) {
+  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || ''), map = {};
   readRows_(SHEET.UNIT_IMAGES).forEach(function (r) {
+    if (Logic.sectionOf(r[5]) !== sec) return;
     var k = Logic.clean(r[1]) + '|' + Logic.clean(r[0]);
     if (Logic.clean(r[0]) && Logic.isUnitImage(String(r[2] || ''))) map[k] = { image: String(r[2]), _row: r._row };
   });
   return map;
 }
 
-/** 公開：{ '進程|狼': 'data:image/…', … }，只含還存在的級別與章 */
+/**
+ * 公開：{ '進程|狼': 'data:image/…', '稚齡|技能章|種植': … }，只含還存在的級別與章。
+ * 小狼的鍵沿用「類別|名稱」，其他分團前面加「分團|」（稚齡和小狼都有種植章）。
+ */
 function apiUnitImages_() {
-  var units = loadUnits_(), imgs = loadUnitImages_(), out = {};
-  Object.keys(imgs).forEach(function (k) { if (units[k]) out[k] = imgs[k].image; });
+  var out = {};
+  Logic.PROGRESS_SECTIONS.forEach(function (sec) {
+    var units = loadUnits_(sec), imgs = loadUnitImages_(sec);
+    Object.keys(imgs).forEach(function (k) { if (units[k]) out[(sec === Logic.DEFAULT_SECTION ? '' : sec + '|') + k] = imgs[k].image; });
+  });
   return { images: out };
 }
 PUBLIC_ACTIONS.unitImages = apiUnitImages_;
 
-/** image 是前端縮小後的 data URL；空字串＝移除圖片 */
+/** image 是前端縮小後的 data URL；空字串＝移除圖片。只改目前分團的章 */
 registerAdmin_('unitImageSave', 'manageItems', function (req, who) {
   var category = Logic.clean(req.category), unit = Logic.clean(req.unit), image = String(req.image || '');
   if (image && !Logic.isUnitImage(image)) throw new ApiError(ERR.BAD_INPUT, '圖片格式不正確或檔案太大，請換一張圖再試。');
+  var sec = curSec_();
   return withLock_(function () {
     var key = category + '|' + unit;
-    if (!loadUnits_()[key]) throw new ApiError(ERR.NOT_FOUND, '找不到這個級別或技能章。');
-    var cur = loadUnitImages_()[key];
+    if (!loadUnits_(sec)[key]) throw new ApiError(ERR.NOT_FOUND, '找不到這個級別或技能章。');
+    var cur = loadUnitImages_(sec)[key];
     if (!image) { if (cur) deleteRows_(SHEET.UNIT_IMAGES, [cur._row]); }
-    else if (cur) updateRows_(SHEET.UNIT_IMAGES, [{ row: cur._row, values: [unit, category, image, who.account.accountId, new Date()] }]);
-    else appendRows_(SHEET.UNIT_IMAGES, [[unit, category, image, who.account.accountId, new Date()]]);
+    else if (cur) updateRows_(SHEET.UNIT_IMAGES, [{ row: cur._row, values: [unit, category, image, who.account.accountId, new Date(), secCell_(sec)] }]);
+    else appendRows_(SHEET.UNIT_IMAGES, [[unit, category, image, who.account.accountId, new Date(), secCell_(sec)]]);
     logOp_(who.account.accountId, image ? '上傳章的圖片' : '移除章的圖片', key, '', '');
     return {};
   });
