@@ -1570,7 +1570,7 @@ TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-23a';
+var APP_VERSION = '2026-11-23b';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -3069,7 +3069,7 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
     // 全團總覽（附錄第 73 點⑯）：管理員、總團看得到各分團的人數與待辦
     allSections: (who.isOwner || who.isCentral) ? allSectionsSummary_() : null,
     pending: pending, waiting: waiting, near: near, trials: trials, levels: Logic.levelsOf(curSec_()),
-    due: scan.due.map(function (d) { return { cubId: d.cubId, name: d.name, squad: d.squad, unit: d.unit, deadline: d.deadline, over: d.over, done: d.done, total: d.total }; }),
+    due: scan.due.map(function (d) { return { cubId: d.cubId, name: d.name, squad: d.squad, category: d.category, unit: d.unit, deadline: d.deadline, over: d.over, done: d.done, total: d.total }; }),
     alerts: {
       itemErrors: loadItems_().errors,
       settingErrors: loadSettings_().errors,

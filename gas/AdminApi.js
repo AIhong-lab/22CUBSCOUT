@@ -156,7 +156,7 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
     // 全團總覽（附錄第 73 點⑯）：管理員、總團看得到各分團的人數與待辦
     allSections: (who.isOwner || who.isCentral) ? allSectionsSummary_() : null,
     pending: pending, waiting: waiting, near: near, trials: trials, levels: Logic.levelsOf(curSec_()),
-    due: scan.due.map(function (d) { return { cubId: d.cubId, name: d.name, squad: d.squad, unit: d.unit, deadline: d.deadline, over: d.over, done: d.done, total: d.total }; }),
+    due: scan.due.map(function (d) { return { cubId: d.cubId, name: d.name, squad: d.squad, category: d.category, unit: d.unit, deadline: d.deadline, over: d.over, done: d.done, total: d.total }; }),
     alerts: {
       itemErrors: loadItems_().errors,
       settingErrors: loadSettings_().errors,
