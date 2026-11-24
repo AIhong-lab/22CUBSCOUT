@@ -1,12 +1,12 @@
 /**
  * LINE webhook（網址需帶 ?key=WEBHOOK_KEY）
  * 階段 4A：管理員「連結 LINE 通知」——在官方帳號聊天室輸入後台給的 6 位數配對碼。
- * 階段 5：關鍵字回覆（可晉級、快達標、進度）。
+ * 階段 5：關鍵字回覆（可晉級、快達標、進度、點名）。
  */
 function handleWebhook_(e) {
   var key = PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY');
   // 密鑰不符：直接忽略
-  if (!key || e.parameter.key !== key) return;
+  if (!key || !Logic.constantTimeEqual(String(e.parameter.key || ''), key)) return;
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return; }
   // 只處理格式正確的請求
@@ -36,7 +36,7 @@ function handlePairing_(code, lineUserId, replyToken) {
     logOp_(accountId, '連結 LINE 通知', a.name, '', ''); // 不記 userId
     return a.name;
   });
-  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團系統的通知。之後團員達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
+  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團系統的通知。之後團員達標時會在這裡通知你。\n也可以輸入「可晉級」、「快達標」或「點名」查名單。');
 }
 
 /** 回覆訊息（不計入推播額度） */

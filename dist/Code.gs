@@ -60,6 +60,9 @@ var Logic = (function () {
   var STAFF_ROLES = [CENTRAL, ROLE.LEADER, ROLE.ASSISTANT];
   /** 綁定紀錄「關係」：空白視為家長 */
   var RELATION = { PARENT: '家長', SELF: '本人' };
+  /** 童軍以上（有手機，由家長建立的本人帳號）的權限層級名稱與適用分團 */
+  var SCOUT_SELF = '童軍本人';
+  var SELF_ELIGIBLE_SECTIONS = ['童軍', '行義', '羅浮'];
 
   function sectionOf(v) {
     var x = clean(v);
@@ -242,7 +245,8 @@ var Logic = (function () {
   /** 解析 CSV（支援雙引號、逗號、換行） */
   function parseCsv(text) {
     var rows = [], row = [], cell = '', q = false;
-    text = String(text).replace(/^﻿/, '');
+    // [修補] 補回 UTF-8 BOM 移除（原 /^/ 遺失 \uFEFF）
+    text = String(text).replace(/^\uFEFF/, '');
     for (var i = 0; i < text.length; i++) {
       var c = text[i];
       if (q) {
@@ -408,7 +412,6 @@ var Logic = (function () {
     return { ok: true, list: cur };
   }
 
-  /** setup() 用：設定分頁初始內容（含標題列） */
   /**
    * 後台設定頁：檢查單一設定值（SPEC 7.8）。小隊清單另有專屬頁面，不在這裡改。
    * @return {{ok: boolean, stored?: string, error?: string}} stored 為要寫入試算表的文字
@@ -425,6 +428,7 @@ var Logic = (function () {
     return { ok: true, stored: String(n) };
   }
 
+  /** setup() 用：設定分頁初始內容（含標題列） */
   function defaultSettingsRows() {
     return [['鍵', '值', '說明']].concat(SETTINGS.filter(function (s) { return !s.optional; }).map(function (s) {
       return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.type === 'list' ? s.def.join('、') : s.def, s.desc];
@@ -678,8 +682,6 @@ var Logic = (function () {
     return Object.keys(set).length;
   }
 
-
-
   /** 第二期預留：只有「回報狀態為空或已確認」才算完成 */
   function isCountedCompletion(rec) {
     var s = clean(rec && rec.reportStatus);
@@ -710,7 +712,8 @@ var Logic = (function () {
       .map(function (a) { return a.date; }).sort();
     var awarded = {};
     (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
-    // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）
+    // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）。
+    // 舊生用補登剛入團，不設「啟用基準日」（SPEC 附錄第 64、65 點）
     if (!awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
       awarded[NEWBIE] = { cubId: cubId, unit: NEWBIE, date: null, occasion: '已晉級（視為通過）', implicit: true };
     }
@@ -744,7 +747,7 @@ var Logic = (function () {
       if (!groups[k]) { groups[k] = { category: it.category, unit: it.unit, items: [] }; order.push(k); }
       groups[k].items.push(it);
     });
-    // 進程四級即使沒有項目也要列出
+    // 進程各級即使沒有項目也要列出
     LEVELS.forEach(function (lv) {
       var k = CATEGORY.PROGRESS + '|' + lv;
       if (!groups[k]) { groups[k] = { category: CATEGORY.PROGRESS, unit: lv, items: [] }; order.push(k); }
@@ -801,7 +804,8 @@ var Logic = (function () {
       var prev = LEVELS[LEVELS.indexOf(unit) - 1];
       if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
       prevDate = awarded[prev].date || '';
-      if (INTERVAL_LEVELS.indexOf(unit) >= 0) {
+      // [修補] 確保 prevDate 為合法日期字串再計算 addMonths，避免產生 NaN-NaN-NaN
+      if (INTERVAL_LEVELS.indexOf(unit) >= 0 && isDateStr(prevDate)) {
         var ready = addMonths(prevDate, intervalMonths || 0);
         if (ready > date) date = ready;
       }
@@ -1044,7 +1048,7 @@ var Logic = (function () {
   }
 
   function constantTimeEqual(a, b) {
-    if (a.length !== b.length) return false;
+    if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
     var r = 0;
     for (var i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
     return r === 0;
@@ -1117,6 +1121,171 @@ var Logic = (function () {
     manageRoles: [ROLE.LEADER],
     postNotice: [ROLE.LEADER, ROLE.ASSISTANT]
   };
+
+  // ───────────── 動態分頁與內容權限設定（不同權限顯示不同分頁與內容） ─────────────
+  var PERM_LEVELS = ['管理員', CENTRAL, ROLE.LEADER, ROLE.ASSISTANT, '家長', '已登入', '公開', '停用'];
+  var ADMIN_PERM_LEVELS = ['管理員', CENTRAL, ROLE.LEADER, ROLE.ASSISTANT, '停用'];
+  var PUBLIC_PERM_LEVELS = ['公開', '已登入', '僅家長以上', '僅管理員', '停用'];
+  var PARENT_PERM_LEVELS = [SCOUT_SELF, '家長', '僅管理員', '停用'];
+
+  /**
+   * 系統可設定的分頁與功能清單（由總團／管理員於後台「權限與分頁設定」調整）。
+   * - id：前端分頁／功能代碼
+   * - group：六大分類（公開與成員內容／家長與童軍本人功能／分團日常團務／分團團員與幹部／進程與頒章管理／總團管理與移交）
+   * - def：預設最低權限
+   * - options：允許調整的權限選項
+   * - actions：對應後端 PERMISSIONS 動作代碼
+   * - sharedFunc：若對應原本 SHARED_FUNCS，則與系統設定共用功能連動
+   * - locked：true 表示管理員與總團永遠保有存取權，防止誤鎖自己
+   */
+  var PERM_FEATURES = [
+    // 1. 公開與成員瀏覽內容（各分團登入者僅看自己分團與全團）
+    { id: 'pub_about', name: '認識 22 團（簡介）', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_notices', name: '公佈欄', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_calendar', name: '集會時間與月曆', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_progress', name: '進程總表查詢', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_badges', name: '技能章總表查詢', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    // 2. 家長與童軍本人專屬功能（童軍／行義／羅浮本人帳號僅看自己）
+    { id: 'member_progress', name: '個人進程與徽章紀錄', group: '家長與童軍本人功能', scope: 'parent', def: SCOUT_SELF, options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'member_attendance', name: '個人出席與集點紀錄', group: '家長與童軍本人功能', scope: 'parent', def: SCOUT_SELF, options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_leave', name: '線上請假申請', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_events', name: '線上活動報名', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_create_scout', name: '家長建立童軍本人帳號', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: ['家長', '僅管理員', '停用'], actions: [] },
+    // 3. 分團日常團務（各分團嚴格隔離）
+    { id: 'tab_home', name: '後台首頁與待辦總覽', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['viewOverview'] },
+    { id: 'tab_attendance', name: '集會點名', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['attendance'] },
+    { id: 'tab_calendar', name: '行事曆與年度出席', group: '分團日常團務', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageCalendar'] },
+    { id: 'tab_notices', name: '公告發布與管理', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['postNotice'] },
+    { id: 'tab_events', name: '活動管理與繳費', group: '分團日常團務', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageEvents'] },
+    // 4. 分團團員與幹部（各分團嚴格隔離）
+    { id: 'tab_roster', name: '團員名單檢視', group: '分團團員與幹部', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['viewRoster'] },
+    { id: 'tab_cubs_manage', name: '團員異動與綁定碼', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageCubs', 'manageBindCodes'] },
+    { id: 'tab_requests', name: '註冊申請審核', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['reviewRequests'] },
+    { id: 'tab_squads', name: '小隊與小隊輔設定', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageSquadStaff', 'manageRoles'] },
+    { id: 'tab_admins', name: '分團正副團長與服務員管理', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageAdmins', 'manageInvites'] },
+    { id: 'tab_privacy', name: '離團個資處理', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['privacy'] },
+    // 5. 進程與頒章管理（依分團進程模組）
+    { id: 'tab_signoff', name: '進程簽核與撤銷自簽', group: '進程與頒章管理', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['signoff', 'revokeOwnSignoff'] },
+    { id: 'tab_signoff_revoke_any', name: '撤銷他人簽核', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['revokeAnySignoff'] },
+    { id: 'tab_award', name: '頒章與上線補登', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['award', 'backfill'] },
+    { id: 'tab_print', name: '列印進程簽核單', group: '進程與頒章管理', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['printSheet'] },
+    { id: 'tab_items', name: '進程項目與章圖管理', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageItems'] },
+    // 6. 總團管理與移交中心（僅總團／管理員）
+    // 只管「全團」的系統參數；各分團自己的設定（小隊、體驗次數、小狼進程設定）仍由該分團團長在設定頁修改（附錄第 74 點）
+    { id: 'tab_settings', name: '全團系統參數設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '系統設定' },
+    { id: 'tab_site', name: '網站公開內容設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '網站內容' },
+    { id: 'tab_consent', name: '個資告知條款管理', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '個資告知' },
+    { id: 'tab_accounts', name: '全團帳號總管', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '帳號管理' },
+    { id: 'tab_backup', name: '資料備份與權限檢查', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '備份' },
+    { id: 'tab_permissions', name: '權限與分頁設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: ['管理員', CENTRAL], actions: ['managePermissions'], locked: true },
+    { id: 'tab_handover', name: '團務移交與交接中心', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: ['管理員', CENTRAL], actions: ['manageHandover'] }
+  ];
+
+  function defaultPermRows() {
+    return [['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間']].concat(PERM_FEATURES.map(function (f) {
+      return [f.id, f.name, f.group, f.def, '', '系統預設', ''];
+    }));
+  }
+
+  /**
+   * 解析「權限設定」分頁；缺少或無效列退回預設。
+   * rows：試算表讀出的二維陣列（第一列是標題）或 [{id, level, disabledSections}]。
+   * settingsValues：設定分頁的值；分頁裡沒有這一列的共用功能，沿用「共用功能權限：○○」（附錄第 74 點）
+   */
+  function parsePermRules(rows, settingsValues) {
+    var byId = {};
+    (rows || []).forEach(function (r, i) {
+      var o = Array.isArray(r) ? { id: r[0], level: r[3], disabledSections: r[4] } : r;
+      if (Array.isArray(r) && i === 0 && clean(r[0]) === '功能代碼') return;
+      var id = clean(o && o.id);
+      if (id) byId[id] = o;
+    });
+    var rules = {};
+    PERM_FEATURES.forEach(function (f) {
+      var row = byId[f.id];
+      var fallback = f.def;
+      if (f.sharedFunc && settingsValues) {
+        var sv = clean(settingsValues['共用功能權限：' + f.sharedFunc]);
+        if (f.options.indexOf(sv) >= 0) fallback = sv;
+      }
+      var lv = row && f.options.indexOf(clean(row.level)) >= 0 ? clean(row.level) : fallback;
+      var dis = row ? parseList(row.disabledSections).filter(function (s) { return SECTIONS.indexOf(s) >= 0; }) : [];
+      rules[f.id] = {
+        id: f.id, name: f.name, group: f.group, scope: f.scope,
+        level: lv, options: f.options.slice(), actions: f.actions.slice(),
+        sharedFunc: f.sharedFunc || '', locked: !!f.locked,
+        disabledSections: f.locked ? [] : dis
+      };
+    });
+    return rules;
+  }
+
+  function validatePermUpdate(id, level, disabledSections) {
+    var feat = PERM_FEATURES.filter(function (f) { return f.id === clean(id); })[0];
+    if (!feat) return { ok: false, error: '找不到功能代碼：' + clean(id) };
+    var lv = clean(level);
+    if (feat.options.indexOf(lv) < 0) return { ok: false, error: '「' + feat.name + '」的權限選項不正確：' + lv };
+    var dis = [];
+    if (!feat.locked && disabledSections) {
+      var raw = Array.isArray(disabledSections) ? disabledSections : parseList(disabledSections);
+      raw.forEach(function (s) {
+        var c = clean(s);
+        if (SECTIONS.indexOf(c) >= 0 && dis.indexOf(c) < 0) dis.push(c);
+      });
+    }
+    return { ok: true, feature: feat, level: lv, disabledSections: dis };
+  }
+
+  /**
+   * 判斷指定使用者（或訪客）在特定分團下是否能看到／使用某功能。
+   * - 總團、管理員永遠看到所有內容（除非該功能為「停用」，且鎖定項永遠開放給總團／管理員）
+   * - 各分團正副團長、服務員、家長、童軍本人皆受「停用分團」與分團隔離規則限制
+   */
+  function allowsFeature(rule, ctx) {
+    ctx = ctx || {};
+    var sec = ctx.section ? sectionOf(ctx.section) : '';
+    var isAdmin = !!ctx.isOwner || !!ctx.isCentral || ctx.role === ROLE.LEADER || ctx.role === ROLE.ASSISTANT;
+    var isTop = !!ctx.isOwner || !!ctx.isCentral;
+    if (rule.locked && (ctx.isOwner || (rule.level === CENTRAL && ctx.isCentral) || (!ctx.ownerExists && ctx.isCentral))) return true;
+    if (rule.level === '停用') return false;
+    if (sec && rule.disabledSections && rule.disabledSections.indexOf(sec) >= 0 && !isTop) return false;
+    if (rule.scope === 'public') {
+      if (rule.level === '公開') return true;
+      if (rule.level === '已登入') return !!ctx.loggedIn;
+      if (rule.level === '僅家長以上') return !!ctx.loggedIn && (!!ctx.isParent || isAdmin);
+      if (rule.level === '僅管理員') return isAdmin;
+      return false;
+    }
+    if (rule.scope === 'parent') {
+      if (rule.level === SCOUT_SELF) return !!ctx.loggedIn && (!!ctx.isScoutSelf || !!ctx.isParent || isAdmin);
+      if (rule.level === '家長') return !!ctx.loggedIn && (!!ctx.isParent || isAdmin);
+      if (rule.level === '僅管理員') return isAdmin;
+      return false;
+    }
+    // admin scope
+    if (!isAdmin) return false;
+    if (ctx.isOwner) return true;
+    // 還沒有最高管理員帳號時照舊：總團與團長都可以（附錄第 46、74 點）
+    if (!ctx.ownerExists && (rule.level === '管理員' || rule.level === CENTRAL)) return !!ctx.isCentral || ctx.role === ROLE.LEADER;
+    if (rule.level === '管理員') return false;
+    if (rule.level === CENTRAL) return !!ctx.isCentral;
+    if (rule.level === ROLE.LEADER) return !!ctx.isCentral || ctx.role === ROLE.LEADER;
+    if (rule.level === ROLE.ASSISTANT) return true;
+    return false;
+  }
+
+  /** 算出登入者（或訪客）完整可用的分頁與後端動作表 */
+  function resolvePermissions(rules, ctx) {
+    var tabs = {}, visibleTabs = [], actions = {};
+    PERM_FEATURES.forEach(function (f) {
+      var rule = (rules && rules[f.id]) || { id: f.id, scope: f.scope, level: f.def, disabledSections: [], actions: f.actions, locked: !!f.locked };
+      var ok = allowsFeature(rule, ctx);
+      tabs[f.id] = ok;
+      if (ok) visibleTabs.push(f.id);
+      (f.actions || []).forEach(function (act) { actions[act] = ok; });
+    });
+    return { tabs: tabs, visibleTabs: visibleTabs, actions: actions };
+  }
 
   function can(role, action) {
     var allowed = PERMISSIONS[action];
@@ -1229,8 +1398,10 @@ var Logic = (function () {
     } else if (mode === 'anonymize') {
       var serial = nextAnonymousSerial(cubRows);
       var row = cubRows[cubRowIdx].slice();
+      while (row.length < 12) row.push('');
       replacement = '已離團小狼' + serial;
-      row[1] = replacement; row[2] = ''; row[5] = ''; row[6] = 0; row[7] = '已匿名';
+      // [修補] 匿名化時一併清除職務欄（row[10]），避免殘留小隊長標記
+      row[1] = replacement; row[2] = ''; row[5] = ''; row[6] = 0; row[7] = '已匿名'; row[10] = '';
       upd['小狼名單'] = [{ row: cubRowIdx + 1, values: row }];
       counts['小狼名單'] = 1;
       del['綁定紀錄'] = rowsOf('綁定紀錄');
@@ -1324,7 +1495,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
@@ -1337,11 +1508,12 @@ var Logic = (function () {
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
     validateUsername: validateUsername, validatePassword: validatePassword, isWeakPassword: isWeakPassword, validateNickname: validateNickname,
-    hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
+    hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
     TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
+    PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
     diffNotifications: diffNotifications
@@ -1394,6 +1566,7 @@ var SHEET = {
   EVENT_REGS: '活動報名',
   UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
+  PERMS: '權限設定',
   LOG: '操作日誌'
 };
 
@@ -1432,6 +1605,7 @@ HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
+HEADERS[SHEET.PERMS] = ['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
 
 /**
@@ -1447,7 +1621,7 @@ TEXT_COLUMNS[SHEET.ITEMS] = [1];
 TEXT_COLUMNS[SHEET.DETAILS] = [1];
 TEXT_COLUMNS[SHEET.COMPLETIONS] = [1, 2, 3, 4];
 TEXT_COLUMNS[SHEET.AWARDS] = [1, 3, 6];
-TEXT_COLUMNS[SHEET.MEETINGS] = [1, 2];
+TEXT_COLUMNS[SHEET.MEETINGS] = [1, 2, 3, 4];
 TEXT_COLUMNS[SHEET.ATTENDANCE] = [1, 2, 4];
 TEXT_COLUMNS[SHEET.PERIODS] = [2, 3];
 TEXT_COLUMNS[SHEET.EXTRA] = [2];
@@ -1461,12 +1635,13 @@ TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
 TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
+TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
 
 /**
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-19e';
+var APP_VERSION = '2026-11-23a';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -1533,14 +1708,13 @@ function sheet_(name) {
   return sh;
 }
 
-/** 讀整個分頁（含標題列），欄數以標題定義為準 */
 /**
  * 很少變動的分頁暫存在 CacheService（10 分鐘），省掉每次請求都讀試算表的時間（SPEC 附錄第 58 點）。
  * 經由程式寫入時 invalidate_ 會清掉；直接在試算表編輯時由 onEdit 清掉。這些分頁沒有日期欄，存成 JSON 不會變型。
  */
 var SHEET_CACHE_SECONDS = 600;
 function sheetCacheKey_(name) {
-  return [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].indexOf(name) >= 0 ? 'SHEET_' + name : '';
+  return [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS, SHEET.PERMS].indexOf(name) >= 0 ? 'SHEET_' + name : '';
 }
 function readAll_(name) {
   if (DB_CACHE_[name]) return DB_CACHE_[name];
@@ -1564,7 +1738,7 @@ function clearAllCaches_() {
   DB_CACHE_ = {};
   try {
     var c = CacheService.getScriptCache();
-    [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].forEach(function (n) { c.remove('SHEET_' + n); });
+    [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS, SHEET.PERMS].forEach(function (n) { c.remove('SHEET_' + n); });
     c.remove('CATALOG2');
   } catch (e) { /* 不影響主要操作 */ }
   clearPublicCache_();
@@ -1597,6 +1771,10 @@ function appendRows_(name, rows) {
   // 超過試算表目前列數時先加列（getRange 不會自動擴充）
   var need = start + data.length - 1 - sh.getMaxRows();
   if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+  // [修補] 寫入前先確保 TEXT_COLUMNS 為純文字格式，避免新擴充列把日期或全數字代碼自動轉型
+  (TEXT_COLUMNS[name] || []).forEach(function (col) {
+    if (col <= width) sh.getRange(start, col, data.length, 1).setNumberFormat('@');
+  });
   sh.getRange(start, 1, data.length, width).setValues(data);
   invalidate_(name);
 }
@@ -1672,12 +1850,14 @@ function today_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'); }
 
 // ───────────── 讀取成物件 ─────────────
 
+function validDateStr_(v) { var d = dateStr_(v); return Logic.isDateStr(d) ? d : ''; }
+
 function loadCubs_() {
   return readRows_(SHEET.CUBS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
-      cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: dateStr_(r[3]),
+      cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: validDateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), trialStart: dateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
     };
   });
 }
@@ -1717,10 +1897,10 @@ function loadAdmins_(section) {
   var rows = loadAdminRows_(), line = {};
   rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
   var list = Logic.effectiveAdmins(rows, sec);
-  var owner = findAccountByName_(DEFAULT_ADMIN_USERNAME);
-  if (owner && !list.some(function (a) { return a.accountId === owner.accountId; })) {
-    var orow = rows.filter(function (r) { return r.accountId === owner.accountId; })[0];
-    if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員' }));
+  var ownerAcc = ownerId_();
+  if (ownerAcc && !list.some(function (a) { return a.accountId === ownerAcc; })) {
+    var orow = rows.filter(function (r) { return r.accountId === ownerAcc; })[0];
+    if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員', _synthetic: true }));
   }
   // LINE 通知是跟著人走的：同一人任何一列有連結都算
   return list.map(function (a) {
@@ -1836,6 +2016,12 @@ function latestConsent_() {
 }
 
 function loadSettings_() { return Logic.parseSettings(readAll_(SHEET.SETTINGS)); }
+
+/** 讀取動態權限設定；若試算表尚未建立「權限設定」分頁，自動退回內建預設值不報錯 */
+function loadPermRules_() {
+  var rows = ss_().getSheetByName(SHEET.PERMS) ? readAll_(SHEET.PERMS) : [];
+  return Logic.parsePermRules(rows, loadSettings_().values);
+}
 
 /** 寫操作日誌（不得寫入密碼、臨時碼、登入憑證） */
 function logOp_(actor, action, target, before, after) {
@@ -1962,10 +2148,6 @@ function purgeSessions_(accountId, exceptHash) {
 }
 
 /**
- * 依憑證取得登入中的帳號；無效、過期、帳號停用一律回 SESSION_EXPIRED。
- * 回傳 {account, admin, sessionHash}
- */
-/**
  * 以登入憑證查出帳號與「目前分團」的身分（SPEC 附錄第 73 點⑬）。
  * section：網頁送來的目前分團（_sec）；沒有權限或沒送就用預設（優先小狼）。前端送來的只是「想看哪個分團」，
  * 權限一律由後端依管理員分頁判斷。
@@ -1979,7 +2161,8 @@ function requireAccount_(token, section) {
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
   var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
-  var isOwner = isReservedUsername_(acc.username) && rows.length > 0;
+  var oid = ownerId_();
+  var isOwner = oid ? (acc.accountId === oid && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
   var sections = Logic.staffSections(rows, isOwner);
   var pick = Logic.pickSection(sections, section);
   var admin = null;
@@ -2050,7 +2233,7 @@ function bootData_() {
   if (JSON.stringify(images).length > 300000) images = null;
   var url = '';
   try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
-  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url };
+  return { catalog: apiCatalog_(), notices: apiNotices_().notices, site: apiSiteInfo_(), images: images, webUrl: url, publicTabs: Logic.resolvePermissions(loadPermRules_(), { loggedIn: false }).tabs };
 }
 
 /** 公開資料快取（5 分鐘）：公佈欄、月曆與活動。後台任何動作之後由 clearPublicCache_ 清掉 */
@@ -2097,7 +2280,12 @@ function doPost(e) {
   var open = true;
   try { DB_CACHE_ = {}; open = loadSettings_().values['允許外部網頁連線'] !== false; } catch (e0) { open = true; }
   if (open) out = handleApiBody_((e && e.postData && e.postData.contents) || '{}');
-  else out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + webUrl_() };
+  else {
+    // [修補] 優先回傳 GAS Web App 網址，避免又指向被停用的外部 GitHub Pages 網址
+    var gasUrl = '';
+    try { gasUrl = ScriptApp.getService().getUrl() || ''; } catch (e1) { gasUrl = ''; }
+    out = { ok: false, code: ERR.MOVED, message: '這個網址已經停用，請改用新的網站網址：' + (gasUrl || webUrl_()) };
+  }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -2218,23 +2406,30 @@ function apiCheckCode_(req) {
 }
 
 /** 綁定一位小狼（寫入綁定紀錄、綁定碼次數 −1）；已綁定過則只更新同意版本 */
-function bindCub_(accountId, cub, consentVersion) {
+function bindCub_(accountId, cub, consentVersion, relation, skipCodeDecrement) {
   var now = new Date();
-  var existing = loadBindings_().filter(function (b) { return b.accountId === accountId && b.cubId === cub.cubId; })[0];
+  var rel = relation === Logic.RELATION.SELF ? Logic.RELATION.SELF : Logic.RELATION.PARENT;
+  var allMine = loadBindings_().filter(function (b) { return b.accountId === accountId; });
+  if (allMine.some(function (b) { return b.relation === Logic.RELATION.SELF && b.cubId !== cub.cubId; })) {
+    throw new ApiError(ERR.BAD_INPUT, '童軍本人帳號僅限綁定自己的資料，不能綁定其他團員。');
+  }
+  var existing = allMine.filter(function (b) { return b.cubId === cub.cubId; })[0];
   if (existing) {
     var row = existing._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
     row[3] = now; row[4] = consentVersion;
+    if (relation) row[5] = rel;
     updateRows_(SHEET.BINDINGS, [{ row: existing._row, values: row }]);
     return false;
   }
-  appendRows_(SHEET.BINDINGS, [[accountId, cub.cubId, now, now, consentVersion]]);
-  var cubRow = cub._raw.slice(0, HEADERS[SHEET.CUBS].length);
-  cubRow[6] = Math.max(0, cub.codeUsesLeft - 1);
-  updateRows_(SHEET.CUBS, [{ row: cub._row, values: cubRow }]);
+  appendRows_(SHEET.BINDINGS, [[accountId, cub.cubId, now, now, consentVersion, rel]]);
+  if (!skipCodeDecrement) {
+    var cubRow = cub._raw.slice(0, HEADERS[SHEET.CUBS].length);
+    cubRow[6] = Math.max(0, cub.codeUsesLeft - 1);
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: cubRow }]);
+  }
   return true;
 }
 
-/** 使用邀請碼成為管理員 */
 /** 使用邀請碼成為管理員；邀請碼沒有填姓名時，用帳號的稱呼當作管理員姓名 */
 function redeemInvite_(accountId, invite, nickname) {
   var now = new Date();
@@ -2246,7 +2441,6 @@ function redeemInvite_(accountId, invite, nickname) {
   var row = invite._raw.slice(0, HEADERS[SHEET.INVITES].length);
   row[6] = '已使用'; row[7] = accountId; row[8] = now;
   updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
-  // 推播通知建立邀請碼的團長：階段 5 實作
 }
 
 function requireConsentVersion_(agreedVersion) {
@@ -2291,13 +2485,16 @@ function apiRegister_(req) {
 }
 
 function apiLogin_(req) {
+  var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+  var pw = String(req.password || '');
+  // [修補] 帳號或密碼空白直接回傳錯誤，避免浪費 2000 次 HMAC 運算與寫入空目標失敗紀錄
+  if (!name || !pw) throw new ApiError(ERR.BAD_LOGIN, '帳號或密碼錯誤。');
   return withLock_(function () {
     var settings = loadSettings_().values;
-    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
     assertNotLocked_('登入', name, settings);
     var acc = findAccountByName_(name);
     // 帳號不存在也照樣做一次雜湊，讓回應時間一致
-    var ok = Logic.verifyPassword(String(req.password || ''), acc ? acc.salt : 'x', acc ? acc.passwordHash : HASH_ITERATIONS + '$x', hmacHex_);
+    var ok = Logic.verifyPassword(pw, acc ? acc.salt : 'x', acc ? acc.passwordHash : HASH_ITERATIONS + '$x', hmacHex_);
     if (!acc || !ok || acc.status !== '啟用') {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或密碼錯誤。');
@@ -2313,13 +2510,15 @@ function apiLogin_(req) {
 
 /** 忘記密碼：帳號名稱＋團長給的臨時碼＋新密碼 */
 function apiResetPassword_(req) {
+  var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
+  var code = Logic.normalizeCode(req.tempCode);
+  if (!name || !code) throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
   return withLock_(function () {
     var settings = loadSettings_().values;
-    var name = Logic.clean(req.username).toLowerCase().slice(0, 40);
     assertNotLocked_('登入', name, settings);
     var acc = findAccountByName_(name);
-    var code = Logic.normalizeCode(req.tempCode);
-    if (!acc || !Logic.isTempCodeValid(acc, Date.now()) || sha256Hex_(code) !== acc.tempCodeHash || acc.status !== '啟用') {
+    // [修補] 使用常數時間比對臨時碼雜湊
+    if (!acc || !Logic.isTempCodeValid(acc, Date.now()) || !Logic.constantTimeEqual(sha256Hex_(code), acc.tempCodeHash) || acc.status !== '啟用') {
       recordFailure_('登入', name);
       throw new ApiError(ERR.BAD_LOGIN, '帳號或臨時碼錯誤，或臨時碼已過期。請聯絡團長重新產生。');
     }
@@ -2417,7 +2616,6 @@ function apiUnbind_(req, who) {
 
 // ───────────── 查詢 ─────────────
 
-/** 登入者的基本資訊、身分、綁定的小狼 */
 /**
  * 新的註冊方式（SPEC 附錄第 31 點）：選身分（家長／服務員）、填孩子姓名 → 建立帳號並送出申請，
  * 團長在後台核准後才綁定孩子或成為服務員。帳號可以先登入，看到「等待審核」。
@@ -2521,14 +2719,26 @@ function apiMe_(req, who) {
   mine.forEach(function (b) {
     var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0];
     if (!c) return;
-    list.push({ cubId: c.cubId, name: c.name, section: c.section, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
+    list.push({ cubId: c.cubId, name: c.name, section: c.section, relation: b.relation || Logic.RELATION.PARENT, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
   });
+  var hasParentBinding = list.some(function (x) { return x.relation !== Logic.RELATION.SELF; });
+  var isScoutSelf = !who.admin && list.length > 0 && !hasParentBinding;
+  var mySec = who.section || (list[0] ? list[0].section : '');
+  var permView = resolveWhoPerms_(who, hasParentBinding, isScoutSelf, mySec);
+  var allowedSections = (who.isOwner || who.isCentral)
+    ? Logic.SECTIONS.slice()
+    : (who.admin ? (who.sections || []).map(function (x) { return x.section; })
+      : list.map(function (x) { return x.section; }).filter(function (v, i, a) { return v && a.indexOf(v) === i; }));
+  var accountType = who.isOwner ? 'owner' : (who.isCentral ? 'central' : (who.admin ? (who.admin.role === Logic.ROLE.LEADER ? 'leader' : 'assistant') : (isScoutSelf ? 'scout_self' : (hasParentBinding ? 'parent' : 'guest'))));
   return {
     username: who.account.username,
     nickname: who.account.nickname,
     role: who.admin ? who.admin.role : null,
-    isOwner: !!who.admin && isReservedUsername_(who.account.username),
-    ownerExists: who.admin ? !!findAccountByName_(DEFAULT_ADMIN_USERNAME) : undefined,
+    isOwner: !!who.isOwner,
+    ownerExists: who.admin ? !!ownerId_() : undefined,
+    isScoutSelf: isScoutSelf,
+    accountType: accountType,
+    allowedSections: allowedSections,
     adminName: who.admin ? who.admin.name : null,
     lineLinked: !!(who.admin && who.admin.lineUserId),
     mySquads: who.admin ? squadsOfStaff_(who.account.accountId, who.section) : [],
@@ -2538,10 +2748,14 @@ function apiMe_(req, who) {
     title: who.admin ? (who.admin.title || '') : '',
     canManageAll: who.admin ? canManageAll_(who) : false,
     shared: who.admin ? Logic.SHARED_FUNCS.filter(function (f) { return canShared_(who, f); }) : [],
+    // [新增] 依動態權限設定算出本帳號可顯示的分頁與可用動作，前端可直接用來切換分頁與內容
+    tabs: permView.tabs,
+    visibleTabs: permView.visibleTabs,
+    permissions: permView.actions,
     // 各分團身分（SPEC 附錄第 68 點）：staff 給「分團功能準備中」畫面；canManageStaff 決定後台是否顯示「分團身分」頁
     staff: who.staff || [],
     isCentral: !!who.isCentral,
-    canManageStaff: !!who.isCentral || isReservedUsername_(who.account.username),
+    canManageStaff: !!who.isCentral || !!who.isOwner,
     serverVersion: APP_VERSION, // 網頁用來檢查後端是否已部署新版本（附錄第 72 點）
     cubs: list,
     // 自己的申請：待審核的全部、已退回的最近 5 筆（已退回的姓名已清除，只留類型與團長備註）
@@ -2570,7 +2784,13 @@ function apiCubDetail_(req, who) {
   }
   var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
   if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  return buildCubView_(cub, today_());
+  var isSelf = binding.relation === Logic.RELATION.SELF;
+  var pv = resolveWhoPerms_(who, !isSelf, isSelf, cub.section);
+  var view = buildCubView_(cub, today_());
+  view.relation = binding.relation || Logic.RELATION.PARENT;
+  if (!pv.tabs.member_progress) { view.hasProgress = false; view.units = []; view.nextChallenge = null; view.progressDisabledByPerm = true; }
+  if (!pv.tabs.member_attendance) { view.attendanceDisabledByPerm = true; view.attendance = { meetings: [], upcoming: [], counts: { attended: 0, late: 0, leave: 0 }, rate: null }; }
+  return view;
 }
 
 /** 組出家長畫面要的資料（也供後台列印簽核單共用） */
@@ -2594,12 +2814,12 @@ function buildCubView_(cub, today) {
     intervalMonths: settings['晉級間隔月數'], today: today, attendance: attRecords,
     autoItemId: settings['出席自動完成項目ID'], autoCount: settings['自動完成所需出席次數'],
     levelAttendCount: settings['晉級所需出席次數'], newbieAttendCount: settings['剛入團所需出席次數'],
-    newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null
+    newbieAfter: cub.trialStart && cub.joinDate ? cub.joinDate : null,
+    joinDate: cub.joinDate
   });
 
-  // 簽核人帳號ID → 管理員姓名
-  var names = {};
-  loadAdmins_().forEach(function (a) { names[a.accountId] = a.name; });
+  // [修補] 簽核人帳號ID → 管理員姓名：改用全分團 adminNames_()，避免總團或他分團服務員簽核時顯示空白
+  var names = adminNames_();
 
   var unitViews = progress.units.map(function (u) {
     var info = units[u.category + '|' + u.unit] || {};
@@ -2694,7 +2914,6 @@ function menuDefaultAdmin() {
 
 function ensureDefaultAdmin_() {
   return withLock_(function () {
-    var settings = loadSettings_().values;
     var password = Logic.generateCode(10, randInt_, []).toLowerCase();
     var salt = randomHex_(32);
     var hash = Logic.hashPassword(password, salt, HASH_ITERATIONS, hmacHex_);
@@ -2711,9 +2930,9 @@ function ensureDefaultAdmin_() {
       updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
       purgeSessions_(acc.accountId);
     }
-    var admins = loadAdmins_();
+    var admins = loadAdmins_(Logic.DEFAULT_SECTION);
     var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
-    if (!cur) appendRows_(SHEET.ADMINS, [[acc.accountId, '團長', Logic.ROLE.LEADER, now, '試算表選單', '', '']]);
+    if (!cur) appendRows_(SHEET.ADMINS, [[acc.accountId, '團長', Logic.ROLE.LEADER, now, '試算表選單', '', '', Logic.DEFAULT_SECTION, '']]);
     else if (cur.role !== Logic.ROLE.LEADER) {
       var ar = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length); ar[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: ar }]);
@@ -2743,7 +2962,7 @@ function setLeaderByUsername_(username) {
     var acc = findAccountByName_(username);
     if (!acc) return { ok: false, message: '找不到帳號「' + Logic.clean(username) + '」。請先在網站註冊（登入 → 註冊新帳號），再回來設定。' };
     if (acc.status !== '啟用') return { ok: false, message: '這個帳號已停用，請先到後台「帳號管理」啟用。' };
-    var admins = loadAdmins_();
+    var admins = loadAdmins_(Logic.DEFAULT_SECTION);
     var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
     if (cur && cur.role === Logic.ROLE.LEADER) return { ok: true, message: '「' + acc.username + '」已經是團長了。' };
     if (cur) {
@@ -2751,7 +2970,7 @@ function setLeaderByUsername_(username) {
       row[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: row }]);
     } else {
-      appendRows_(SHEET.ADMINS, [[acc.accountId, acc.nickname || acc.username, Logic.ROLE.LEADER, new Date(), '試算表選單', '', '']]);
+      appendRows_(SHEET.ADMINS, [[acc.accountId, acc.nickname || acc.username, Logic.ROLE.LEADER, new Date(), '試算表選單', '', '', Logic.DEFAULT_SECTION, '']]);
     }
     // 這個帳號還在等審核的服務員申請一併結案
     var pend = loadRequests_().filter(function (q) { return q.accountId === acc.accountId && q.status === '待審核' && q.type === '服務員'; });
@@ -2804,6 +3023,14 @@ var SHARED_ACTIONS = {
 
 /** 這個人能不能用某個全團共用功能 */
 function canShared_(who, func) {
+  var rules = loadPermRules_();
+  var feat = Logic.PERM_FEATURES.filter(function (f) { return f.sharedFunc === func; })[0];
+  if (feat && rules[feat.id]) {
+    return Logic.allowsFeature(rules[feat.id], {
+      loggedIn: true, isOwner: !!who.isOwner, ownerExists: !!ownerId_(),
+      isCentral: !!who.isCentral, role: who.admin && who.admin.role, section: who.section || curSec_()
+    });
+  }
   var level = loadSettings_().values['共用功能權限：' + func];
   return Logic.canShared(level, { isOwner: !!who.isOwner, ownerExists: !!ownerId_(), isCentral: !!who.isCentral, role: who.admin && who.admin.role });
 }
@@ -2813,8 +3040,26 @@ function canManageAll_(who) {
   return !ownerId_() && !!who.admin && who.admin.role === Logic.ROLE.LEADER;
 }
 
+/** 依目前登入者與動態權限表算出可用分頁與動作 */
+function resolveWhoPerms_(who, isParent, isScoutSelf, secOverride) {
+  var ctx = {
+    loggedIn: true,
+    isOwner: !!who.isOwner,
+    ownerExists: !!ownerId_(),
+    isCentral: !!who.isCentral,
+    role: who.admin ? who.admin.role : null,
+    section: secOverride || who.section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '',
+    isParent: !!isParent,
+    isScoutSelf: !!isScoutSelf
+  };
+  return Logic.resolvePermissions(loadPermRules_(), ctx);
+}
+
 function requireRole_(who, action) {
-  if (!who.admin || !Logic.can(who.admin.role, action)) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
+  if (!who.admin) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
+  var resolved = resolveWhoPerms_(who, false);
+  var allowed = Object.prototype.hasOwnProperty.call(resolved.actions, action) ? resolved.actions[action] : Logic.can(who.admin.role, action);
+  if (!allowed) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
 }
 
 /** 把後台動作包上權限檢查後註冊到 AUTHED_ACTIONS */
@@ -2870,10 +3115,13 @@ function progressCtx_() {
     if (!meetings[a.meetingId]) return;
     (attByCub[a.cubId] = attByCub[a.cubId] || []).push({ date: meetings[a.meetingId].date, status: a.status, meetingId: a.meetingId, type: meetings[a.meetingId].type, counts: meetings[a.meetingId].counts });
   });
-  var trialEnd = {};
-  loadCubs_().forEach(function (c) { if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate; });
+  var trialEnd = {}, joinDates = {};
+  loadCubs_().forEach(function (c) {
+    if (c.trialStart && c.joinDate) trialEnd[c.cubId] = c.joinDate;
+    if (c.joinDate) joinDates[c.cubId] = c.joinDate;
+  });
   return {
-    trialEnd: trialEnd,
+    trialEnd: trialEnd, joinDates: joinDates,
     settings: settings, items: loadItems_().items, completions: loadCompletions_(), awards: loadAwards_(),
     meetings: meetings, attByCub: attByCub, today: today_()
   };
@@ -2885,7 +3133,8 @@ function progressOf_(ctx, cubId) {
     intervalMonths: ctx.settings['晉級間隔月數'], today: ctx.today, attendance: ctx.attByCub[cubId] || [],
     autoItemId: ctx.settings['出席自動完成項目ID'], autoCount: ctx.settings['自動完成所需出席次數'],
     levelAttendCount: ctx.settings['晉級所需出席次數'], newbieAttendCount: ctx.settings['剛入團所需出席次數'],
-    newbieAfter: (ctx.trialEnd || {})[cubId] || null
+    newbieAfter: (ctx.trialEnd || {})[cubId] || null,
+    joinDate: (ctx.joinDates || {})[cubId] || ''
   });
 }
 
@@ -2945,13 +3194,14 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
 /** 各分團的在團、體驗人數、待審核申請、管理員人數（全團總覽） */
 function allSectionsSummary_() {
   var cubs = loadCubs_(), reqs = loadRequests_().filter(function (r) { return r.status === '待審核'; });
+  var adminRows = loadAdminRows_().filter(function (r) { return r.role !== Logic.CENTRAL; });
   var out = Logic.SECTIONS.map(function (sec) {
     var mine = cubs.filter(function (c) { return c.section === sec; });
     return {
       section: sec, active: mine.filter(function (c) { return c.status === '在團'; }).length,
       trial: mine.filter(function (c) { return c.status === Logic.TRIAL; }).length,
       requests: reqs.filter(function (r) { return r.section === sec; }).length,
-      staff: Logic.effectiveAdmins(loadAdminRows_().filter(function (r) { return r.role !== Logic.CENTRAL; }), sec).length
+      staff: Logic.effectiveAdmins(adminRows, sec).length
     };
   });
   return { sections: out, unassigned: reqs.filter(function (r) { return r.section === Logic.UNASSIGNED; }).length };
@@ -2995,25 +3245,26 @@ function requireSquad_(squad) {
 }
 
 registerAdmin_('cubSave', 'manageCubs', function (req, who) {
-  var trialCub = req.cubId ? findCub_(req.cubId).status === Logic.TRIAL : !!req.trial;
   var name = Logic.clean(req.name), squad = Logic.clean(req.squad).slice(0, 20);
-  // 體驗者沒有入團日，改填「體驗開始日」（SPEC 附錄第 40 點）
-  var joinDate = trialCub ? '' : requireDate_(Logic.clean(req.joinDate), '入團日');
-  var trialStart = trialCub ? requireDate_(Logic.clean(req.trialStart || req.joinDate), '體驗開始日') : '';
   if (!name || name.length > 30) throw new ApiError(ERR.BAD_INPUT, '請填寫團員姓名（最多 30 字）。');
   return withLock_(function () {
+    // [修補] 移入鎖內讀取，避免鎖外重複讀表與狀態競爭
+    var existingCub = req.cubId ? findCub_(req.cubId) : null;
+    var trialCub = existingCub ? existingCub.status === Logic.TRIAL : !!req.trial;
+    // 體驗者沒有入團日，改填「體驗開始日」（SPEC 附錄第 40 點）
+    var joinDate = trialCub ? '' : requireDate_(Logic.clean(req.joinDate), '入團日');
+    var trialStart = trialCub ? requireDate_(Logic.clean(req.trialStart || req.joinDate), '體驗開始日') : '';
     var settings = loadSettings_().values;
     squad = requireSquad_(squad);
-    if (req.cubId) {
-      var cub = findCub_(req.cubId);
-      var row = cubRow_(cub);
+    if (existingCub) {
+      var row = cubRow_(existingCub);
       var before = [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／');
-      if (Logic.clean(row[2]) !== squad) endRoleInRow_(cub, row, today_());
+      if (Logic.clean(row[2]) !== squad) endRoleInRow_(existingCub, row, today_());
       row[1] = name; row[2] = squad;
       if (trialCub) row[9] = trialStart; else row[3] = joinDate;
-      updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-      logOp_(who.account.accountId, '編輯小狼', cub.cubId, before, [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／'));
-      return { cubId: cub.cubId };
+      updateRows_(SHEET.CUBS, [{ row: existingCub._row, values: row }]);
+      logOp_(who.account.accountId, '編輯小狼', existingCub.cubId, before, [row[1], row[2], dateStr_(row[3]), dateStr_(row[9])].join('／'));
+      return { cubId: existingCub.cubId };
     }
     var id = newId_('C', loadCubs_().map(function (c) { return c.cubId; }));
     var code = Logic.generateCode(settings['綁定碼長度'], randInt_, allCodes_());
@@ -3127,11 +3378,12 @@ registerAdmin_('cubNewCode', 'manageBindCodes', function (req, who) {
 });
 
 registerAdmin_('cubBindings', 'manageBindCodes', function (req) {
-  var cubId = Logic.clean(req.cubId);
+  // [修補] 驗證目標團員屬於目前分團，防止跨分團檢視綁定資料
+  var cub = findCub_(req.cubId);
   var acc = {};
   loadAccounts_().forEach(function (a) { acc[a.accountId] = a; });
   return {
-    bindings: loadBindings_().filter(function (b) { return b.cubId === cubId; }).map(function (b) {
+    bindings: loadBindings_().filter(function (b) { return b.cubId === cub.cubId; }).map(function (b) {
       var a = acc[b.accountId] || {};
       return { accountId: b.accountId, username: a.username || '（已刪除）', nickname: a.nickname || '', consentVersion: b.consentVersion };
     })
@@ -3140,10 +3392,12 @@ registerAdmin_('cubBindings', 'manageBindCodes', function (req) {
 
 registerAdmin_('cubUnbind', 'manageBindCodes', function (req, who) {
   return withLock_(function () {
-    var rows = loadBindings_().filter(function (b) { return b.cubId === Logic.clean(req.cubId) && b.accountId === Logic.clean(req.accountId); });
+    // [修補] 驗證目標團員屬於目前分團，防止跨分團解除綁定
+    var cub = findCub_(req.cubId);
+    var rows = loadBindings_().filter(function (b) { return b.cubId === cub.cubId && b.accountId === Logic.clean(req.accountId); });
     if (!rows.length) throw new ApiError(ERR.NOT_FOUND, '找不到這筆綁定。');
     deleteRows_(SHEET.BINDINGS, rows.map(function (b) { return b._row; }));
-    logOp_(who.account.accountId, '後台解除綁定', Logic.clean(req.cubId), Logic.clean(req.accountId), '');
+    logOp_(who.account.accountId, '後台解除綁定', cub.cubId, Logic.clean(req.accountId), '');
     return {};
   });
 });
@@ -3183,7 +3437,6 @@ registerAdmin_('signoff', 'signoff', function (req, who) {
     var plan = Logic.planBatchSignoff(loadCompletions_(), cubIds, itemIds, date, who.account.accountId, Logic.clean(req.note).slice(0, 100));
     appendRows_(SHEET.COMPLETIONS, plan.toAdd.map(Logic.completionToRow));
     if (plan.toAdd.length) logOp_(who.account.accountId, '簽核', plan.toAdd.length + ' 筆', '', date);
-    // 階段 5：重算受影響小狼並推播新達標通知
     return { added: plan.toAdd.length, skipped: plan.skipped, batch: plan.toAdd.map(function (c) { return { cubId: c.cubId, itemId: c.itemId }; }) };
   });
 });
@@ -3193,16 +3446,22 @@ registerAdmin_('signoffRevoke', 'revokeOwnSignoff', function (req, who) {
   var entries = (req.entries || []).slice(0, 2000);
   if (!entries.length) throw new ApiError(ERR.BAD_INPUT, '沒有要撤銷的項目。');
   return withLock_(function () {
+    // [修補] 僅允許撤銷目前分團團員的簽核紀錄
+    var secIds = {};
+    secCubs_().forEach(function (c) { secIds[c.cubId] = true; });
     var want = {};
-    entries.forEach(function (e) { want[Logic.clean(e.cubId) + '|' + Logic.clean(e.itemId)] = true; });
+    entries.forEach(function (e) {
+      var cid = Logic.clean(e.cubId);
+      if (secIds[cid]) want[cid + '|' + Logic.clean(e.itemId)] = true;
+    });
     var rows = loadCompletions_().filter(function (c) { return want[c.cubId + '|' + c.itemId] && Logic.isCountedCompletion(c); });
-    var allowed = rows.filter(function (c) { return Logic.canRevokeSignoff(who.admin.role, who.account.accountId, c.signer); });
+    var canRevAny = !!resolveWhoPerms_(who, false).actions.revokeAnySignoff;
+    var allowed = rows.filter(function (c) { return canRevAny || c.signer === who.account.accountId; });
     if (rows.length && !allowed.length) throw new ApiError(ERR.FORBIDDEN, '服務員只能撤銷自己簽核的項目。');
     deleteRows_(SHEET.COMPLETIONS, allowed.map(function (c) { return c._row; }));
     allowed.forEach(function (c) {
       logOp_(who.account.accountId, '撤銷簽核', c.cubId, JSON.stringify(Logic.completionToRow(c)), '');
     });
-    // 階段 5：不再達標者清除通知紀錄
     return { removed: allowed.length, notAllowed: rows.length - allowed.length };
   });
 });
@@ -3214,6 +3473,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
   var hasProgress = Logic.PROGRESS_SECTIONS.indexOf(cub.section) >= 0;
   var p = hasProgress ? progressOf_(ctx, cub.cubId) : { units: [], currentLevel: '' };
   var names = adminNames_();
+  var canRevAny = !!resolveWhoPerms_(who, false).actions.revokeAnySignoff;
   var signerOf = {};
   ctx.completions.forEach(function (c) { if (c.cubId === cub.cubId && Logic.isCountedCompletion(c)) signerOf[c.itemId] = c.signer; });
   var units = loadUnits_();
@@ -3239,7 +3499,7 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
         lastCompletionDate: u.lastCompletionDate, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
         items: u.items.map(function (i) {
           var s = signerOf[i.id];
-          return { id: i.id, section: i.section, text: i.text, done: i.done, date: i.date, auto: i.auto, signer: i.done ? (names[s] || (i.auto ? '出席自動計算' : s || '')) : '', canRevoke: !!(i.done && !i.auto && s && Logic.canRevokeSignoff(who.admin.role, who.account.accountId, s)), details: detailsView_(byItem, i.id) };
+          return { id: i.id, section: i.section, text: i.text, done: i.done, date: i.date, auto: i.auto, signer: i.done ? (names[s] || (i.auto ? '出席自動計算' : s || '')) : '', canRevoke: !!(i.done && !i.auto && s && (canRevAny || s === who.account.accountId)), details: detailsView_(byItem, i.id) };
         })
       };
     }).sort(function (a, b) { return a.order - b.order; }),
@@ -3284,14 +3544,17 @@ registerAdmin_('award', 'award', function (req, who) {
     entries.forEach(function (e) {
       var cub = cubs[Logic.clean(e.cubId)];
       if (!cub || cub.status !== '在團') { errors.push('找不到在團的小狼'); return; }
-      var u = progressOf_(ctx, cub.cubId).units.filter(function (x) { return x.unit === Logic.clean(e.unit); })[0];
+      var prog = progressOf_(ctx, cub.cubId);
+      var u = prog.units.filter(function (x) { return x.unit === Logic.clean(e.unit); })[0];
       var label = cub.name + '・' + Logic.clean(e.unit);
       if (!u) { errors.push(label + '：找不到這個級別或技能章'); return; }
       if (u.status === Logic.STATUS.AWARDED) { errors.push(label + '：已經頒發過了'); return; }
       if (u.status !== Logic.STATUS.DONE_PENDING) { errors.push(label + '：項目還沒全部完成（已完成 ' + u.done + '／' + u.total + '）；上線前已有的章請用「補登」'); return; }
       if (u.category === Logic.CATEGORY.PROGRESS && u.unit !== Logic.LEVELS[0]) {
         var prev = Logic.LEVELS[Logic.LEVELS.indexOf(u.unit) - 1];
-        if (!ctx.awards.some(function (a) { return a.cubId === cub.cubId && a.unit === prev; })) { errors.push(label + '：' + prev + (prev === Logic.NEWBIE ? '' : '級') + '還沒有頒發紀錄，請先頒發或補登'); return; }
+        // [修補] 改比對 progressOf_ 計算結果（含隱含通過／舊生豁免），與前端狀態判定一致
+        var prevUnit = prog.units.filter(function (x) { return x.category === Logic.CATEGORY.PROGRESS && x.unit === prev; })[0];
+        if (!prevUnit || prevUnit.status !== Logic.STATUS.AWARDED) { errors.push(label + '：' + prev + (prev === Logic.NEWBIE ? '' : '級') + '還沒有頒發紀錄，請先頒發或補登'); return; }
       }
       var v = Logic.validateAwardDate(date, u.lastCompletionDate, ctx.today);
       if (!v.ok) { errors.push(label + '：' + v.error); return; }
@@ -3310,13 +3573,14 @@ registerAdmin_('award', 'award', function (req, who) {
       if (x.unit.category === Logic.CATEGORY.PROGRESS) touched[x.cub.cubId] = true;
     });
     Object.keys(touched).forEach(refreshCubLevel_);
-    // 階段 5：依設定推播恭喜訊息（目前規格：家長不收推播）
     return { added: ok.length };
   });
 });
 
 function findAward_(cubId, unit) {
-  var a = loadAwards_().filter(function (x) { return x.cubId === Logic.clean(cubId) && x.unit === Logic.clean(unit); })[0];
+  // [修補] 驗證目標團員屬於目前分團，防止跨分團修改或撤銷頒章
+  var cub = findCub_(cubId);
+  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit); })[0];
   if (!a) throw new ApiError(ERR.NOT_FOUND, '找不到這筆頒章紀錄。');
   return a;
 }
@@ -3346,7 +3610,6 @@ registerAdmin_('awardRevoke', 'award', function (req, who) {
     deleteRows_(SHEET.AWARDS, [a._row]);
     logOp_(who.account.accountId, '撤銷頒章', a.cubId, [a.unit, a.date, a.occasion, a.note, a.signer].join('／'), '');
     if (Logic.LEVELS.indexOf(a.unit) >= 0) refreshCubLevel_(a.cubId);
-    // 階段 5：重算達標、清除不再達標的通知紀錄
     return {};
   });
 });
@@ -3396,21 +3659,38 @@ function accountsById_() {
   return m;
 }
 
-/** 最高權限帳號（admin）的帳號ID；還沒建立就回傳空字串（SPEC 附錄第 46 點） */
-function ownerId_() { var a = findAccountByName_(DEFAULT_ADMIN_USERNAME); return a ? a.accountId : ''; }
-/** 帳號管理用：對象是 admin → 一律不可；對象是團長 → 只有 admin 可以 */
-function guardOwner_(targetId, who, admins) {
+/** 設定分頁裡記錄「最高管理員」的鍵（移交中心寫入，SPEC 附錄第 76 點） */
+var OWNER_SETTING_KEY = '最高管理員帳號ID';
+/** 最高權限帳號的帳號ID：移交後以設定分頁記錄的為準，否則是 admin；都沒有就回傳空字串（SPEC 附錄第 46、76 點） */
+function ownerId_() {
+  // 「最高管理員帳號ID」不在 Logic.SETTINGS 裡（不讓設定頁直接改），所以直接讀設定分頁的原始列；只能由移交中心寫入
+  var configured = '';
+  readRows_(SHEET.SETTINGS).forEach(function (r) { if (Logic.clean(r[0]) === OWNER_SETTING_KEY) configured = Logic.clean(r[1]); });
+  if (configured) {
+    var cAcc = findAccountById_(configured);
+    if (cAcc && cAcc.status === '啟用') return cAcc.accountId;
+  }
+  var a = findAccountByName_(DEFAULT_ADMIN_USERNAME);
+  return a ? a.accountId : '';
+}
+
+/**
+ * [修補] 帳號管理用：跨全分團檢查對象是否為 admin、總團或任一分團團長。
+ * 原本只看 loadAdmins_()（目前分團），切換到別的分團時會漏判他分團團長。
+ */
+function guardOwner_(targetId, who, allAdminRows) {
   var owner = ownerId_();
   if (!owner) return;
   if (targetId === owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE + '要重設密碼請用試算表選單。');
-  var t = (admins || loadAdmins_()).filter(function (a) { return a.accountId === targetId; })[0];
-  if (t && t.role === Logic.ROLE.LEADER && who.account.accountId !== owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_ONLY_MESSAGE);
+  var rows = (allAdminRows || loadAdminRows_()).filter(function (a) { return a.accountId === targetId; });
+  var isHigh = rows.some(function (a) { return a.role === Logic.ROLE.LEADER || a.role === Logic.CENTRAL; });
+  if (isHigh && who.account.accountId !== owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_ONLY_MESSAGE);
 }
 
 registerAdmin_('adminList', 'manageAdmins', function () {
   var acc = accountsById_(), owner = ownerId_();
   var names = adminNames_();
-  // 只列在小狼有權限的人（總團也列，標記 central）；其他分團的身分在「分團身分」頁（SPEC 附錄第 68 點）
+  // 只列在目前分團有權限的人（總團也列，標記 central）；其他分團的身分在「分團身分」頁（SPEC 附錄第 68 點）
   return {
     ownerExists: !!owner,
     admins: loadAdmins_().map(function (a) {
@@ -3446,7 +3726,6 @@ registerAdmin_('adminAdd', 'manageAdmins', function (req, who) {
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     appendRows_(SHEET.ADMINS, [[target.accountId, name, role, new Date(), who.account.accountId, '', '', curSec_(), Logic.clean(req.title).slice(0, 20)]]);
     logOp_(who.account.accountId, '指定管理員', target.username, '', role + '：' + name);
-    // 階段 5：推播通知當事人
     return {};
   });
 });
@@ -3457,6 +3736,8 @@ registerAdmin_('adminUpdate', 'manageAdmins', function (req, who) {
     var t = admins.filter(function (a) { return a.accountId === Logic.clean(req.accountId); })[0];
     if (!t) throw new ApiError(ERR.NOT_FOUND, '找不到這位管理員。');
     if (t.accountId === ownerId_() && who.account.accountId !== t.accountId) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE);
+    // [修補] 避免 admin 切換到別的分團時，透過合成列誤蓋原本分團的設定
+    if (t._synthetic) throw new ApiError(ERR.BAD_INPUT, '這個帳號在「' + curSec_() + '」沒有獨立身分列，請到「分團身分」設定。');
     var row = t._raw.slice(0, HEADERS[SHEET.ADMINS].length);
     var before = row[2] + '：' + row[1];
     if (req.role && Logic.clean(req.role) !== t.role) {
@@ -3485,6 +3766,9 @@ registerAdmin_('adminRemove', 'manageAdmins', function (req, who) {
     var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'remove', targetId: t.accountId }, ownerId_());
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     deleteRows_(SHEET.ADMINS, [t._row]);
+    // [修補] 一併清理該管理員在目前分團的小隊輔設定
+    var stRows = loadSquadStaff_().filter(function (s) { return s.accountId === t.accountId && s.section === curSec_(); }).map(function (s) { return s._row; });
+    if (stRows.length) deleteRows_(SHEET.SQUAD_STAFF, stRows);
     logOp_(who.account.accountId, '移除管理員', t.accountId, t.role + '：' + t.name, '');
     return {};
   });
@@ -3516,12 +3800,16 @@ registerAdmin_('accountList', 'manageAccounts', function () {
   loadCubs_().forEach(function (c) { cubs[c.cubId] = c.name; });
   var bound = {};
   loadBindings_().forEach(function (b) { (bound[b.accountId] = bound[b.accountId] || []).push(cubs[b.cubId] || '（已刪除）'); });
-  var roles = {};
-  loadAdmins_().forEach(function (a) { roles[a.accountId] = a.role; });
+  // [修補] 彙整全分團身分（不只目前分團），避免在別的分團管理帳號時漏看角色
+  var roleList = {};
+  loadAdminRows_().forEach(function (a) {
+    var label = a.role === Logic.CENTRAL ? Logic.CENTRAL : (a.section === Logic.DEFAULT_SECTION ? a.role : a.section + '・' + a.role);
+    (roleList[a.accountId] = roleList[a.accountId] || []).push(label);
+  });
   return {
     accounts: readRows_(SHEET.ACCOUNTS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
       var id = Logic.clean(r[0]);
-      return { accountId: id, username: Logic.clean(r[1]), nickname: Logic.clean(r[2]), status: Logic.clean(r[5]) || '啟用', createdAt: ms_(r[6]), lastLogin: ms_(r[7]), cubs: bound[id] || [], role: roles[id] || '' };
+      return { accountId: id, username: Logic.clean(r[1]), nickname: Logic.clean(r[2]), status: Logic.clean(r[5]) || '啟用', createdAt: ms_(r[6]), lastLogin: ms_(r[7]), cubs: bound[id] || [], role: (roleList[id] || []).join('、') };
     })
   };
 });
@@ -3556,9 +3844,11 @@ registerAdmin_('accountStatus', 'manageAccounts', function (req, who) {
     var acc = accountsById_()[Logic.clean(req.accountId)];
     if (!acc) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
     if (status === '停用') {
-      guardOwner_(acc.accountId, who);
+      var allAdminRows = loadAdminRows_();
+      guardOwner_(acc.accountId, who, allAdminRows);
       if (acc.accountId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '不可以停用自己的帳號。');
-      var c = Logic.canDeleteAccount(loadAdmins_(), acc.accountId);
+      // [修補] 固定檢查小狼（預設分團）是否仍保留至少一位團長，不受目前切換分團影響
+      var c = Logic.canDeleteAccount(Logic.effectiveAdmins(allAdminRows, Logic.DEFAULT_SECTION), acc.accountId);
       if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error.replace('刪除', '停用'));
     }
     var row = acc._raw.slice(0, HEADERS[SHEET.ACCOUNTS].length);
@@ -3571,27 +3861,33 @@ registerAdmin_('accountStatus', 'manageAccounts', function (req, who) {
   });
 });
 
-/** 刪除帳號（家長要求時）：刪帳號、登入憑證、綁定、管理員身分；小狼資料不受影響 */
+/** 刪除帳號（家長要求時）：刪帳號、登入憑證、綁定、管理員身分、小隊輔；小狼資料不受影響 */
 registerAdmin_('accountDelete', 'manageAccounts', function (req, who) {
-  return withLock_(function () {
+  var affectedEvents = [];
+  withLock_(function () {
     var acc = accountsById_()[Logic.clean(req.accountId)];
     if (!acc) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
     if (Logic.clean(req.confirmUsername) !== acc.username) throw new ApiError(ERR.BAD_INPUT, '請輸入正確的帳號名稱以確認刪除。');
     if (acc.accountId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '不可以刪除自己的帳號。');
-    var admins = loadAdmins_();
-    guardOwner_(acc.accountId, who, admins);
-    var c = Logic.canDeleteAccount(admins, acc.accountId);
+    var allAdminRows = loadAdminRows_();
+    guardOwner_(acc.accountId, who, allAdminRows);
+    // [修補] 固定檢查小狼是否仍保留至少一位團長
+    var c = Logic.canDeleteAccount(Logic.effectiveAdmins(allAdminRows, Logic.DEFAULT_SECTION), acc.accountId);
     if (!c.ok) throw new ApiError(ERR.BAD_INPUT, c.error);
     purgeSessions_(acc.accountId);
     deleteRows_(SHEET.BINDINGS, loadBindings_().filter(function (b) { return b.accountId === acc.accountId; }).map(function (b) { return b._row; }));
-    // 所有分團的身分一起刪（loadAdmins_ 只有小狼的那一列）
-    deleteRows_(SHEET.ADMINS, loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
-    deleteRegsOfAccount_(acc.accountId);
+    // 所有分團的身分與小隊輔一起刪
+    deleteRows_(SHEET.ADMINS, allAdminRows.filter(function (a) { return a.accountId === acc.accountId; }).map(function (a) { return a._row; }));
+    // [修補] 一併刪除小隊輔孤兒紀錄
+    deleteRows_(SHEET.SQUAD_STAFF, loadSquadStaff_().filter(function (s) { return s.accountId === acc.accountId; }).map(function (s) { return s._row; }));
+    affectedEvents = deleteRegsOfAccount_(acc.accountId);
     deleteRows_(SHEET.REQUESTS, loadRequests_().filter(function (r) { return r.accountId === acc.accountId; }).map(function (r) { return r._row; }));
     deleteRows_(SHEET.ACCOUNTS, [acc._row]);
     logOp_(who.account.accountId, '刪除帳號', acc.accountId, '', '');
-    return {};
   });
+  // [修補] 釋放鎖後再同步受影響的活動存檔試算表，避免在鎖內跑 Drive 操作逾時
+  affectedEvents.forEach(function (evId) { afterSync_({ _ev: evId }); });
+  return {};
 });
 
 // ───────────── 設定（SPEC 7.8，團長專用） ─────────────
@@ -3663,6 +3959,22 @@ registerAdmin_('settingsSave', 'manageSettings', function (req, who) {
     });
     if (ups.length) updateRows_(SHEET.SETTINGS, ups);
     if (adds.length) appendRows_(SHEET.SETTINGS, adds);
+    // [修補] 若修改了「共用功能權限：*」且已有「權限設定」分頁，同步更新對應列避免兩邊打架
+    if (ss_().getSheetByName(SHEET.PERMS)) {
+      var pRows = readRows_(SHEET.PERMS), pUps = [];
+      Logic.PERM_FEATURES.forEach(function (f) {
+        if (!f.sharedFunc) return;
+        var sk = '共用功能權限：' + f.sharedFunc;
+        if (stored[sk] === undefined) return;
+        var pr = pRows.filter(function (x) { return Logic.clean(x[0]) === f.id; })[0];
+        if (pr && Logic.clean(pr[3]) !== stored[sk]) {
+          var pv = HEADERS[SHEET.PERMS].map(function (h, j) { return pr[j] === undefined ? '' : pr[j]; });
+          pv[3] = stored[sk]; pv[5] = who.account.accountId; pv[6] = new Date();
+          pUps.push({ row: pr._row, values: pv });
+        }
+      });
+      if (pUps.length) updateRows_(SHEET.PERMS, pUps);
+    }
     if (stored['每日排程時間（幾點）'] !== undefined) { try { ensureDailyTrigger_(); } catch (e) { /* 沒有排程權限時略過，setup 會再裝 */ } }
     return { changed: changed };
   });
@@ -3683,6 +3995,200 @@ registerAdmin_('consentSave', 'manageSettings', function (req, who) {
   });
 });
 
+// ───────────── 權限與分頁設定（新增：不同權限顯示不同分頁與內容） ─────────────
+
+/** 讀取全部可設定的分頁與功能權限（僅限有「權限與分頁設定」權限者） */
+registerAdmin_('permSettingsGet', 'managePermissions', function (req, who) {
+  var rules = loadPermRules_();
+  return {
+    sections: Logic.SECTIONS,
+    features: Logic.PERM_FEATURES.map(function (f) {
+      var r = rules[f.id];
+      return {
+        id: r.id, name: r.name, group: r.group, scope: r.scope,
+        level: r.level, options: r.options, disabledSections: r.disabledSections, locked: r.locked
+      };
+    })
+  };
+});
+
+/**
+ * 儲存分頁與功能權限設定：
+ * req.updates = [{ id: 'tab_events', level: '服務員', disabledSections: ['稚齡'] }, ...]
+ * 若試算表尚未建立「權限設定」分頁，會自動建立並寫入預設列後更新。
+ */
+registerAdmin_('permSettingsSave', 'managePermissions', function (req, who) {
+  var updates = Array.isArray(req.updates) ? req.updates : [];
+  if (!updates.length) throw new ApiError(ERR.BAD_INPUT, '沒有要修改的權限設定。');
+  var checked = [], errors = [];
+  updates.forEach(function (u) {
+    var v = Logic.validatePermUpdate(u && u.id, u && u.level, u && u.disabledSections);
+    if (v.ok) checked.push(v); else errors.push(v.error);
+  });
+  if (errors.length) throw new ApiError(ERR.BAD_INPUT, errors.join('\n'));
+  return withLock_(function () {
+    // 若尚未跑過新版 setup()，自動建立「權限設定」分頁並匯入預設值
+    if (!ss_().getSheetByName(SHEET.PERMS)) {
+      ensureSheet_(SHEET.PERMS, { created: [], headerFixed: [], headerMismatch: [] });
+      appendRows_(SHEET.PERMS, Logic.defaultPermRows().slice(1));
+    }
+    var rows = readRows_(SHEET.PERMS);
+    var byId = {};
+    rows.forEach(function (r) { var id = Logic.clean(r[0]); if (id) byId[id] = r; });
+    var ups = [], adds = [], changed = 0, now = new Date();
+    checked.forEach(function (c) {
+      var disStr = c.disabledSections.join('、');
+      var cur = byId[c.feature.id];
+      var vals = [c.feature.id, c.feature.name, c.feature.group, c.level, disStr, who.account.accountId, now];
+      if (cur) {
+        if (Logic.clean(cur[3]) === c.level && Logic.clean(cur[4]) === disStr) return;
+        ups.push({ row: cur._row, values: vals });
+        logOp_(who.account.accountId, '修改權限設定', c.feature.name, Logic.clean(cur[3]) + (Logic.clean(cur[4]) ? '（停用：' + Logic.clean(cur[4]) + '）' : ''), c.level + (disStr ? '（停用：' + disStr + '）' : ''));
+      } else {
+        adds.push(vals);
+        logOp_(who.account.accountId, '修改權限設定', c.feature.name, c.feature.def, c.level + (disStr ? '（停用：' + disStr + '）' : ''));
+      }
+      changed++;
+    });
+    if (ups.length) updateRows_(SHEET.PERMS, ups);
+    if (adds.length) appendRows_(SHEET.PERMS, adds);
+    // 共用功能（系統設定、網站內容…）同步寫回設定分頁的「共用功能權限：○○」，兩邊一致
+    var sRows = readRows_(SHEET.SETTINGS), sUps = [], sAdds = [];
+    checked.forEach(function (c) {
+      if (!c.feature.sharedFunc) return;
+      var k = '共用功能權限：' + c.feature.sharedFunc, r = sRows.filter(function (x) { return Logic.clean(x[0]) === k; })[0];
+      if (r && Logic.clean(r[1]) === c.level) return;
+      var desc = (Logic.SETTINGS.filter(function (s) { return s.key === k; })[0] || {}).desc || '';
+      if (r) sUps.push({ row: r._row, values: [k, c.level, r[2] === undefined ? desc : r[2]] }); else sAdds.push([k, c.level, desc]);
+    });
+    if (sUps.length) updateRows_(SHEET.SETTINGS, sUps);
+    if (sAdds.length) appendRows_(SHEET.SETTINGS, sAdds);
+    return { changed: changed };
+  });
+});
+
+// ───────────── 團務移交與交接中心（總團／管理員檢視，移交最高管理權限限現任最高管理員） ─────────────
+
+registerAdmin_('handoverSummary', 'manageHandover', function (req, who) {
+  var owner = ownerId_();
+  var accById = accountsById_();
+  var allAdminRows = loadAdminRows_();
+  var cubs = loadCubs_();
+  var pendingReqs = loadRequests_().filter(function (r) { return r.status === '待審核'; }).length;
+  var permSheetExists = !!ss_().getSheetByName(SHEET.PERMS);
+  var ownerAcc = owner ? accById[owner] : null;
+  var ownerAdminRow = allAdminRows.filter(function (r) { return r.accountId === owner; })[0];
+
+  var central = allAdminRows.filter(function (r) { return r.role === Logic.CENTRAL; }).map(function (r) {
+    var a = accById[r.accountId] || {};
+    return {
+      accountId: r.accountId, username: a.username || '', name: r.name || a.nickname || '',
+      title: r.title || '總團', isOwner: r.accountId === owner, lineLinked: !!r.lineUserId, status: a.status || ''
+    };
+  });
+
+  var sections = Logic.SECTIONS.map(function (sec) {
+    var secRows = allAdminRows.filter(function (r) { return r.section === sec && r.role !== Logic.CENTRAL; });
+    var leaders = secRows.filter(function (r) { return r.role === Logic.ROLE.LEADER; }).map(function (r) {
+      var a = accById[r.accountId] || {};
+      return { accountId: r.accountId, username: a.username || '', name: r.name || a.nickname || '', title: r.title || '團長', lineLinked: !!r.lineUserId };
+    });
+    var assistants = secRows.filter(function (r) { return r.role === Logic.ROLE.ASSISTANT; }).map(function (r) {
+      var a = accById[r.accountId] || {};
+      return { accountId: r.accountId, username: a.username || '', name: r.name || a.nickname || '', title: r.title || '服務員', lineLinked: !!r.lineUserId };
+    });
+    var activeCubs = cubs.filter(function (c) { return c.section === sec && !c.leftDate; }).length;
+    return {
+      section: sec, fullName: Logic.SECTION_FULL[sec] || sec,
+      leaderCount: leaders.length, assistantCount: assistants.length, activeCubs: activeCubs,
+      leaders: leaders, assistants: assistants,
+      needsLeader: activeCubs > 0 && leaders.length === 0
+    };
+  });
+
+  // 可接任最高管理權的候選人（啟用中的總團或各分團團長，不含現任最高管理員）
+  var seen = {};
+  var candidates = [];
+  allAdminRows.forEach(function (r) {
+    if (r.accountId === owner || seen[r.accountId]) return;
+    if (r.role !== Logic.CENTRAL && r.role !== Logic.ROLE.LEADER) return;
+    var a = accById[r.accountId];
+    if (!a || a.status !== '啟用') return;
+    seen[r.accountId] = true;
+    candidates.push({
+      accountId: r.accountId, username: a.username, name: r.name || a.nickname || a.username,
+      roleLabel: r.role === Logic.CENTRAL ? '總團' : (r.section + ' ' + (r.title || '團長'))
+    });
+  });
+
+  return {
+    isOwner: !!who.isOwner,
+    owner: ownerAcc ? {
+      accountId: ownerAcc.accountId, username: ownerAcc.username,
+      name: (ownerAdminRow && ownerAdminRow.name) || ownerAcc.nickname || ownerAcc.username,
+      lineLinked: !!(ownerAdminRow && ownerAdminRow.lineUserId),
+      transferred: readRows_(SHEET.SETTINGS).some(function (r) { return Logic.clean(r[0]) === OWNER_SETTING_KEY && Logic.clean(r[1]); })
+    } : null,
+    central: central,
+    sections: sections,
+    candidates: candidates,
+    checklist: [
+      { label: '權限設定工作表已啟用', ok: permSheetExists, note: permSheetExists ? '已就緒' : '尚未建立（到「權限設定」儲存一次即可自動建立）' },
+      { label: '有團員的分團皆已指派團長', ok: !sections.some(function (s) { return s.needsLeader; }), note: sections.filter(function (s) { return s.needsLeader; }).map(function (s) { return s.section; }).join('、') || '全部分團皆有負責團長' },
+      { label: '總團或管理員已設定兩人以上（避免單人交接斷層）', ok: central.length >= 2 || candidates.length >= 1, note: '目前總團 ' + central.length + ' 人、可接任候選 ' + candidates.length + ' 人' },
+      { label: '待審核註冊申請已清空', ok: pendingReqs === 0, note: pendingReqs ? '尚有 ' + pendingReqs + ' 筆待審核' : '目前無積壓申請' }
+    ]
+  };
+});
+
+registerAdmin_('handoverTransfer', 'manageHandover', function (req, who) {
+  if (!who.isOwner) throw new ApiError(ERR.FORBIDDEN, '只有現任最高管理員可以執行最高管理權移交。');
+  var password = String(req.password || '');
+  var targetId = Logic.clean(req.targetAccountId);
+  var confirmUsername = Logic.clean(req.confirmUsername);
+  if (!password) throw new ApiError(ERR.BAD_INPUT, '請輸入你目前的密碼以確認移交。');
+  if (!targetId || targetId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '請選擇要接任的帳號。');
+  return withLock_(function () {
+    // 再確認一次目前的密碼（錯太多次會鎖住，和登入共用失敗紀錄）
+    var settingsV = loadSettings_().values, me = findAccountById_(who.account.accountId);
+    assertNotLocked_('登入', me.username.toLowerCase(), settingsV);
+    if (!Logic.verifyPassword(password, me.salt, me.passwordHash, hmacHex_)) {
+      recordFailure_('登入', me.username.toLowerCase());
+      throw new ApiError(ERR.BAD_INPUT, '目前密碼不正確，已取消移交。');
+    }
+    var target = findAccountById_(targetId);
+    if (!target || target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到接任帳號，或該帳號已停用。');
+    if (confirmUsername.toLowerCase() !== target.username.toLowerCase()) {
+      throw new ApiError(ERR.BAD_INPUT, '請完整輸入接任帳號的帳號名稱（' + target.username + '）以確認移交。');
+    }
+    var now = new Date();
+    // 1. 確保接任者具備「總團」身分
+    var rows = loadAdminRows_();
+    var targetCentral = rows.filter(function (r) { return r.accountId === target.accountId && r.role === Logic.CENTRAL; })[0];
+    if (!targetCentral) {
+      var existingName = (rows.filter(function (r) { return r.accountId === target.accountId; })[0] || {}).name || target.nickname || target.username;
+      appendRows_(SHEET.ADMINS, [[target.accountId, existingName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '總團']]);
+    }
+    // 2. 若原管理員未指定移除總團身分，確保原管理員保留「總團」以便陪同交接
+    if (req.keepAsCentral !== false) {
+      var myCentral = rows.filter(function (r) { return r.accountId === who.account.accountId && r.role === Logic.CENTRAL; })[0];
+      if (!myCentral) {
+        var myName = (rows.filter(function (r) { return r.accountId === who.account.accountId; })[0] || {}).name || who.account.nickname || who.account.username;
+        appendRows_(SHEET.ADMINS, [[who.account.accountId, myName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '交接顧問']]);
+      }
+    }
+    // 3. 寫入「設定」工作表：最高管理員帳號ID
+    var sRows = readRows_(SHEET.SETTINGS);
+    var curSetting = sRows.filter(function (r) { return Logic.clean(r[0]) === OWNER_SETTING_KEY; })[0];
+    var sVals = [OWNER_SETTING_KEY, target.accountId, '系統最高管理員帳號（只能由後台移交中心更新，請不要手動修改）'];
+    if (curSetting) updateRows_(SHEET.SETTINGS, [{ row: curSetting._row, values: sVals }]);
+    else appendRows_(SHEET.SETTINGS, [sVals]);
+    logOp_(who.account.accountId, '移交最高管理權', target.username, who.account.username, target.username + '（' + target.accountId + '）');
+    clearPublicCache_();
+    return { newOwnerUsername: target.username, newOwnerName: target.nickname || target.username };
+  });
+});
+
 // ───────────── 註冊申請審核（SPEC 附錄第 31 點，團長專用） ─────────────
 
 registerAdmin_('requestList', 'reviewRequests', function () {
@@ -3699,7 +4205,6 @@ registerAdmin_('requestList', 'reviewRequests', function () {
       sameName: r.type === '孩子' ? cubs.filter(function (c) { return c.name === r.name; }).map(function (c) { return c.cubId; }) : []
     };
   });
-  var settings = loadSettings_().values;
   return {
     items: items,
     cubs: cubs.map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad }; }),
@@ -3788,7 +4293,7 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
     }
     // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）
     var exists = loadBindings_().some(function (b) { return b.accountId === r.accountId && b.cubId === cub.cubId; });
-    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion]]);
+    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion, Logic.RELATION.PARENT]]);
     closeRequest_(r, '已核准', who, cub.cubId, '');
     logOp_(who.account.accountId, '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
     return { type: '孩子', cubId: cub.cubId };
@@ -3885,9 +4390,16 @@ registerAdmin_('meetingSave', 'manageCalendar', function (req, who) {
       if (!Logic.isDateStr(d)) { bad.push('第 ' + (i + 1) + ' 行：' + line); return; }
       var id = newId_('M', ids);
       ids.push(id);
+      // [修補] 支援日期區間寫法（如 2026-12-05~2026/12/06 露營），避免名稱留下開頭減號
+      var rest = (mm[4] || '').trim(), note = '';
+      var rng = /^[-~～至到]+\s*(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})\s*(.*)$/.exec(rest);
+      if (rng) {
+        var ed = rng[1] + '-' + ('0' + rng[2]).slice(-2) + '-' + ('0' + rng[3]).slice(-2);
+        if (Logic.isDateStr(ed)) { note = '至 ' + ed; rest = (rng[4] || '').trim(); }
+      }
       // 名稱裡有「大活動」就標成大活動（體驗者不算、點名不列體驗者）
-      var nm = (mm[4] || '').trim().slice(0, 40) || '團集會';
-      add.push([id, d, nm, '', '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般', '是', target]);
+      var nm = rest.slice(0, 40) || '團集會';
+      add.push([id, d, nm, note, '是', who.account.accountId, now, /大活動/.test(nm) ? '大活動' : '一般', '是', target]);
     });
     if (!add.length) throw new ApiError(ERR.BAD_INPUT, '沒有可新增的集會。每行格式：2026-11-22 團集會' + (bad.length ? '\n看不懂的行：\n' + bad.join('\n') : ''));
     appendRows_(SHEET.MEETINGS, add);
@@ -4038,7 +4550,9 @@ function privacyData_() {
 }
 
 registerAdmin_('privacyPreview', 'privacy', function (req) {
-  var plan = Logic.planPrivacy(privacyData_(), Logic.clean(req.cubId), Logic.clean(req.mode));
+  // [修補] 驗證目標團員屬於目前分團，防止跨分團檢視個資處理預覽
+  var cub = findCub_(req.cubId);
+  var plan = Logic.planPrivacy(privacyData_(), cub.cubId, Logic.clean(req.mode));
   if (!plan.ok) throw new ApiError(ERR.BAD_INPUT, plan.error);
   return { cubName: plan.cubName, counts: plan.counts };
 });
@@ -4050,7 +4564,9 @@ registerAdmin_('privacyExecute', 'privacy', function (req, who) {
     // 完全刪除只有最高權限帳號（admin）可以；還沒有 admin 帳號時照舊（SPEC 附錄第 48 點）
     var owner = ownerId_();
     if (mode === 'delete' && owner && who.account.accountId !== owner) throw new ApiError(ERR.FORBIDDEN, '只有最高權限帳號（admin）可以刪除小狼；其他團長可以用匿名化。');
-    var plan = Logic.planPrivacy(privacyData_(), Logic.clean(req.cubId), mode);
+    // [修補] 驗證目標團員屬於目前分團，防止跨分團匿名化或刪除
+    var cub = findCub_(req.cubId);
+    var plan = Logic.planPrivacy(privacyData_(), cub.cubId, mode);
     if (!plan.ok) throw new ApiError(ERR.BAD_INPUT, plan.error);
     if (Logic.clean(req.confirmName) !== plan.cubName) throw new ApiError(ERR.BAD_INPUT, '輸入的姓名不符，未執行。');
     Object.keys(plan.updateRows).forEach(function (s) { updateRows_(s, plan.updateRows[s]); });
@@ -4144,6 +4660,8 @@ registerAdmin_('squadSave', 'manageCubs', function (req, who) {
     var key = Logic.sectionSettingKey('小隊清單', curSec_());
     var r = Logic.changeSquads(cur, { type: Logic.clean(req.type), name: req.name, newName: req.newName, dir: req.dir }, inUse);
     if (!r.ok) throw new ApiError(ERR.BAD_INPUT, r.error);
+    // [修補] 清單順序無變動（例如第一隊按上移）時略過寫入與操作日誌
+    if (r.list.join('、') === cur.join('、')) return { squads: r.list, moved: 0 };
     var row = readRows_(SHEET.SETTINGS).filter(function (x) { return Logic.clean(x[0]) === key; })[0];
     var values = [key, r.list.join('、'), (Logic.SETTINGS.filter(function (x) { return x.key === key; })[0] || {}).desc || ''];
     if (row) updateRows_(SHEET.SETTINGS, [{ row: row._row, values: values }]);
@@ -4424,6 +4942,11 @@ function apiParentLeave_(req, who) {
     var cubId = Logic.clean(req.cubId);
     var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
     if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
+    var cubObj = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+    var isSelf = binding.relation === Logic.RELATION.SELF;
+    if (!resolveWhoPerms_(who, !isSelf, isSelf, cubObj ? cubObj.section : '').tabs.parent_leave) {
+      throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上請假功能。');
+    }
     if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
@@ -4441,6 +4964,44 @@ function apiParentLeave_(req, who) {
   });
 }
 AUTHED_ACTIONS.parentLeave = apiParentLeave_;
+
+/**
+ * 家長為「童軍／行義／羅浮」孩子建立「本人帳號」（有手機時使用）：
+ * 建立後該帳號僅綁定這一位團員（關係＝本人），無法看到其他團員或他分團內容。
+ */
+function apiParentCreateScoutAccount_(req, who) {
+  return withLock_(function () {
+    var cubId = Logic.clean(req.cubId);
+    var binding = loadBindings_().filter(function (b) {
+      return b.accountId === who.account.accountId && b.cubId === cubId && b.relation !== Logic.RELATION.SELF;
+    })[0];
+    if (!binding) throw new ApiError(ERR.FORBIDDEN, '只有已綁定該團員的家長可以建立童軍本人帳號。');
+    var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+    if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位團員的資料。');
+    if (Logic.SELF_ELIGIBLE_SECTIONS.indexOf(cub.section) < 0) {
+      throw new ApiError(ERR.BAD_INPUT, '目前僅開放「童軍、行義、羅浮」建立團員本人帳號。');
+    }
+    if (!resolveWhoPerms_(who, true, false, cub.section).tabs.parent_create_scout) {
+      throw new ApiError(ERR.FORBIDDEN, '總團目前未開放家長建立童軍本人帳號。');
+    }
+    var settings = loadSettings_().values;
+    var nick = Logic.clean(req.nickname) || cub.name;
+    checkAccountInput_(req.username, req.password, nick, settings);
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) {
+      throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    }
+    var accounts = loadAccounts_();
+    var accountId = newId_('U', accounts.map(function (a) { return a.accountId; }));
+    var salt = randomHex_(32);
+    var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+    var now = new Date();
+    appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), nick, hash, salt, '啟用', now, '', '', '']]);
+    bindCub_(accountId, cub, binding.consentVersion || Logic.latestConsentVersion(loadConsents_()), Logic.RELATION.SELF, true);
+    logOp_(who.account.accountId, '家長建立童軍本人帳號', cub.cubId, '', Logic.clean(req.username) + '（' + cub.section + '）');
+    return { accountId: accountId, username: Logic.clean(req.username), cubName: cub.name, section: cub.section };
+  });
+}
+AUTHED_ACTIONS.parentCreateScoutAccount = apiParentCreateScoutAccount_;
 
 // ───────────── 網站內容：認識 22 團（原「了解幼童軍」）、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
 
@@ -4477,7 +5038,7 @@ function buildSiteInfo_() {
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
     .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note, target: m.target }; });
-  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_() };
+  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_(), publicTabs: Logic.resolvePermissions(loadPermRules_(), { loggedIn: false }).tabs };
 }
 PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
 
@@ -4501,7 +5062,6 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     return { changed: ups.length + adds.length };
   });
 });
-
 
 // ════════════════ EventApi.js ════════════════
 // 活動報名與繳費紀錄、進程章與技能章圖片（SPEC 附錄第 50 點）
@@ -4588,6 +5148,15 @@ function apiEventList_(req, who) {
 AUTHED_ACTIONS.eventList = apiEventList_;
 
 function apiEventRegister_(req, who) {
+  // 先看是不是 22 團的人（訊息照舊），再看總團有沒有開放這個身分線上報名（權限設定 parent_events）
+  if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
+  var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+  var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
+  var isSelf = !who.admin && myBinds.length > 0 && !isPar;
+  var firstCub = myBinds[0] ? loadCubs_().filter(function (c) { return c.cubId === myBinds[0].cubId; })[0] : null;
+  if (!resolveWhoPerms_(who, isPar, isSelf, firstCub ? firstCub.section : '').tabs.parent_events) {
+    throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上活動報名。');
+  }
   return afterSync_(withLock_(function () {
     if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
@@ -4731,9 +5300,8 @@ registerAdmin_('eventPay', 'manageEvents', function (req, who) {
       ups.push({ row: r._row, values: row });
     });
     updateRows_(SHEET.EVENT_REGS, ups);
-    var evId = regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId); })[0].eventId;
-    logOp_(who.account.accountId, '登記活動繳費', evId, '', ups.length + ' 筆');
-    return { changed: ups.length, _ev: evId };
+    logOp_(who.account.accountId, '登記活動繳費', first.eventId, '', ups.length + ' 筆');
+    return { changed: ups.length, _ev: first.eventId };
   }));
 });
 
@@ -4776,23 +5344,29 @@ function writeSheet_(book, name, rows) {
   sh.setFrozenRows(1);
 }
 
-/** 建立（第一次）或更新這個活動的存檔試算表，回傳網址 */
-function syncEventSheet_(eventId) {
-  DB_CACHE_ = {};
-  var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
-  if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
-  if (ev.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經封存，存檔試算表不會再更新。');
-  var book = null;
-  if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
-  if (!book) {
-    book = SpreadsheetApp.create('活動報名｜' + ev.title + '｜' + ev.date);
-    try { DriveApp.getFileById(book.getId()).moveTo(eventFolder_()); } catch (e) { /* 搬不進資料夾就留在雲端硬碟根目錄 */ }
-    var first = book.getSheets()[0];
-    if (first && first.getName() !== '報名名單') first.setName('報名名單');
-    var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
-    row[12] = book.getId();
-    updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
-  }
+/** 建立（第一次）或更新這個活動的存檔試算表，回傳網址。inLock=true 時表示呼叫端已持有 script lock */
+function syncEventSheet_(eventId, inLock) {
+  var ensureBook = function () {
+    DB_CACHE_ = {};
+    var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
+    if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+    if (ev.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經封存，存檔試算表不會再更新。');
+    var book = null;
+    if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
+    if (!book) {
+      book = SpreadsheetApp.create('活動報名｜' + ev.title + '｜' + ev.date);
+      try { DriveApp.getFileById(book.getId()).moveTo(eventFolder_()); } catch (e) { /* 搬不進資料夾就留在雲端硬碟根目錄 */ }
+      var first = book.getSheets()[0];
+      if (first && first.getName() !== '報名名單') first.setName('報名名單');
+      var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
+      row[12] = book.getId();
+      updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
+    }
+    return { ev: ev, book: book };
+  };
+  // [修補] 建立存檔試算表並回寫 sheetId 時加上鎖保護，避免兩人同時報名建出重複試算表
+  var pair = inLock ? ensureBook() : withLock_(ensureBook);
+  var ev = pair.ev, book = pair.book;
   var acc = accountsById_(), now = new Date();
   var fmt = function (t) { return t ? Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd HH:mm') : ''; };
   var regs = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).sort(function (a, b) { return a.at - b.at; });
@@ -4815,14 +5389,14 @@ function syncEventSheet_(eventId) {
 function afterSync_(res) {
   var id = res && res._ev;
   if (res) delete res._ev;
-  if (id) { try { syncEventSheet_(id); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
+  if (id) { try { syncEventSheet_(id, false); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
   return res;
 }
 
 /** 團長手動同步（或補建）存檔試算表 */
 registerAdmin_('eventSheetSync', 'manageEvents', function (req, who) {
   var id = findManagedEvent_(who, req.eventId).id;
-  try { return { sheetUrl: syncEventSheet_(id) }; }
+  try { return { sheetUrl: syncEventSheet_(id, false) }; }
   catch (e) { if (e instanceof ApiError) throw e; throw new ApiError(ERR.BAD_INPUT, '存檔試算表建立或更新失敗，請稍後再試一次。'); }
 });
 
@@ -4836,7 +5410,7 @@ function purgeEndedEvents_() {
   ended.forEach(function (e0) {
     try {
       withLock_(function () {
-        syncEventSheet_(e0.id);
+        syncEventSheet_(e0.id, true);
         DB_CACHE_ = {};
         var ev = loadEvents_().filter(function (x) { return x.id === e0.id; })[0];
         if (!ev || !ev.sheetId) return;
@@ -4853,14 +5427,17 @@ function purgeEndedEvents_() {
   return done;
 }
 
-/** 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資） */
+/**
+ * [修補] 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資），並回傳受影響的活動ID清單，
+ * 讓呼叫端在釋放鎖之後再同步存檔試算表。
+ */
 function deleteRegsOfAccount_(accountId) {
   var mine = loadRegs_().filter(function (r) { return r.accountId === accountId; });
-  if (!mine.length) return;
+  if (!mine.length) return [];
   deleteRows_(SHEET.EVENT_REGS, mine.map(function (r) { return r._row; }));
-  // 存檔試算表也要跟著拿掉這些人的資料
-  var seen = {};
-  mine.forEach(function (r) { if (!seen[r.eventId]) { seen[r.eventId] = true; afterSync_({ _ev: r.eventId }); } });
+  var seen = {}, evIds = [];
+  mine.forEach(function (r) { if (!seen[r.eventId]) { seen[r.eventId] = true; evIds.push(r.eventId); } });
+  return evIds;
 }
 
 // ───────────── 進程章與技能章的圖片（團長上傳，公開顯示） ─────────────
@@ -5266,6 +5843,15 @@ AUTHED_ACTIONS.staffSave = function (req, who) {
       logOp_(who.account.accountId, '修改分團身分', target.username, before, desc(v.role, v.section, title));
     } else {
       deleteRows_(SHEET.ADMINS, [v.row._row]);
+      // [修補] 移除分團身分時，若該人在該分團已無有效管理員身分則一併清理小隊輔
+      if (v.row.role !== Logic.CENTRAL) {
+        var remaining = loadAdminRows_();
+        var stillAdmin = Logic.effectiveAdmins(remaining, v.row.section).some(function (a) { return a.accountId === target.accountId; });
+        if (!stillAdmin) {
+          var stRows = loadSquadStaff_().filter(function (s) { return s.accountId === target.accountId && s.section === v.row.section; }).map(function (s) { return s._row; });
+          if (stRows.length) deleteRows_(SHEET.SQUAD_STAFF, stRows);
+        }
+      }
       logOp_(who.account.accountId, '移除分團身分', target.username, desc(v.row.role, v.row.section, v.row.title), '');
     }
     return {};
@@ -5316,7 +5902,7 @@ function scanCubs_(ctx, cubs) {
   var pending = [], near = [], waiting = [];
   cubs.filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
     progressOf_(ctx, c.cubId).units.forEach(function (u) {
-      var base = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, category: u.category, unit: u.unit };
+      var base = { cubId: c.cubId, name: c.name, squad: c.squad, section: c.section, joinDate: c.joinDate, category: u.category, unit: u.unit };
       if (u.status === Logic.STATUS.AWARDED) return;
       if (u.eligible) pending.push(Object.assign(base, { eligibleDate: u.eligibleDate }));
       else if (u.status === Logic.STATUS.DONE_PENDING) waiting.push(Object.assign(base, { waitingUntil: u.waitingUntil || '', attendSinceLast: u.attendSinceLast || 0, attendRequired: u.attendRequired || 0 }));
@@ -5335,12 +5921,23 @@ function webUrl_() {
 }
 /** 達標通知只推給該分團已連結 LINE 的團長、服務員（附錄第 73 點⑳；第 1 期只有小狼有進程） */
 function linkedLineIds_(section) { return loadAdmins_(section || Logic.DEFAULT_SECTION).map(function (a) { return a.lineUserId; }).filter(String); }
+/** 系統告警（如備份失敗）推給已連結 LINE 的團長與總團 */
+function linkedLeaderLineIds_() {
+  var seen = {}, ids = [];
+  loadAdminRows_().forEach(function (a) {
+    if ((a.role === Logic.ROLE.LEADER || a.role === Logic.CENTRAL) && a.lineUserId && !seen[a.lineUserId]) {
+      seen[a.lineUserId] = true;
+      ids.push(a.lineUserId);
+    }
+  });
+  return ids;
+}
 /** 有進程模組的分團的在團團員（達標掃描用） */
 function progressCubs_() { return loadCubs_().filter(function (c) { return Logic.PROGRESS_SECTIONS.indexOf(c.section) >= 0; }); }
 
 /**
- * 重算達標清單，與通知紀錄比對後推播。
- * 沒有 token 或沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
+ * 重算達標清單，與通知紀錄比對後推播（依分團各自推給該分團已連結 LINE 的管理員）。
+ * 沒有 token 或該分團沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
  * @return {{notified: number, reminded: number, cleared: number, skipped?: string}}
  */
 function syncNotifications_(opts) {
@@ -5360,29 +5957,43 @@ function syncNotifications_(opts) {
     var del = rows.filter(function (r) { return clear[key(r)]; }).map(function (r) { return r._row; });
     if (del.length) deleteRows_(SHEET.NOTIFY, del);
 
-    var ids = linkedLineIds_();
     var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
-    if (!token || !ids.length) return { notified: 0, reminded: 0, cleared: del.length, skipped: !token ? 'no_token' : 'no_linked_admin' };
+    if (!token) return { notified: 0, reminded: 0, cleared: del.length, skipped: 'no_token' };
+
+    var groupBySection = function (list) {
+      var m = {};
+      list.forEach(function (p) { var s = Logic.sectionOf(p.section); (m[s] = m[s] || []).push(p); });
+      return m;
+    };
 
     var now = new Date(), add = [], result = { notified: 0, reminded: 0, cleared: del.length };
-    var fresh = diff.toNotify.map(function (k) { return byKey[k]; });
-    if (fresh.length) {
-      var ok = linePush_(ids, opts.summary ? summaryMessage_(fresh) : eligibleMessage_(fresh, '🎉 達標通知'), token);
-      if (ok) { fresh.forEach(function (p) { add.push([p.cubId, p.unit, '達標', now]); }); result.notified = fresh.length; }
-    }
+    // [修補] 依分團分組推播，未來新增其他分團進程時不會誤推給小狼管理員
+    var freshBySec = groupBySection(diff.toNotify.map(function (k) { return byKey[k]; }));
+    Object.keys(freshBySec).forEach(function (sec) {
+      var ids = linkedLineIds_(sec);
+      if (!ids.length) return;
+      var list = freshBySec[sec];
+      var ok = linePush_(ids, opts.summary ? summaryMessage_(list) : eligibleMessage_(list, '🎉 達標通知'), token);
+      if (ok) { list.forEach(function (p) { add.push([p.cubId, p.unit, '達標', now]); }); result.notified += list.length; }
+    });
     // 再提醒：達標通知超過設定天數仍未頒章，只提醒一次
     var days = ctx.settings['未頒章再提醒天數'];
     if (days > 0) {
       var reminded = {};
       rows.forEach(function (r) { if (Logic.clean(r[2]) === '再提醒') reminded[key(r)] = true; });
-      var due = notified.filter(function (r) {
+      var dueBySec = groupBySection(notified.filter(function (r) {
         var k = key(r);
         return byKey[k] && !reminded[k] && !clear[k] && ms_(r[3]) && Date.now() - ms_(r[3]) >= days * 86400000;
-      }).map(function (r) { return byKey[key(r)]; });
-      if (due.length && linePush_(ids, eligibleMessage_(due, '⏰ 還沒頒章的提醒'), token)) {
-        due.forEach(function (p) { add.push([p.cubId, p.unit, '再提醒', now]); });
-        result.reminded = due.length;
-      }
+      }).map(function (r) { return byKey[key(r)]; }));
+      Object.keys(dueBySec).forEach(function (sec) {
+        var ids = linkedLineIds_(sec);
+        if (!ids.length) return;
+        var list = dueBySec[sec];
+        if (linePush_(ids, eligibleMessage_(list, '⏰ 還沒頒章的提醒'), token)) {
+          list.forEach(function (p) { add.push([p.cubId, p.unit, '再提醒', now]); });
+          result.reminded += list.length;
+        }
+      });
     }
     if (add.length) appendRows_(SHEET.NOTIFY, add);
     return result;
@@ -5433,14 +6044,14 @@ function linePush_(ids, message, token) {
 
 // ───────────── 關鍵字回覆（不計入推播額度） ─────────────
 
-/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」只回覆已連結 LINE 的管理員 */
+/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」「點名」只回覆已連結 LINE 的管理員 */
 function handleKeyword_(text, lineUserId, replyToken) {
   if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
   if (text !== '可晉級' && text !== '快達標' && text !== '點名') return null;
   // 已連結 LINE 的管理員（任何分團）；LINE 跟著人走
   var rows = loadAdminRows_(), me = rows.filter(function (a) { return a.lineUserId === lineUserId; })[0];
   if (!me) return null;
-  var isOwner = (accountsById_()[me.accountId] || {}).username === DEFAULT_ADMIN_USERNAME;
+  var isOwner = me.accountId === ownerId_();
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
   if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));
@@ -5534,7 +6145,12 @@ function runBackup_() {
     result = { at: Date.now(), ok: true, message: '已備份「' + name + '」' + (removed ? '，刪除最舊的 ' + removed + ' 份' : '') };
   } catch (e) {
     result = { at: Date.now(), ok: false, message: '備份失敗：' + (e && e.message ? e.message : e) };
-    // 階段 5：推播通知團長
+    // [修補] 補完階段 5：備份失敗時透過 LINE 主動推播提醒團長與總團
+    try {
+      var token = props.getProperty('LINE_MESSAGING_TOKEN');
+      var ids = token ? linkedLeaderLineIds_() : [];
+      if (token && ids.length) linePush_(ids, { type: 'text', text: '⚠️ 22 團系統備份失敗\n' + result.message + '\n請到後台「備份」檢查。' }, token);
+    } catch (e2) { /* 推播失敗不影響備份結果紀錄 */ }
   }
   props.setProperty('BACKUP_LAST', JSON.stringify(result));
   return result;
@@ -5662,12 +6278,12 @@ function removeTriggers_(handler) {
 /**
  * LINE webhook（網址需帶 ?key=WEBHOOK_KEY）
  * 階段 4A：管理員「連結 LINE 通知」——在官方帳號聊天室輸入後台給的 6 位數配對碼。
- * 階段 5：關鍵字回覆（可晉級、快達標、進度）。
+ * 階段 5：關鍵字回覆（可晉級、快達標、進度、點名）。
  */
 function handleWebhook_(e) {
   var key = PropertiesService.getScriptProperties().getProperty('WEBHOOK_KEY');
   // 密鑰不符：直接忽略
-  if (!key || e.parameter.key !== key) return;
+  if (!key || !Logic.constantTimeEqual(String(e.parameter.key || ''), key)) return;
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return; }
   // 只處理格式正確的請求
@@ -5697,7 +6313,7 @@ function handlePairing_(code, lineUserId, replyToken) {
     logOp_(accountId, '連結 LINE 通知', a.name, '', ''); // 不記 userId
     return a.name;
   });
-  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團系統的通知。之後團員達標時會在這裡通知你。\n也可以輸入「可晉級」或「快達標」查名單。');
+  if (name) lineReply_(replyToken, '✅ ' + name + '，已連結 22 團系統的通知。之後團員達標時會在這裡通知你。\n也可以輸入「可晉級」、「快達標」或「點名」查名單。');
 }
 
 /** 回覆訊息（不計入推播額度） */
@@ -5825,6 +6441,13 @@ function setupCore_() {
     }
     if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
 
+    // 權限設定：只在分頁沒有資料列時匯入預設權限表
+    if (dataRowCount_(SHEET.PERMS) === 0) {
+      var permRows = Logic.defaultPermRows().slice(1);
+      appendRows_(SHEET.PERMS, permRows);
+      report.seeded.push(SHEET.PERMS + ' ' + permRows.length + ' 項');
+    }
+
     // 設定：只補上缺少的鍵，不改既有值
     var have = {};
     readRows_(SHEET.SETTINGS).forEach(function (r) { have[Logic.clean(r[0])] = true; });
@@ -5888,7 +6511,7 @@ function ensureFirstLeaderInvite_() {
   var len = loadSettings_().values['綁定碼長度'] + 2;
   var code = Logic.generateCode(len, randInt_, allCodes_());
   var exp = new Date(now + FIRST_LEADER_INVITE_HOURS * 3600000);
-  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '']]);
+  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '', Logic.DEFAULT_SECTION, '']]);
   return { code: code, expiresAt: exp.getTime(), reused: false };
 }
 

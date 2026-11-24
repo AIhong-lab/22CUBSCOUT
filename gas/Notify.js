@@ -23,7 +23,7 @@ function scanCubs_(ctx, cubs) {
   var pending = [], near = [], waiting = [];
   cubs.filter(function (c) { return c.status === '在團'; }).forEach(function (c) {
     progressOf_(ctx, c.cubId).units.forEach(function (u) {
-      var base = { cubId: c.cubId, name: c.name, squad: c.squad, joinDate: c.joinDate, category: u.category, unit: u.unit };
+      var base = { cubId: c.cubId, name: c.name, squad: c.squad, section: c.section, joinDate: c.joinDate, category: u.category, unit: u.unit };
       if (u.status === Logic.STATUS.AWARDED) return;
       if (u.eligible) pending.push(Object.assign(base, { eligibleDate: u.eligibleDate }));
       else if (u.status === Logic.STATUS.DONE_PENDING) waiting.push(Object.assign(base, { waitingUntil: u.waitingUntil || '', attendSinceLast: u.attendSinceLast || 0, attendRequired: u.attendRequired || 0 }));
@@ -42,12 +42,23 @@ function webUrl_() {
 }
 /** 達標通知只推給該分團已連結 LINE 的團長、服務員（附錄第 73 點⑳；第 1 期只有小狼有進程） */
 function linkedLineIds_(section) { return loadAdmins_(section || Logic.DEFAULT_SECTION).map(function (a) { return a.lineUserId; }).filter(String); }
+/** 系統告警（如備份失敗）推給已連結 LINE 的團長與總團 */
+function linkedLeaderLineIds_() {
+  var seen = {}, ids = [];
+  loadAdminRows_().forEach(function (a) {
+    if ((a.role === Logic.ROLE.LEADER || a.role === Logic.CENTRAL) && a.lineUserId && !seen[a.lineUserId]) {
+      seen[a.lineUserId] = true;
+      ids.push(a.lineUserId);
+    }
+  });
+  return ids;
+}
 /** 有進程模組的分團的在團團員（達標掃描用） */
 function progressCubs_() { return loadCubs_().filter(function (c) { return Logic.PROGRESS_SECTIONS.indexOf(c.section) >= 0; }); }
 
 /**
- * 重算達標清單，與通知紀錄比對後推播。
- * 沒有 token 或沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
+ * 重算達標清單，與通知紀錄比對後推播（依分團各自推給該分團已連結 LINE 的管理員）。
+ * 沒有 token 或該分團沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
  * @return {{notified: number, reminded: number, cleared: number, skipped?: string}}
  */
 function syncNotifications_(opts) {
@@ -67,29 +78,43 @@ function syncNotifications_(opts) {
     var del = rows.filter(function (r) { return clear[key(r)]; }).map(function (r) { return r._row; });
     if (del.length) deleteRows_(SHEET.NOTIFY, del);
 
-    var ids = linkedLineIds_();
     var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
-    if (!token || !ids.length) return { notified: 0, reminded: 0, cleared: del.length, skipped: !token ? 'no_token' : 'no_linked_admin' };
+    if (!token) return { notified: 0, reminded: 0, cleared: del.length, skipped: 'no_token' };
+
+    var groupBySection = function (list) {
+      var m = {};
+      list.forEach(function (p) { var s = Logic.sectionOf(p.section); (m[s] = m[s] || []).push(p); });
+      return m;
+    };
 
     var now = new Date(), add = [], result = { notified: 0, reminded: 0, cleared: del.length };
-    var fresh = diff.toNotify.map(function (k) { return byKey[k]; });
-    if (fresh.length) {
-      var ok = linePush_(ids, opts.summary ? summaryMessage_(fresh) : eligibleMessage_(fresh, '🎉 達標通知'), token);
-      if (ok) { fresh.forEach(function (p) { add.push([p.cubId, p.unit, '達標', now]); }); result.notified = fresh.length; }
-    }
+    // [修補] 依分團分組推播，未來新增其他分團進程時不會誤推給小狼管理員
+    var freshBySec = groupBySection(diff.toNotify.map(function (k) { return byKey[k]; }));
+    Object.keys(freshBySec).forEach(function (sec) {
+      var ids = linkedLineIds_(sec);
+      if (!ids.length) return;
+      var list = freshBySec[sec];
+      var ok = linePush_(ids, opts.summary ? summaryMessage_(list) : eligibleMessage_(list, '🎉 達標通知'), token);
+      if (ok) { list.forEach(function (p) { add.push([p.cubId, p.unit, '達標', now]); }); result.notified += list.length; }
+    });
     // 再提醒：達標通知超過設定天數仍未頒章，只提醒一次
     var days = ctx.settings['未頒章再提醒天數'];
     if (days > 0) {
       var reminded = {};
       rows.forEach(function (r) { if (Logic.clean(r[2]) === '再提醒') reminded[key(r)] = true; });
-      var due = notified.filter(function (r) {
+      var dueBySec = groupBySection(notified.filter(function (r) {
         var k = key(r);
         return byKey[k] && !reminded[k] && !clear[k] && ms_(r[3]) && Date.now() - ms_(r[3]) >= days * 86400000;
-      }).map(function (r) { return byKey[key(r)]; });
-      if (due.length && linePush_(ids, eligibleMessage_(due, '⏰ 還沒頒章的提醒'), token)) {
-        due.forEach(function (p) { add.push([p.cubId, p.unit, '再提醒', now]); });
-        result.reminded = due.length;
-      }
+      }).map(function (r) { return byKey[key(r)]; }));
+      Object.keys(dueBySec).forEach(function (sec) {
+        var ids = linkedLineIds_(sec);
+        if (!ids.length) return;
+        var list = dueBySec[sec];
+        if (linePush_(ids, eligibleMessage_(list, '⏰ 還沒頒章的提醒'), token)) {
+          list.forEach(function (p) { add.push([p.cubId, p.unit, '再提醒', now]); });
+          result.reminded += list.length;
+        }
+      });
     }
     if (add.length) appendRows_(SHEET.NOTIFY, add);
     return result;
@@ -140,14 +165,14 @@ function linePush_(ids, message, token) {
 
 // ───────────── 關鍵字回覆（不計入推播額度） ─────────────
 
-/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」只回覆已連結 LINE 的管理員 */
+/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」「點名」只回覆已連結 LINE 的管理員 */
 function handleKeyword_(text, lineUserId, replyToken) {
   if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
   if (text !== '可晉級' && text !== '快達標' && text !== '點名') return null;
   // 已連結 LINE 的管理員（任何分團）；LINE 跟著人走
   var rows = loadAdminRows_(), me = rows.filter(function (a) { return a.lineUserId === lineUserId; })[0];
   if (!me) return null;
-  var isOwner = (accountsById_()[me.accountId] || {}).username === DEFAULT_ADMIN_USERNAME;
+  var isOwner = me.accountId === ownerId_();
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
   if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));

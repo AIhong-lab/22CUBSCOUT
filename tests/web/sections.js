@@ -53,7 +53,8 @@ const PAGE = 'https://pages.test/web/';
 
   // ═════ admin：產生童軍服務員的邀請碼 ═════
   await login(made.username, made.password);
-  await page.locator('nav.tabs button[data-v=staff]').click();
+  await page.locator('nav.tabs button[data-v=admins]').click(); // 「帳號與權限」入口（附錄第 76 點）
+  await page.locator('#gseg button[data-g=staff]').click();
   await page.getByText('🎟️ 產生邀請碼').waitFor();
   assert.match(await text(), /小狼[\s\S]*團長/, '列出小狼的團長');
   await page.selectOption('#fi select[name=section]', '童軍');
@@ -96,6 +97,17 @@ const PAGE = 'https://pages.test/web/';
   await page.click('button[type=submit]');
   await page.getByText('測試童軍甲').first().waitFor();
   assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試童軍甲')[11], '童軍');
+  // 權限設定與移交中心（附錄第 76 點）：admin 在「帳號與權限」「團務設定」裡
+  await page.locator('nav.tabs button[data-v=admins]').click();
+  await page.locator('#gseg button[data-g=perms]').click();
+  await page.getByText('權限與分頁設定').first().waitFor();
+  await page.locator('[data-pf=tab_events] [data-lv]').selectOption('服務員');
+  await page.click('#fpms button[type=submit]');
+  await page.getByText('已儲存 1 項權限設定').waitFor();
+  assert.ok(env.rows('權限設定').some((r) => r[0] === 'tab_events' && r[3] === '服務員'));
+  await page.evaluate(() => goAdmin('handover'));
+  await page.getByText('交接準備度檢查').waitFor();
+  assert.match(await text(), /移交最高管理權限/);
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();
 

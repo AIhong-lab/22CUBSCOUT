@@ -38,7 +38,6 @@ function menuDefaultAdmin() {
 
 function ensureDefaultAdmin_() {
   return withLock_(function () {
-    var settings = loadSettings_().values;
     var password = Logic.generateCode(10, randInt_, []).toLowerCase();
     var salt = randomHex_(32);
     var hash = Logic.hashPassword(password, salt, HASH_ITERATIONS, hmacHex_);
@@ -55,9 +54,9 @@ function ensureDefaultAdmin_() {
       updateRows_(SHEET.ACCOUNTS, [{ row: acc._row, values: row }]);
       purgeSessions_(acc.accountId);
     }
-    var admins = loadAdmins_();
+    var admins = loadAdmins_(Logic.DEFAULT_SECTION);
     var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
-    if (!cur) appendRows_(SHEET.ADMINS, [[acc.accountId, '團長', Logic.ROLE.LEADER, now, '試算表選單', '', '']]);
+    if (!cur) appendRows_(SHEET.ADMINS, [[acc.accountId, '團長', Logic.ROLE.LEADER, now, '試算表選單', '', '', Logic.DEFAULT_SECTION, '']]);
     else if (cur.role !== Logic.ROLE.LEADER) {
       var ar = cur._raw.slice(0, HEADERS[SHEET.ADMINS].length); ar[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: ar }]);
@@ -87,7 +86,7 @@ function setLeaderByUsername_(username) {
     var acc = findAccountByName_(username);
     if (!acc) return { ok: false, message: '找不到帳號「' + Logic.clean(username) + '」。請先在網站註冊（登入 → 註冊新帳號），再回來設定。' };
     if (acc.status !== '啟用') return { ok: false, message: '這個帳號已停用，請先到後台「帳號管理」啟用。' };
-    var admins = loadAdmins_();
+    var admins = loadAdmins_(Logic.DEFAULT_SECTION);
     var cur = admins.filter(function (a) { return a.accountId === acc.accountId; })[0];
     if (cur && cur.role === Logic.ROLE.LEADER) return { ok: true, message: '「' + acc.username + '」已經是團長了。' };
     if (cur) {
@@ -95,7 +94,7 @@ function setLeaderByUsername_(username) {
       row[2] = Logic.ROLE.LEADER;
       updateRows_(SHEET.ADMINS, [{ row: cur._row, values: row }]);
     } else {
-      appendRows_(SHEET.ADMINS, [[acc.accountId, acc.nickname || acc.username, Logic.ROLE.LEADER, new Date(), '試算表選單', '', '']]);
+      appendRows_(SHEET.ADMINS, [[acc.accountId, acc.nickname || acc.username, Logic.ROLE.LEADER, new Date(), '試算表選單', '', '', Logic.DEFAULT_SECTION, '']]);
     }
     // 這個帳號還在等審核的服務員申請一併結案
     var pend = loadRequests_().filter(function (q) { return q.accountId === acc.accountId && q.status === '待審核' && q.type === '服務員'; });

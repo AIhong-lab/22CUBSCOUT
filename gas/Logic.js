@@ -53,6 +53,9 @@ var Logic = (function () {
   var STAFF_ROLES = [CENTRAL, ROLE.LEADER, ROLE.ASSISTANT];
   /** 綁定紀錄「關係」：空白視為家長 */
   var RELATION = { PARENT: '家長', SELF: '本人' };
+  /** 童軍以上（有手機，由家長建立的本人帳號）的權限層級名稱與適用分團 */
+  var SCOUT_SELF = '童軍本人';
+  var SELF_ELIGIBLE_SECTIONS = ['童軍', '行義', '羅浮'];
 
   function sectionOf(v) {
     var x = clean(v);
@@ -235,7 +238,8 @@ var Logic = (function () {
   /** 解析 CSV（支援雙引號、逗號、換行） */
   function parseCsv(text) {
     var rows = [], row = [], cell = '', q = false;
-    text = String(text).replace(/^﻿/, '');
+    // [修補] 補回 UTF-8 BOM 移除（原 /^/ 遺失 \uFEFF）
+    text = String(text).replace(/^\uFEFF/, '');
     for (var i = 0; i < text.length; i++) {
       var c = text[i];
       if (q) {
@@ -401,7 +405,6 @@ var Logic = (function () {
     return { ok: true, list: cur };
   }
 
-  /** setup() 用：設定分頁初始內容（含標題列） */
   /**
    * 後台設定頁：檢查單一設定值（SPEC 7.8）。小隊清單另有專屬頁面，不在這裡改。
    * @return {{ok: boolean, stored?: string, error?: string}} stored 為要寫入試算表的文字
@@ -418,6 +421,7 @@ var Logic = (function () {
     return { ok: true, stored: String(n) };
   }
 
+  /** setup() 用：設定分頁初始內容（含標題列） */
   function defaultSettingsRows() {
     return [['鍵', '值', '說明']].concat(SETTINGS.filter(function (s) { return !s.optional; }).map(function (s) {
       return [s.key, s.type === 'bool' ? (s.def ? '是' : '否') : s.type === 'list' ? s.def.join('、') : s.def, s.desc];
@@ -671,8 +675,6 @@ var Logic = (function () {
     return Object.keys(set).length;
   }
 
-
-
   /** 第二期預留：只有「回報狀態為空或已確認」才算完成 */
   function isCountedCompletion(rec) {
     var s = clean(rec && rec.reportStatus);
@@ -703,7 +705,8 @@ var Logic = (function () {
       .map(function (a) { return a.date; }).sort();
     var awarded = {};
     (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
-    // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）
+    // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）。
+    // 舊生用補登剛入團，不設「啟用基準日」（SPEC 附錄第 64、65 點）
     if (!awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
       awarded[NEWBIE] = { cubId: cubId, unit: NEWBIE, date: null, occasion: '已晉級（視為通過）', implicit: true };
     }
@@ -737,7 +740,7 @@ var Logic = (function () {
       if (!groups[k]) { groups[k] = { category: it.category, unit: it.unit, items: [] }; order.push(k); }
       groups[k].items.push(it);
     });
-    // 進程四級即使沒有項目也要列出
+    // 進程各級即使沒有項目也要列出
     LEVELS.forEach(function (lv) {
       var k = CATEGORY.PROGRESS + '|' + lv;
       if (!groups[k]) { groups[k] = { category: CATEGORY.PROGRESS, unit: lv, items: [] }; order.push(k); }
@@ -794,7 +797,8 @@ var Logic = (function () {
       var prev = LEVELS[LEVELS.indexOf(unit) - 1];
       if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
       prevDate = awarded[prev].date || '';
-      if (INTERVAL_LEVELS.indexOf(unit) >= 0) {
+      // [修補] 確保 prevDate 為合法日期字串再計算 addMonths，避免產生 NaN-NaN-NaN
+      if (INTERVAL_LEVELS.indexOf(unit) >= 0 && isDateStr(prevDate)) {
         var ready = addMonths(prevDate, intervalMonths || 0);
         if (ready > date) date = ready;
       }
@@ -1037,7 +1041,7 @@ var Logic = (function () {
   }
 
   function constantTimeEqual(a, b) {
-    if (a.length !== b.length) return false;
+    if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
     var r = 0;
     for (var i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
     return r === 0;
@@ -1110,6 +1114,171 @@ var Logic = (function () {
     manageRoles: [ROLE.LEADER],
     postNotice: [ROLE.LEADER, ROLE.ASSISTANT]
   };
+
+  // ───────────── 動態分頁與內容權限設定（不同權限顯示不同分頁與內容） ─────────────
+  var PERM_LEVELS = ['管理員', CENTRAL, ROLE.LEADER, ROLE.ASSISTANT, '家長', '已登入', '公開', '停用'];
+  var ADMIN_PERM_LEVELS = ['管理員', CENTRAL, ROLE.LEADER, ROLE.ASSISTANT, '停用'];
+  var PUBLIC_PERM_LEVELS = ['公開', '已登入', '僅家長以上', '僅管理員', '停用'];
+  var PARENT_PERM_LEVELS = [SCOUT_SELF, '家長', '僅管理員', '停用'];
+
+  /**
+   * 系統可設定的分頁與功能清單（由總團／管理員於後台「權限與分頁設定」調整）。
+   * - id：前端分頁／功能代碼
+   * - group：六大分類（公開與成員內容／家長與童軍本人功能／分團日常團務／分團團員與幹部／進程與頒章管理／總團管理與移交）
+   * - def：預設最低權限
+   * - options：允許調整的權限選項
+   * - actions：對應後端 PERMISSIONS 動作代碼
+   * - sharedFunc：若對應原本 SHARED_FUNCS，則與系統設定共用功能連動
+   * - locked：true 表示管理員與總團永遠保有存取權，防止誤鎖自己
+   */
+  var PERM_FEATURES = [
+    // 1. 公開與成員瀏覽內容（各分團登入者僅看自己分團與全團）
+    { id: 'pub_about', name: '認識 22 團（簡介）', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_notices', name: '公佈欄', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_calendar', name: '集會時間與月曆', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_progress', name: '進程總表查詢', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    { id: 'pub_badges', name: '技能章總表查詢', group: '公開與成員內容', scope: 'public', def: '公開', options: PUBLIC_PERM_LEVELS, actions: [] },
+    // 2. 家長與童軍本人專屬功能（童軍／行義／羅浮本人帳號僅看自己）
+    { id: 'member_progress', name: '個人進程與徽章紀錄', group: '家長與童軍本人功能', scope: 'parent', def: SCOUT_SELF, options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'member_attendance', name: '個人出席與集點紀錄', group: '家長與童軍本人功能', scope: 'parent', def: SCOUT_SELF, options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_leave', name: '線上請假申請', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_events', name: '線上活動報名', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: PARENT_PERM_LEVELS, actions: [] },
+    { id: 'parent_create_scout', name: '家長建立童軍本人帳號', group: '家長與童軍本人功能', scope: 'parent', def: '家長', options: ['家長', '僅管理員', '停用'], actions: [] },
+    // 3. 分團日常團務（各分團嚴格隔離）
+    { id: 'tab_home', name: '後台首頁與待辦總覽', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['viewOverview'] },
+    { id: 'tab_attendance', name: '集會點名', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['attendance'] },
+    { id: 'tab_calendar', name: '行事曆與年度出席', group: '分團日常團務', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageCalendar'] },
+    { id: 'tab_notices', name: '公告發布與管理', group: '分團日常團務', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['postNotice'] },
+    { id: 'tab_events', name: '活動管理與繳費', group: '分團日常團務', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageEvents'] },
+    // 4. 分團團員與幹部（各分團嚴格隔離）
+    { id: 'tab_roster', name: '團員名單檢視', group: '分團團員與幹部', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['viewRoster'] },
+    { id: 'tab_cubs_manage', name: '團員異動與綁定碼', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageCubs', 'manageBindCodes'] },
+    { id: 'tab_requests', name: '註冊申請審核', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['reviewRequests'] },
+    { id: 'tab_squads', name: '小隊與小隊輔設定', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageSquadStaff', 'manageRoles'] },
+    { id: 'tab_admins', name: '分團正副團長與服務員管理', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageAdmins', 'manageInvites'] },
+    { id: 'tab_privacy', name: '離團個資處理', group: '分團團員與幹部', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['privacy'] },
+    // 5. 進程與頒章管理（依分團進程模組）
+    { id: 'tab_signoff', name: '進程簽核與撤銷自簽', group: '進程與頒章管理', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['signoff', 'revokeOwnSignoff'] },
+    { id: 'tab_signoff_revoke_any', name: '撤銷他人簽核', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['revokeAnySignoff'] },
+    { id: 'tab_award', name: '頒章與上線補登', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['award', 'backfill'] },
+    { id: 'tab_print', name: '列印進程簽核單', group: '進程與頒章管理', scope: 'admin', def: ROLE.ASSISTANT, options: ADMIN_PERM_LEVELS, actions: ['printSheet'] },
+    { id: 'tab_items', name: '進程項目與章圖管理', group: '進程與頒章管理', scope: 'admin', def: ROLE.LEADER, options: ADMIN_PERM_LEVELS, actions: ['manageItems'] },
+    // 6. 總團管理與移交中心（僅總團／管理員）
+    // 只管「全團」的系統參數；各分團自己的設定（小隊、體驗次數、小狼進程設定）仍由該分團團長在設定頁修改（附錄第 74 點）
+    { id: 'tab_settings', name: '全團系統參數設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '系統設定' },
+    { id: 'tab_site', name: '網站公開內容設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '網站內容' },
+    { id: 'tab_consent', name: '個資告知條款管理', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '個資告知' },
+    { id: 'tab_accounts', name: '全團帳號總管', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '帳號管理' },
+    { id: 'tab_backup', name: '資料備份與權限檢查', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: SHARED_LEVELS, actions: [], sharedFunc: '備份' },
+    { id: 'tab_permissions', name: '權限與分頁設定', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: ['管理員', CENTRAL], actions: ['managePermissions'], locked: true },
+    { id: 'tab_handover', name: '團務移交與交接中心', group: '總團管理與移交', scope: 'admin', def: CENTRAL, options: ['管理員', CENTRAL], actions: ['manageHandover'] }
+  ];
+
+  function defaultPermRows() {
+    return [['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間']].concat(PERM_FEATURES.map(function (f) {
+      return [f.id, f.name, f.group, f.def, '', '系統預設', ''];
+    }));
+  }
+
+  /**
+   * 解析「權限設定」分頁；缺少或無效列退回預設。
+   * rows：試算表讀出的二維陣列（第一列是標題）或 [{id, level, disabledSections}]。
+   * settingsValues：設定分頁的值；分頁裡沒有這一列的共用功能，沿用「共用功能權限：○○」（附錄第 74 點）
+   */
+  function parsePermRules(rows, settingsValues) {
+    var byId = {};
+    (rows || []).forEach(function (r, i) {
+      var o = Array.isArray(r) ? { id: r[0], level: r[3], disabledSections: r[4] } : r;
+      if (Array.isArray(r) && i === 0 && clean(r[0]) === '功能代碼') return;
+      var id = clean(o && o.id);
+      if (id) byId[id] = o;
+    });
+    var rules = {};
+    PERM_FEATURES.forEach(function (f) {
+      var row = byId[f.id];
+      var fallback = f.def;
+      if (f.sharedFunc && settingsValues) {
+        var sv = clean(settingsValues['共用功能權限：' + f.sharedFunc]);
+        if (f.options.indexOf(sv) >= 0) fallback = sv;
+      }
+      var lv = row && f.options.indexOf(clean(row.level)) >= 0 ? clean(row.level) : fallback;
+      var dis = row ? parseList(row.disabledSections).filter(function (s) { return SECTIONS.indexOf(s) >= 0; }) : [];
+      rules[f.id] = {
+        id: f.id, name: f.name, group: f.group, scope: f.scope,
+        level: lv, options: f.options.slice(), actions: f.actions.slice(),
+        sharedFunc: f.sharedFunc || '', locked: !!f.locked,
+        disabledSections: f.locked ? [] : dis
+      };
+    });
+    return rules;
+  }
+
+  function validatePermUpdate(id, level, disabledSections) {
+    var feat = PERM_FEATURES.filter(function (f) { return f.id === clean(id); })[0];
+    if (!feat) return { ok: false, error: '找不到功能代碼：' + clean(id) };
+    var lv = clean(level);
+    if (feat.options.indexOf(lv) < 0) return { ok: false, error: '「' + feat.name + '」的權限選項不正確：' + lv };
+    var dis = [];
+    if (!feat.locked && disabledSections) {
+      var raw = Array.isArray(disabledSections) ? disabledSections : parseList(disabledSections);
+      raw.forEach(function (s) {
+        var c = clean(s);
+        if (SECTIONS.indexOf(c) >= 0 && dis.indexOf(c) < 0) dis.push(c);
+      });
+    }
+    return { ok: true, feature: feat, level: lv, disabledSections: dis };
+  }
+
+  /**
+   * 判斷指定使用者（或訪客）在特定分團下是否能看到／使用某功能。
+   * - 總團、管理員永遠看到所有內容（除非該功能為「停用」，且鎖定項永遠開放給總團／管理員）
+   * - 各分團正副團長、服務員、家長、童軍本人皆受「停用分團」與分團隔離規則限制
+   */
+  function allowsFeature(rule, ctx) {
+    ctx = ctx || {};
+    var sec = ctx.section ? sectionOf(ctx.section) : '';
+    var isAdmin = !!ctx.isOwner || !!ctx.isCentral || ctx.role === ROLE.LEADER || ctx.role === ROLE.ASSISTANT;
+    var isTop = !!ctx.isOwner || !!ctx.isCentral;
+    if (rule.locked && (ctx.isOwner || (rule.level === CENTRAL && ctx.isCentral) || (!ctx.ownerExists && ctx.isCentral))) return true;
+    if (rule.level === '停用') return false;
+    if (sec && rule.disabledSections && rule.disabledSections.indexOf(sec) >= 0 && !isTop) return false;
+    if (rule.scope === 'public') {
+      if (rule.level === '公開') return true;
+      if (rule.level === '已登入') return !!ctx.loggedIn;
+      if (rule.level === '僅家長以上') return !!ctx.loggedIn && (!!ctx.isParent || isAdmin);
+      if (rule.level === '僅管理員') return isAdmin;
+      return false;
+    }
+    if (rule.scope === 'parent') {
+      if (rule.level === SCOUT_SELF) return !!ctx.loggedIn && (!!ctx.isScoutSelf || !!ctx.isParent || isAdmin);
+      if (rule.level === '家長') return !!ctx.loggedIn && (!!ctx.isParent || isAdmin);
+      if (rule.level === '僅管理員') return isAdmin;
+      return false;
+    }
+    // admin scope
+    if (!isAdmin) return false;
+    if (ctx.isOwner) return true;
+    // 還沒有最高管理員帳號時照舊：總團與團長都可以（附錄第 46、74 點）
+    if (!ctx.ownerExists && (rule.level === '管理員' || rule.level === CENTRAL)) return !!ctx.isCentral || ctx.role === ROLE.LEADER;
+    if (rule.level === '管理員') return false;
+    if (rule.level === CENTRAL) return !!ctx.isCentral;
+    if (rule.level === ROLE.LEADER) return !!ctx.isCentral || ctx.role === ROLE.LEADER;
+    if (rule.level === ROLE.ASSISTANT) return true;
+    return false;
+  }
+
+  /** 算出登入者（或訪客）完整可用的分頁與後端動作表 */
+  function resolvePermissions(rules, ctx) {
+    var tabs = {}, visibleTabs = [], actions = {};
+    PERM_FEATURES.forEach(function (f) {
+      var rule = (rules && rules[f.id]) || { id: f.id, scope: f.scope, level: f.def, disabledSections: [], actions: f.actions, locked: !!f.locked };
+      var ok = allowsFeature(rule, ctx);
+      tabs[f.id] = ok;
+      if (ok) visibleTabs.push(f.id);
+      (f.actions || []).forEach(function (act) { actions[act] = ok; });
+    });
+    return { tabs: tabs, visibleTabs: visibleTabs, actions: actions };
+  }
 
   function can(role, action) {
     var allowed = PERMISSIONS[action];
@@ -1222,8 +1391,10 @@ var Logic = (function () {
     } else if (mode === 'anonymize') {
       var serial = nextAnonymousSerial(cubRows);
       var row = cubRows[cubRowIdx].slice();
+      while (row.length < 12) row.push('');
       replacement = '已離團小狼' + serial;
-      row[1] = replacement; row[2] = ''; row[5] = ''; row[6] = 0; row[7] = '已匿名';
+      // [修補] 匿名化時一併清除職務欄（row[10]），避免殘留小隊長標記
+      row[1] = replacement; row[2] = ''; row[5] = ''; row[6] = 0; row[7] = '已匿名'; row[10] = '';
       upd['小狼名單'] = [{ row: cubRowIdx + 1, values: row }];
       counts['小狼名單'] = 1;
       del['綁定紀錄'] = rowsOf('綁定紀錄');
@@ -1317,7 +1488,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
@@ -1330,11 +1501,12 @@ var Logic = (function () {
     validateAwardDate: validateAwardDate, planBackfill: planBackfill, levelAfterRevoke: levelAfterRevoke,
     generateCode: generateCode, normalizeCode: normalizeCode, checkInvite: checkInvite, checkBindCode: checkBindCode,
     validateUsername: validateUsername, validatePassword: validatePassword, isWeakPassword: isWeakPassword, validateNickname: validateNickname,
-    hashPassword: hashPassword, verifyPassword: verifyPassword, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
+    hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
     TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
+    PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
     planPrivacy: planPrivacy, overdueForPrivacy: overdueForPrivacy,
     diffNotifications: diffNotifications
