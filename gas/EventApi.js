@@ -82,6 +82,15 @@ function apiEventList_(req, who) {
 AUTHED_ACTIONS.eventList = apiEventList_;
 
 function apiEventRegister_(req, who) {
+  // 先看是不是 22 團的人（訊息照舊），再看總團有沒有開放這個身分線上報名（權限設定 parent_events）
+  if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
+  var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+  var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
+  var isSelf = !who.admin && myBinds.length > 0 && !isPar;
+  var firstCub = myBinds[0] ? loadCubs_().filter(function (c) { return c.cubId === myBinds[0].cubId; })[0] : null;
+  if (!resolveWhoPerms_(who, isPar, isSelf, firstCub ? firstCub.section : '').tabs.parent_events) {
+    throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上活動報名。');
+  }
   return afterSync_(withLock_(function () {
     if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
@@ -225,9 +234,8 @@ registerAdmin_('eventPay', 'manageEvents', function (req, who) {
       ups.push({ row: r._row, values: row });
     });
     updateRows_(SHEET.EVENT_REGS, ups);
-    var evId = regs.filter(function (x) { return x.id === Logic.clean(updates[0].regId); })[0].eventId;
-    logOp_(who.account.accountId, '登記活動繳費', evId, '', ups.length + ' 筆');
-    return { changed: ups.length, _ev: evId };
+    logOp_(who.account.accountId, '登記活動繳費', first.eventId, '', ups.length + ' 筆');
+    return { changed: ups.length, _ev: first.eventId };
   }));
 });
 
@@ -270,23 +278,29 @@ function writeSheet_(book, name, rows) {
   sh.setFrozenRows(1);
 }
 
-/** 建立（第一次）或更新這個活動的存檔試算表，回傳網址 */
-function syncEventSheet_(eventId) {
-  DB_CACHE_ = {};
-  var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
-  if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
-  if (ev.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經封存，存檔試算表不會再更新。');
-  var book = null;
-  if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
-  if (!book) {
-    book = SpreadsheetApp.create('活動報名｜' + ev.title + '｜' + ev.date);
-    try { DriveApp.getFileById(book.getId()).moveTo(eventFolder_()); } catch (e) { /* 搬不進資料夾就留在雲端硬碟根目錄 */ }
-    var first = book.getSheets()[0];
-    if (first && first.getName() !== '報名名單') first.setName('報名名單');
-    var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
-    row[12] = book.getId();
-    updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
-  }
+/** 建立（第一次）或更新這個活動的存檔試算表，回傳網址。inLock=true 時表示呼叫端已持有 script lock */
+function syncEventSheet_(eventId, inLock) {
+  var ensureBook = function () {
+    DB_CACHE_ = {};
+    var ev = loadEvents_().filter(function (e) { return e.id === eventId; })[0];
+    if (!ev) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
+    if (ev.archived) throw new ApiError(ERR.BAD_INPUT, '這個活動已經封存，存檔試算表不會再更新。');
+    var book = null;
+    if (ev.sheetId) { try { book = SpreadsheetApp.openById(ev.sheetId); } catch (e) { book = null; } }
+    if (!book) {
+      book = SpreadsheetApp.create('活動報名｜' + ev.title + '｜' + ev.date);
+      try { DriveApp.getFileById(book.getId()).moveTo(eventFolder_()); } catch (e) { /* 搬不進資料夾就留在雲端硬碟根目錄 */ }
+      var first = book.getSheets()[0];
+      if (first && first.getName() !== '報名名單') first.setName('報名名單');
+      var row = HEADERS[SHEET.EVENTS].map(function (h, j) { return ev._raw[j] === undefined ? '' : ev._raw[j]; });
+      row[12] = book.getId();
+      updateRows_(SHEET.EVENTS, [{ row: ev._row, values: row }]);
+    }
+    return { ev: ev, book: book };
+  };
+  // [修補] 建立存檔試算表並回寫 sheetId 時加上鎖保護，避免兩人同時報名建出重複試算表
+  var pair = inLock ? ensureBook() : withLock_(ensureBook);
+  var ev = pair.ev, book = pair.book;
   var acc = accountsById_(), now = new Date();
   var fmt = function (t) { return t ? Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd HH:mm') : ''; };
   var regs = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).sort(function (a, b) { return a.at - b.at; });
@@ -309,14 +323,14 @@ function syncEventSheet_(eventId) {
 function afterSync_(res) {
   var id = res && res._ev;
   if (res) delete res._ev;
-  if (id) { try { syncEventSheet_(id); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
+  if (id) { try { syncEventSheet_(id, false); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
   return res;
 }
 
 /** 團長手動同步（或補建）存檔試算表 */
 registerAdmin_('eventSheetSync', 'manageEvents', function (req, who) {
   var id = findManagedEvent_(who, req.eventId).id;
-  try { return { sheetUrl: syncEventSheet_(id) }; }
+  try { return { sheetUrl: syncEventSheet_(id, false) }; }
   catch (e) { if (e instanceof ApiError) throw e; throw new ApiError(ERR.BAD_INPUT, '存檔試算表建立或更新失敗，請稍後再試一次。'); }
 });
 
@@ -330,7 +344,7 @@ function purgeEndedEvents_() {
   ended.forEach(function (e0) {
     try {
       withLock_(function () {
-        syncEventSheet_(e0.id);
+        syncEventSheet_(e0.id, true);
         DB_CACHE_ = {};
         var ev = loadEvents_().filter(function (x) { return x.id === e0.id; })[0];
         if (!ev || !ev.sheetId) return;
@@ -347,14 +361,17 @@ function purgeEndedEvents_() {
   return done;
 }
 
-/** 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資） */
+/**
+ * [修補] 刪除帳號時一併刪除該帳號送出的報名（報名含姓名，屬個資），並回傳受影響的活動ID清單，
+ * 讓呼叫端在釋放鎖之後再同步存檔試算表。
+ */
 function deleteRegsOfAccount_(accountId) {
   var mine = loadRegs_().filter(function (r) { return r.accountId === accountId; });
-  if (!mine.length) return;
+  if (!mine.length) return [];
   deleteRows_(SHEET.EVENT_REGS, mine.map(function (r) { return r._row; }));
-  // 存檔試算表也要跟著拿掉這些人的資料
-  var seen = {};
-  mine.forEach(function (r) { if (!seen[r.eventId]) { seen[r.eventId] = true; afterSync_({ _ev: r.eventId }); } });
+  var seen = {}, evIds = [];
+  mine.forEach(function (r) { if (!seen[r.eventId]) { seen[r.eventId] = true; evIds.push(r.eventId); } });
+  return evIds;
 }
 
 // ───────────── 進程章與技能章的圖片（團長上傳，公開顯示） ─────────────

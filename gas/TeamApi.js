@@ -253,6 +253,11 @@ function apiParentLeave_(req, who) {
     var cubId = Logic.clean(req.cubId);
     var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
     if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
+    var cubObj = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+    var isSelf = binding.relation === Logic.RELATION.SELF;
+    if (!resolveWhoPerms_(who, !isSelf, isSelf, cubObj ? cubObj.section : '').tabs.parent_leave) {
+      throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上請假功能。');
+    }
     if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
@@ -270,6 +275,44 @@ function apiParentLeave_(req, who) {
   });
 }
 AUTHED_ACTIONS.parentLeave = apiParentLeave_;
+
+/**
+ * 家長為「童軍／行義／羅浮」孩子建立「本人帳號」（有手機時使用）：
+ * 建立後該帳號僅綁定這一位團員（關係＝本人），無法看到其他團員或他分團內容。
+ */
+function apiParentCreateScoutAccount_(req, who) {
+  return withLock_(function () {
+    var cubId = Logic.clean(req.cubId);
+    var binding = loadBindings_().filter(function (b) {
+      return b.accountId === who.account.accountId && b.cubId === cubId && b.relation !== Logic.RELATION.SELF;
+    })[0];
+    if (!binding) throw new ApiError(ERR.FORBIDDEN, '只有已綁定該團員的家長可以建立童軍本人帳號。');
+    var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+    if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位團員的資料。');
+    if (Logic.SELF_ELIGIBLE_SECTIONS.indexOf(cub.section) < 0) {
+      throw new ApiError(ERR.BAD_INPUT, '目前僅開放「童軍、行義、羅浮」建立團員本人帳號。');
+    }
+    if (!resolveWhoPerms_(who, true, false, cub.section).tabs.parent_create_scout) {
+      throw new ApiError(ERR.FORBIDDEN, '總團目前未開放家長建立童軍本人帳號。');
+    }
+    var settings = loadSettings_().values;
+    var nick = Logic.clean(req.nickname) || cub.name;
+    checkAccountInput_(req.username, req.password, nick, settings);
+    if (isReservedUsername_(req.username) || findAccountByName_(req.username)) {
+      throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+    }
+    var accounts = loadAccounts_();
+    var accountId = newId_('U', accounts.map(function (a) { return a.accountId; }));
+    var salt = randomHex_(32);
+    var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+    var now = new Date();
+    appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), nick, hash, salt, '啟用', now, '', '', '']]);
+    bindCub_(accountId, cub, binding.consentVersion || Logic.latestConsentVersion(loadConsents_()), Logic.RELATION.SELF, true);
+    logOp_(who.account.accountId, '家長建立童軍本人帳號', cub.cubId, '', Logic.clean(req.username) + '（' + cub.section + '）');
+    return { accountId: accountId, username: Logic.clean(req.username), cubName: cub.name, section: cub.section };
+  });
+}
+AUTHED_ACTIONS.parentCreateScoutAccount = apiParentCreateScoutAccount_;
 
 // ───────────── 網站內容：認識 22 團（原「了解幼童軍」）、活動時間說明、FB 網址（SPEC 附錄第 49 點） ─────────────
 
@@ -306,7 +349,7 @@ function buildSiteInfo_() {
   var meetings = loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date >= from; })
     .sort(function (a, b) { return a.date < b.date ? -1 : 1; }).slice(0, 200)
     .map(function (m) { return { date: m.date, name: m.name, type: m.type, note: m.note, target: m.target }; });
-  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_() };
+  return { about: v.about, activity: v.activity, fb: v.fb, today: today, meetings: meetings, events: publicEvents_(), publicTabs: Logic.resolvePermissions(loadPermRules_(), { loggedIn: false }).tabs };
 }
 PUBLIC_ACTIONS.siteInfo = apiSiteInfo_;
 
@@ -330,4 +373,3 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     return { changed: ups.length + adds.length };
   });
 });
-

@@ -1,4 +1,4 @@
-// 全團上線第 2 期（SPEC 附錄第 75 點）：通用進程模組＋稚齡進程與技能章。測試資料一律虛構。
+// 全團上線第 2 期（SPEC 附錄第 77 點）：通用進程模組＋稚齡進程與技能章。測試資料一律虛構。
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');

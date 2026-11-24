@@ -33,6 +33,13 @@ function setupCore_() {
     }
     if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
 
+    // 權限設定：只在分頁沒有資料列時匯入預設權限表
+    if (dataRowCount_(SHEET.PERMS) === 0) {
+      var permRows = Logic.defaultPermRows().slice(1);
+      appendRows_(SHEET.PERMS, permRows);
+      report.seeded.push(SHEET.PERMS + ' ' + permRows.length + ' 項');
+    }
+
     // 設定：只補上缺少的鍵，不改既有值
     var have = {};
     readRows_(SHEET.SETTINGS).forEach(function (r) { have[Logic.clean(r[0])] = true; });
@@ -96,7 +103,7 @@ function ensureFirstLeaderInvite_() {
   var len = loadSettings_().values['綁定碼長度'] + 2;
   var code = Logic.generateCode(len, randInt_, allCodes_());
   var exp = new Date(now + FIRST_LEADER_INVITE_HOURS * 3600000);
-  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '']]);
+  appendRows_(SHEET.INVITES, [[code, Logic.ROLE.LEADER, '團長', 'setup', new Date(now), exp, '未使用', '', '', Logic.DEFAULT_SECTION, '']]);
   return { code: code, expiresAt: exp.getTime(), reused: false };
 }
 
@@ -126,7 +133,7 @@ function ensureNewbieLevel_() {
       if (ups.length) { updateRows_(SHEET.DETAILS, ups); done.push(SHEET.DETAILS + ' ' + ups.length + ' 條改掛到剛入團'); }
     }
   }
-  if (!loadUnits_()[Logic.CATEGORY.PROGRESS + '|' + NB]) {
+  if (!loadUnits_(Logic.DEFAULT_SECTION)[Logic.CATEGORY.PROGRESS + '|' + NB]) {
     appendRows_(SHEET.UNITS, [[NB, Logic.CATEGORY.PROGRESS, '', seed.desc, seed.rule, 5]]);
     done.push(SHEET.UNITS + ' 新增剛入團');
   }
@@ -134,7 +141,7 @@ function ensureNewbieLevel_() {
 }
 
 /**
- * 匯入其他分團的官方進程與章（附錄第 75 點；目前是稚齡）：項目總表還沒有該分團的項目時，才在最下面新增；
+ * 匯入其他分團的官方進程與章（附錄第 77 點；目前是稚齡）：項目總表還沒有該分團的項目時，才在最下面新增；
  * 級別與章說明只補該分團還沒有的名稱。只新增列、不改任何既有資料；已匯入就不再執行（團長改過的內容不會被蓋掉）。
  * @return {string[]} 報告文字
  */

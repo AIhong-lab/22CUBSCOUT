@@ -33,7 +33,7 @@ function buildSeedData() {
   const b = priv.indexOf('<!-- 告知同意文字結束 -->');
   if (a < 0 || b < 0) throw new Error('PRIVACY.md 缺少告知同意文字標記');
   const consentText = priv.slice(a + '<!-- 告知同意文字開始 -->'.length, b).trim();
-  // 其他分團的進程與章（附錄第 75 點）：已由該分團團長核對、要匯入的分團才放進來
+  // 其他分團的進程與章（附錄第 77 點）：已由該分團團長核對、要匯入的分團才放進來
   const sections = {};
   const unitCsv = read('data/sections/級別與章說明.csv').trim().split('\n').slice(1).map((l) => l.split(','));
   for (const sec of SEED_SECTIONS) {

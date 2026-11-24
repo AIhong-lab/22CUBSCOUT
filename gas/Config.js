@@ -40,6 +40,7 @@ var SHEET = {
   EVENT_REGS: '活動報名',
   UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
+  PERMS: '權限設定',
   LOG: '操作日誌'
 };
 
@@ -78,6 +79,7 @@ HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
 HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
+HEADERS[SHEET.PERMS] = ['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
 
 /**
@@ -93,7 +95,7 @@ TEXT_COLUMNS[SHEET.ITEMS] = [1];
 TEXT_COLUMNS[SHEET.DETAILS] = [1];
 TEXT_COLUMNS[SHEET.COMPLETIONS] = [1, 2, 3, 4];
 TEXT_COLUMNS[SHEET.AWARDS] = [1, 3, 6];
-TEXT_COLUMNS[SHEET.MEETINGS] = [1, 2];
+TEXT_COLUMNS[SHEET.MEETINGS] = [1, 2, 3, 4];
 TEXT_COLUMNS[SHEET.ATTENDANCE] = [1, 2, 4];
 TEXT_COLUMNS[SHEET.PERIODS] = [2, 3];
 TEXT_COLUMNS[SHEET.EXTRA] = [2];
@@ -107,12 +109,13 @@ TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
 TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
+TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
 
 /**
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-23b';
+var APP_VERSION = '2026-11-24a';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {

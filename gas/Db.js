@@ -24,14 +24,13 @@ function sheet_(name) {
   return sh;
 }
 
-/** 讀整個分頁（含標題列），欄數以標題定義為準 */
 /**
  * 很少變動的分頁暫存在 CacheService（10 分鐘），省掉每次請求都讀試算表的時間（SPEC 附錄第 58 點）。
  * 經由程式寫入時 invalidate_ 會清掉；直接在試算表編輯時由 onEdit 清掉。這些分頁沒有日期欄，存成 JSON 不會變型。
  */
 var SHEET_CACHE_SECONDS = 600;
 function sheetCacheKey_(name) {
-  return [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].indexOf(name) >= 0 ? 'SHEET_' + name : '';
+  return [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS, SHEET.PERMS].indexOf(name) >= 0 ? 'SHEET_' + name : '';
 }
 function readAll_(name) {
   if (DB_CACHE_[name]) return DB_CACHE_[name];
@@ -55,7 +54,7 @@ function clearAllCaches_() {
   DB_CACHE_ = {};
   try {
     var c = CacheService.getScriptCache();
-    [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS].forEach(function (n) { c.remove('SHEET_' + n); });
+    [SHEET.ITEMS, SHEET.UNITS, SHEET.DETAILS, SHEET.SETTINGS, SHEET.PERMS].forEach(function (n) { c.remove('SHEET_' + n); });
     removeCatalogCache_();
   } catch (e) { /* 不影響主要操作 */ }
   clearPublicCache_();
@@ -88,6 +87,10 @@ function appendRows_(name, rows) {
   // 超過試算表目前列數時先加列（getRange 不會自動擴充）
   var need = start + data.length - 1 - sh.getMaxRows();
   if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+  // [修補] 寫入前先確保 TEXT_COLUMNS 為純文字格式，避免新擴充列把日期或全數字代碼自動轉型
+  (TEXT_COLUMNS[name] || []).forEach(function (col) {
+    if (col <= width) sh.getRange(start, col, data.length, 1).setNumberFormat('@');
+  });
   sh.getRange(start, 1, data.length, width).setValues(data);
   invalidate_(name);
 }
@@ -163,12 +166,14 @@ function today_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'); }
 
 // ───────────── 讀取成物件 ─────────────
 
+function validDateStr_(v) { var d = dateStr_(v); return Logic.isDateStr(d) ? d : ''; }
+
 function loadCubs_() {
   return readRows_(SHEET.CUBS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
     return {
-      cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: dateStr_(r[3]),
+      cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: validDateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: dateStr_(r[8]), trialStart: dateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
     };
   });
 }
@@ -208,10 +213,10 @@ function loadAdmins_(section) {
   var rows = loadAdminRows_(), line = {};
   rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
   var list = Logic.effectiveAdmins(rows, sec);
-  var owner = findAccountByName_(DEFAULT_ADMIN_USERNAME);
-  if (owner && !list.some(function (a) { return a.accountId === owner.accountId; })) {
-    var orow = rows.filter(function (r) { return r.accountId === owner.accountId; })[0];
-    if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員' }));
+  var ownerAcc = ownerId_();
+  if (ownerAcc && !list.some(function (a) { return a.accountId === ownerAcc; })) {
+    var orow = rows.filter(function (r) { return r.accountId === ownerAcc; })[0];
+    if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員', _synthetic: true }));
   }
   // LINE 通知是跟著人走的：同一人任何一列有連結都算
   return list.map(function (a) {
@@ -262,7 +267,7 @@ function loadAllUnits_() {
 }
 
 /**
- * 某分團的級別與章說明：{ '類別|名稱': {...} }。稚齡和小狼都有「種植」章，所以一律要指定分團（附錄第 75 點）。
+ * 某分團的級別與章說明：{ '類別|名稱': {...} }。稚齡和小狼都有「種植」章，所以一律要指定分團（附錄第 77 點）。
  * @param section 分團；沒給時用目前分團（後台請求），再沒有就是小狼
  */
 function loadUnits_(section) {
@@ -349,6 +354,12 @@ function latestConsent_() {
 }
 
 function loadSettings_() { return Logic.parseSettings(readAll_(SHEET.SETTINGS)); }
+
+/** 讀取動態權限設定；若試算表尚未建立「權限設定」分頁，自動退回內建預設值不報錯 */
+function loadPermRules_() {
+  var rows = ss_().getSheetByName(SHEET.PERMS) ? readAll_(SHEET.PERMS) : [];
+  return Logic.parsePermRules(rows, loadSettings_().values);
+}
 
 /** 寫操作日誌（不得寫入密碼、臨時碼、登入憑證） */
 function logOp_(actor, action, target, before, after) {

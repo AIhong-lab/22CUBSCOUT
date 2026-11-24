@@ -21,7 +21,12 @@ function runBackup_() {
     result = { at: Date.now(), ok: true, message: '已備份「' + name + '」' + (removed ? '，刪除最舊的 ' + removed + ' 份' : '') };
   } catch (e) {
     result = { at: Date.now(), ok: false, message: '備份失敗：' + (e && e.message ? e.message : e) };
-    // 階段 5：推播通知團長
+    // [修補] 補完階段 5：備份失敗時透過 LINE 主動推播提醒團長與總團
+    try {
+      var token = props.getProperty('LINE_MESSAGING_TOKEN');
+      var ids = token ? linkedLeaderLineIds_() : [];
+      if (token && ids.length) linePush_(ids, { type: 'text', text: '⚠️ 22 團系統備份失敗\n' + result.message + '\n請到後台「備份」檢查。' }, token);
+    } catch (e2) { /* 推播失敗不影響備份結果紀錄 */ }
   }
   props.setProperty('BACKUP_LAST', JSON.stringify(result));
   return result;

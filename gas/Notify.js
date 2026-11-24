@@ -47,12 +47,23 @@ function webUrl_() {
 }
 /** 達標通知只推給該分團已連結 LINE 的團長、服務員（附錄第 73 點⑳） */
 function linkedLineIds_(section) { return loadAdmins_(section || Logic.DEFAULT_SECTION).map(function (a) { return a.lineUserId; }).filter(String); }
+/** 系統告警（如備份失敗）推給已連結 LINE 的團長與總團 */
+function linkedLeaderLineIds_() {
+  var seen = {}, ids = [];
+  loadAdminRows_().forEach(function (a) {
+    if ((a.role === Logic.ROLE.LEADER || a.role === Logic.CENTRAL) && a.lineUserId && !seen[a.lineUserId]) {
+      seen[a.lineUserId] = true;
+      ids.push(a.lineUserId);
+    }
+  });
+  return ids;
+}
 /** 有進程模組的分團的在團團員（達標掃描用） */
 function progressCubs_() { return loadCubs_().filter(function (c) { return Logic.PROGRESS_SECTIONS.indexOf(c.section) >= 0; }); }
 
 /**
- * 重算達標清單，與通知紀錄比對後推播。
- * 沒有 token 或沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
+ * 重算達標清單，與通知紀錄比對後推播（依分團各自推給該分團已連結 LINE 的管理員）。
+ * 沒有 token 或該分團沒有任何管理員連結 LINE 時不推播、也不寫通知紀錄（之後連結了才通知）。
  * @return {{notified: number, reminded: number, cleared: number, skipped?: string}}
  */
 function syncNotifications_(opts) {
@@ -152,14 +163,14 @@ function linePush_(ids, message, token) {
 
 // ───────────── 關鍵字回覆（不計入推播額度） ─────────────
 
-/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」只回覆已連結 LINE 的管理員 */
+/** 「進度」任何人都回網頁連結（不含個資）；「可晉級」「快達標」「點名」只回覆已連結 LINE 的管理員 */
 function handleKeyword_(text, lineUserId, replyToken) {
   if (text === '進度') return lineReply_(replyToken, '查看進度請開啟網頁並登入：\n' + webUrl_());
   if (text !== '可晉級' && text !== '快達標' && text !== '點名') return null;
   // 已連結 LINE 的管理員（任何分團）；LINE 跟著人走
   var rows = loadAdminRows_(), me = rows.filter(function (a) { return a.lineUserId === lineUserId; })[0];
   if (!me) return null;
-  var isOwner = (accountsById_()[me.accountId] || {}).username === DEFAULT_ADMIN_USERNAME;
+  var isOwner = me.accountId === ownerId_();
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
   if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));

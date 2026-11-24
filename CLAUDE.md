@@ -46,7 +46,7 @@
 - 上線前檢查（SPEC 附錄第 65 點）：`adminHome.alerts.placeholders`（`placeholderPlaces_()`：最新個資告知、了解幼童軍含「【請填寫」；只給有 `manageSettings` 的人）；不採用寫死的剛入團基準日。
 - 公開頁面載入（SPEC 附錄第 66 點）：`renderInfo` 先用 `noticeData`／`siteData` 畫面再背景更新（`infoSeq` 與 `#infoBack[data-seq]` 防止換頁後被舊回應蓋掉）；GitHub 版 `api()` 用 AbortController 45 秒逾時（`window.__apiTimeout` 給測試用）。`tests/web/slow.js`。
 - LINE 選單右下角（SPEC 附錄第 67 點）：`RichMenu.js` 的 `TEAM_FB_URL`（22 團 FB 粉絲專頁）是沒填「網站內容 → FB 網址」時的預設；三份手冊都有 LINE 官方帳號章節（完整版「五之二」）。
-- **目前狀態**（2026-11-16；全團第 1 期見下方附錄第 74 點、第 2 期見附錄第 75 點）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
+- **目前狀態**（2026-11-16；全團第 1 期見下方附錄第 74 點、第 2 期見附錄第 77 點）：階段 0A～5 與附錄第 45～51 點的程式都已完成並通過模擬測試（`npm test` 150 項、`npm run test:web` 全過）；GAS 版在團長的實際環境進不去，**正式網站維持 GitHub Pages**（附錄第 59 點）；GAS 版程式保留但不使用。**尚未在真實環境驗證**：LINE 推播（Flex、multicast）與圖文選單、每日／每週排程、活動存檔試算表（DriveApp 建檔與搬移）、章圖上傳的縮圖效果。第二期（ROADMAP）未做。團長回報的問題優先處理。
 - 多分團（SPEC 附錄第 68 點，2026-11-19 只定規格、尚未寫程式）：將擴充成 22 團團部網站；第一期骨架為分團欄位（空白＝小狼）、權限範圍（管理員／總團／團長（含副團長）／服務員／家長／小孩）、綁定紀錄「關係」、小狼模組化、恢復邀請碼。升團與離團（附錄第 69 點）、三項登記（附錄第 70 點）已定。
 - 多分團骨架（SPEC 附錄第 71 點，2026-11-19 已實作）：`Logic.SECTIONS`／`sectionOf`（空白＝小狼）／`CENTRAL`（總團）／`effectiveAdmins(rows, section)`／`validateStaffChange`；`loadAdminRows_()`（管理員分頁全部列）與 `loadAdmins_()`（**只回在小狼有效的身分**，總團視為團長並標 `scope`，LINE userId 跟著人走）；`requireAccount_` 多回 `staff`、`isCentral`；`me.staff`／`isCentral`／`canManageStaff`。`gas/StaffApi.js`：`staffList`、`staffSave`、`inviteCreate`（`requireStaffManager_`：admin 或總團）。邀請碼帶分團、職稱（`redeemInvite_` 依分團寫入）。前端 `ADMIN_PAGES.staff`、`renderNoCub` 的「分團功能準備中」。總團不能在 `adminUpdate`／`adminRemove` 修改。官方進程資料 `data/sections/`（未匯入）、轉換程式 `tools/sections-convert.py`。測試 `tests/web/sections.js`。**新增任何後台功能都要想清楚屬於哪個分團**；目前 `loadAdmins_()` 等於「小狼」。
 - 後端版本檢查（SPEC 附錄第 72 點）：`APP_VERSION` 在 `gas/Config.js` 與 `web/index.html` 各一份，**改任何 gas/ 程式都要把兩邊一起改成新版本號**（格式 `YYYY-MM-DD` 加小寫字母，npm test 檢查一致）；`me.serverVersion`、`ping.version`；不一致時團長後台首頁紅色提醒。網站後端網址 2026-11-19 改連團長維護中的專案（原網址屬另一個舊專案）。
@@ -58,12 +58,18 @@
   - 對象：`Logic.ALL`（全團）、`targetOf`／`targetIncludes`（集會、公告、年度出席）、`parseTargets`／`targetsInclude`（活動可複選）；`meetingVisible_`／`canEditMeeting_`／`findMeeting_`、`canEditNotice_`、`canManageEvent_`／`findManagedEvent_`／`eventTargets_`、`accountSections_`（報名資格）、`sectionPeriod_(section, date)`（分團自己的，沒有就全團預設）。
   - 帳號申請：`Logic.UNASSIGNED`（未指定）、`requestSection_`、`childSections_`（`childSections` 與 `childNames` 對應、`staffSection`）、`requestVisible_`、`requestAssign`；核准時第 12 欄寫實際分團。
   - 前端：`SECTIONS`／`SEC_INFO`（full、slug、icon）、`secFull`、`roleName`（羅浮群長）、`targetSel`／`targetPill`、`switchSection`（`#secSel`）、`adminTabs()`／`secHasProgress()`／`canShared()`／`pageOk()`；公開 `renderHome`（團部入口 `#secCards`）、`renderSectionPage(sec)`（`#cub` 等）、`renderCatalog(view, {sec})`（`#secTabs`、`#scout/progress`）、`mountNotices(max, after, secs)`／`noticesFor`、`drawCalendar(el, site, ym, secs)`、`mountCalendarAndFb`；家長 `viewHomeBasic`（非小狼）、`mySecs()`；註冊 `secSelectHtml`／`childSecsOf`。測試 `tests/sections.test.js`、`tests/web/sections.js`。
-- **第 2 期已實作（SPEC 附錄第 75 點，2026-11-23，模擬測試通過、未在真實環境驗證）**：
+- **第 2 期已實作（SPEC 附錄第 77 點，2026-11-23，模擬測試通過、未在真實環境驗證）**：
   - 進程模組：`Logic.PROGRESS_MODULES`（小狼、稚齡；`PROGRESS_SECTIONS` 由它產生）、`progressModule`／`levelsOf`／`isLevelOf`／`idPrefixOf`／`currentLevelOf`／`progressParams(settings, section)`（只取該模組用得到的設定）。`computeCubProgress` 帶 `section`：只算該分團的項目（`item.sec`）與頒章（`award.sec`）；剛入團、出席自動完成只有小狼（`newbie`、`autoItem`）；稚齡有完成期限（`deadlines`，`u.deadline`／`u.deadlineState` soon／over，只看 nextLevel，家長端 `buildCubView_` 拿掉）。⑨ 的專科章枚數／必修章等童軍上線再做。
   - **項目的 `item.section` 是「大項」（舊名），分團是 `item.sec`**；頒章、級別與章說明、章圖的分團也是 `sec`。寫分團欄一律用 `secCell_(sec)`（小狼留空）。`loadUnits_(section)`（一定要給分團，沒給時用目前分團）、`loadAllUnits_()`、`sectionItems_(section)`、`loadUnitImages_(section)`。
   - 稚齡資料由 `tools/build.js` 的 `SEED_SECTIONS` 放進 `SEED.sections`，`ensureSectionSeeds_()`（setup）在沒有稚齡項目時新增。各分團進程設定 `scope: 'progress'`（例如「完成期限月數：地球（稚齡）」），`settingGroupFor_` 只給該分團。
   - 公開 `catalog` 帶 `section`（快取鍵 `CATALOG2_稚齡`，`removeCatalogCache_()`）；章圖公開鍵小狼 `類別|名稱`、其他分團 `分團|類別|名稱`。`scanCubs_` 多回 `due`（期限），通知依分團分開推。
   - 前端：`SEC_LEVELS`、`progSec`／`setProgSec`（家長＝孩子的分團、公開＝選的分團、後台＝目前分團；`iconOf` 的章圖鍵與 `levelWindow` 依此）、`lvs()`、`SEC_TEXT`、`SEC_FINISH`、`GROUP_ICON`、`beaverIntroHtml`、`loadCatalog(sec)`（`catalogData` 依分團）。**新增分團進程時，前後端的級別清單要一起加**。測試 `tests/beaver.test.js`、`tests/web/beaver.js`。
+
+- **權限設定、移交中心、童軍本人帳號、選單精簡（SPEC 附錄第 76 點，2026-11-23 拆回團長交接包，模擬測試通過、未在真實環境驗證）**：
+  - 權限：`Logic.PERM_FEATURES`（33 項，`scope` public／parent／admin，`actions` 對應後端動作，`sharedFunc` 對應共用功能，`locked`）、`defaultPermRows`、`parsePermRules(rows, settingsValues)`（讀試算表二維陣列；沒有那一列的共用功能沿用「共用功能權限：○○」）、`validatePermUpdate`、`allowsFeature`（沒有最高管理員時團長照舊可用總團級功能）、`resolvePermissions`。後端 `loadPermRules_()`、`resolveWhoPerms_(who, isParent, isScoutSelf, section)`；`requireRole_` 先看權限表的 `actions`，沒列的動作才用 `Logic.can`；`canShared_` 也走權限表。API `permSettingsGet`／`permSettingsSave`（同步寫回共用功能權限設定）；`me.tabs`／`visibleTabs`／`permissions`／`accountType`／`allowedSections`；公開資料帶 `publicTabs`（只隱藏入口，不是保密）。**「全團系統參數設定」(tab_settings) 不綁 manageSettings**，分團團長仍可改自己分團的設定。
+  - 最高管理員：`ownerId_()` 先讀設定分頁原始列「最高管理員帳號ID」（`OWNER_SETTING_KEY`，不在 `Logic.SETTINGS`、設定頁看不到），沒有才是 admin；`loadAdmins_` 合成列用 `ownerId_()` 並標 `_synthetic`（`adminUpdate` 拒絕改合成列）。API `handoverSummary`、`handoverTransfer`（重新讀帳號核對密碼、失敗計入登入鎖定、確認帳號名稱、接任者加總團、原管理員可保留總團）。
+  - 童軍本人：`Logic.SCOUT_SELF`／`SELF_ELIGIBLE_SECTIONS`；`bindCub_(accountId, cub, version, relation, skipCodeDecrement)`（有「本人」綁定的帳號不能再綁別人）；`apiParentCreateScoutAccount_`（TeamApi）；`apiCubDetail_` 依 `member_progress`／`member_attendance` 過濾；`parentLeave`、`eventRegister` 依 `parent_leave`／`parent_events`。
+  - 前端：`hasTab(id, fallback)`、`state.publicTabs`、`isTopAdmin()`、`myAllowedSecs()`、`PARENT_TABS()`／`PARENT_SEGS()`（函式）、`pageOk(k)`、`firstPageOf`、`PAGE_GROUPS`（6 組：集會、進程、團員、公告活動、帳號權限、團務設定）、`adminMoreItems`／`adminSideTabs`（8 入口）、`ADMIN_PAGES.perms`／`handover`、`ADMIN_PAGES.mine` 含 LINE 連結。後台首頁不再呼叫 `homeIntroHtml`。e2e 用 `openPage(k)` 進頁面。測試 `tests/perms.test.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -127,7 +133,8 @@
 | 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼） |
 | 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間、分團（空白＝小狼） |
-| 設定 | 鍵、值、說明 |
+| 設定 | 鍵、值、說明（另有「最高管理員帳號ID」一列，只能由移交中心寫入） |
+| 權限設定 | 功能代碼、功能名稱、分類、最低權限、停用分團、更新人、更新時間（系統分頁，由後台權限設定頁維護） |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 
 - 試算表只顯示 `EDITABLE_SHEETS`（Config.js）的 5 個分頁，其他系統分頁由 setup() 隱藏（SPEC 附錄第 30 點）；新增分頁時要決定它屬於哪一種。
@@ -144,7 +151,7 @@
 - 技能章：`B-{章名}-{序號}`，例如 `B-嚮導-1`。進程大項「勞作」與技能章「勞作」靠前綴 P/B 區分（`P-狼-勞作-1` vs `B-勞作-1`），兩者是不同的東西。
 - 序號取「同前綴目前用過的最大序號 + 1」，含已停用項目，永不重用。
 - 章名或大項改名時，項目ID **不變**（ID 只是代號，不跟著名稱走）。
-- 小狼以外的分團在前面加分團名（`Logic.idPrefixOf`）：`稚齡-P-地球-1`、`稚齡-B-種植-1`；序號依分團分開算（附錄第 75 點）。
+- 小狼以外的分團在前面加分團名（`Logic.idPrefixOf`）：`稚齡-P-地球-1`、`稚齡-B-種植-1`；序號依分團分開算（附錄第 77 點）。
 
 ## 後端檔案（gas/）與建置
 | 檔案 | 內容 |
@@ -202,6 +209,7 @@ npm test               # 在 repo 根目錄跑純邏輯測試（node --test test
 
 ## 維護守則（SPEC 第十四節，必須遵守）
 - **開發紀錄白板**（2026-11-15 團長要求）：每次完成新的修改或決議後，除了更新 SPEC／CHANGELOG，也要把重點加到團長的白板 https://claude.ai/artifact/L3KxAvGf868X5VzEnUfcVm （Whiteboard 類型，用 ArtifactData 寫入 `elements/<id>`，先讀 `board/meta` 與現有元素再新增，不重建）：在「這次對話做了什麼」接著加一個方塊（編號續編），並同步更新「接下來要你做」「還沒在真實環境驗證」兩區。不放任何真實姓名。
+- **雲端硬碟備份**（2026-11-20、21 團長要求）：四份手冊（交接、完整版、家長版、服務員版）、`dist/Code.gs`、`dist/Index.html` 有新版時，**直接用 Google Drive 連接器放進團長指定的資料夾「新版程式與手冊（權限隔離與移交版）」**（網址記在白板「所有會用到的網址」表，不寫進這個公開 repo）。手冊轉成 Google 文件、檔名用中文（交接手冊、操作手冊（完整版・團長）、操作手冊（家長版）、操作手冊（服務員版））；程式檔不轉換、保留原檔名。連接器不能改已上傳檔案的內容，所以每次是新增一份，回覆裡列出新檔連結，並請團長自己刪掉舊版（不要自己丟進垃圾桶）。
 - 改任何功能前先讀 CLAUDE.md、docs/SPEC.md 與相關檔案；改完同步更新 SPEC.md、CLAUDE.md 與 CHANGELOG.md。
 - 項目ID 一經產生永不更改、永不重用。
 - 不得刪除或重排試算表既有欄位；要加欄位只能加在最右邊，並更新 setup()。

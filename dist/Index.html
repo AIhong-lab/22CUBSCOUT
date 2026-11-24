@@ -427,7 +427,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-23b';
+const APP_VERSION = '2026-11-24a';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -445,7 +445,7 @@ const LEVELS = ['剛入團', '羚羊', '狼', '鹿', '豹']; // 剛入團：本�
 /** 級別名稱：剛入團不加「級」 */
 const lvName = (l) => (l === '剛入團' ? l : l + '級');
 const LEVEL_ICON = { '剛入團': '🌱', '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆', '地球': '🌍', '星星': '⭐', '月亮': '🌛', '太陽': '☀️' };
-/** 各分團的進程級別（和後端 Logic.PROGRESS_MODULES 一致；SPEC 附錄第 75 點） */
+/** 各分團的進程級別（和後端 Logic.PROGRESS_MODULES 一致；SPEC 附錄第 77 點） */
 const SEC_LEVELS = { 小狼: LEVELS, 稚齡: ['地球', '星星', '月亮', '太陽'] };
 /** 闖關地圖終點的話 */
 const SEC_FINISH = { 小狼: '完成豹級，成為全能小狼！', 稚齡: '完成太陽級，準備邁向幼童軍！' };
@@ -536,7 +536,13 @@ const store = {
   del(k) { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (e) {} },
 };
 
-const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent', admin: { tab: 'home', page: null }, returnTo: null, mapSel: null, section: null };
+const state = { me: null, cubId: null, detail: null, view: 'home', mode: 'parent', admin: { tab: 'home', page: null }, returnTo: null, mapSel: null, section: null, publicTabs: null };
+/** 檢查目前使用者（或訪客）是否可顯示某個分頁／功能；若後端尚未更新則退回 fallback */
+const hasTab = (id, fallback) => {
+  const map = (state.me && state.me.tabs) || state.publicTabs;
+  if (map && Object.prototype.hasOwnProperty.call(map, id)) return !!map[id];
+  return fallback !== undefined ? !!fallback : true;
+};
 
 // ═════ 全團（SPEC 附錄第 73 點）：五個分團 ═════
 const SECTIONS = ['稚齡', '小狼', '童軍', '行義', '羅浮'];
@@ -635,7 +641,7 @@ window.addEventListener('beforeunload', (e) => { if (leaveGuard && leaveGuard.di
 
 function setTabs(list, cur, onPick) {
   const nav = document.getElementById('tabs');
-  document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me && !list.some((t) => t[0] === 'login')) // 公開頁面（有「登入／我的頁面」分頁）不用後台的側邊選單版面;
+  document.body.classList.toggle('admin', state.mode === 'admin' && !!list && !!state.me && !list.some((t) => t[0] === 'login')); // 公開頁面不用後台側邊選單
   if (!list) { nav.hidden = true; return; }
   nav.querySelector('.inner').innerHTML = list.map(([k, ic, t]) => (k === '#' ? `<div class="grp">${t}</div>` : `<button data-v="${k}" class="${cur === k ? 'on' : ''}"><span class="ic">${ic}</span>${t}</button>`)).join('');
   $$('button', nav).forEach((b) => { b.onclick = () => { if (canLeave()) onPick(b.dataset.v); }; });
@@ -684,7 +690,7 @@ function noticesHtml(list, max) {
 }
 /** 網站內容（公開）：認識 22 團、活動時間說明、FB 網址、這個月起的集會（SPEC 附錄第 49 點） */
 let siteData = null;
-async function loadSite(force) { if (!siteData || force) siteData = await api('siteInfo'); return siteData; }
+async function loadSite(force) { if (!siteData || force) { siteData = await api('siteInfo'); if (siteData.publicTabs) state.publicTabs = siteData.publicTabs; } return siteData; }
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 /** 月曆：ym = 'YYYY-MM'；有集會的日子上色，下面列出當月集會 */
 /** secs：只顯示全團與這些分團的集會與活動（null＝全部，並標出分團） */
@@ -1304,13 +1310,30 @@ async function logout() {
 // ═════════════ 家長畫面：闖關冒險 ═════════════
 
 // 三個分頁：首頁、進度（闖關｜徽章｜出席 用上方切換）、我的（SPEC 附錄第 44 點）
-const PARENT_TABS = [['home', '🏠', '首頁'], ['notices', '📣', '公佈欄'], ['progress', '🗺️', '進度'], ['mine', '👤', '我的']];
-const PARENT_SEGS = [['map', '🗺️ 闖關'], ['badges', '🎖️ 徽章'], ['attendance', '🐾 出席']];
+const SELF_ELIGIBLE_SECTIONS = ['童軍', '行義', '羅浮'];
+const isTopAdmin = () => !!(state.me && (state.me.isOwner || state.me.isCentral));
+const myAllowedSecs = () => {
+  if (!state.me || isTopAdmin()) return SECTIONS.slice();
+  const s = state.me.allowedSections || [];
+  return s.length ? s : SECTIONS.slice();
+};
+const PARENT_TABS = () => [
+  ['home', '🏠', '首頁'],
+  hasTab('pub_notices', true) && ['notices', '📣', '公佈欄'],
+  (hasTab('member_progress', true) || hasTab('member_attendance', true)) && ['progress', '🗺️', '進度'],
+  ['mine', '👤', '我的'],
+].filter(Boolean);
+const PARENT_SEGS = () => [
+  hasTab('member_progress', true) && ['map', '🗺️ 闖關'],
+  hasTab('member_progress', true) && ['badges', '🎖️ 徽章'],
+  hasTab('member_attendance', true) && ['attendance', '🐾 出席'],
+].filter(Boolean);
 
 function renderParentHeader() {
   const me = state.me;
   let html = '';
-  if (me.cubs.length > 1) html += `<select id="cubSel" aria-label="切換孩子">${me.cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === state.cubId ? 'selected' : ''}>${esc(c.name)}${new Set(me.cubs.map((x) => x.section)).size > 1 ? '（' + esc(secFull(c.section)) + '）' : ''}</option>`).join('')}</select>`;
+  if (me.isScoutSelf) html += `<span class="pill st-進行中" style="margin-right:6px">🎒 本人帳號</span>`;
+  else if (me.cubs.length > 1) html += `<select id="cubSel" aria-label="切換孩子">${me.cubs.map((c) => `<option value="${esc(c.cubId)}" ${c.cubId === state.cubId ? 'selected' : ''}>${esc(c.name)}${new Set(me.cubs.map((x) => x.section)).size > 1 ? '（' + esc(secFull(c.section)) + '）' : ''}</option>`).join('')}</select>`;
   if (me.role) html += `<button class="chip-btn" id="toAdmin">後台</button>`;
   setHeader(html);
   const sel = $('#cubSel');
@@ -1328,7 +1351,9 @@ async function renderParent(keep) {
   renderParentHeader();
   // 舊的分頁名稱（徽章、集點）對應到「進度」裡的切換
   if (state.view === 'badges' || state.view === 'attendance') { state.seg = state.view; state.view = 'progress'; }
-  setTabs(PARENT_TABS, state.view, (v) => { state.view = v; renderParent(true); });
+  const pTabs = PARENT_TABS();
+  if (!pTabs.some((t) => t[0] === state.view)) state.view = pTabs[0][0];
+  setTabs(pTabs, state.view, (v) => { state.view = v; renderParent(true); });
   scrollTop();
   if (state.view === 'notices') {
     loading();
@@ -1354,7 +1379,9 @@ async function renderParent(keep) {
   setProgSec(state.detail.cub.section || '小狼');
   if (state.view === 'home') return viewHome(state.detail);
   // 進度：先畫選到的那一種，再把切換列放到最上面；沒有進程的分團（第 1 期：小狼以外）只有出席
-  const segs = state.detail.hasProgress === false ? PARENT_SEGS.filter((x) => x[0] === 'attendance') : PARENT_SEGS;
+  const allSegs = PARENT_SEGS();
+  const segs = state.detail.hasProgress === false ? allSegs.filter((x) => x[0] === 'attendance') : allSegs;
+  if (!segs.length) { $app.innerHTML = '<section class="card"><h2>🗺️ 進度</h2><p class="muted" style="margin:0">總團目前未開放此分頁內容。</p></section>'; return; }
   const seg = segs.some((x) => x[0] === state.seg) ? state.seg : segs[0][0];
   ({ map: viewMap, badges: viewBadges, attendance: viewStamps })[seg](state.detail);
   if (state.detail.hasProgress === false) $app.insertAdjacentHTML('afterbegin', `<section class="card"><p class="muted" style="margin:0">${esc(secFull(state.detail.cub.section))}的進程與章準備中，目前先提供出席紀錄。</p></section>`);
@@ -1597,7 +1624,7 @@ function viewStamps(d) {
         <p class="muted small">出席率 =（出席 ＋ 額外出席）÷ 本年度總次數，請假不算出席。</p>`
       : `<div class="counts"><span>🐾 出席 ${a.counts.attended}</span>${a.counts.late ? `<span>⏰ 其中遲到 ${a.counts.late}</span>` : ''}<span>🌙 請假 ${a.counts.leave}</span></div>`}
     </section>
-    ${a.upcoming.length ? `<section class="card"><h2>📅 接下來的集會</h2>
+    ${a.upcoming.length && hasTab('parent_leave', true) ? `<section class="card"><h2>📅 接下來的集會</h2>
       <p class="muted small">不能來的話，先按「請假」，點名時服務員就會看到。已經請假的可以取消。</p>
       ${a.upcoming.map((m) => `<div class="list-row"><span class="grow"><span class="t">${fmtDate(m.date)}</span>　${esc(m.name)}${m.type === '大活動' ? ' <span class="pill st-已頒發">大活動</span>' : ''}${m.note ? `<br><span class="s">${esc(m.note)}</span>` : ''}</span>
         ${m.leave ? `<span class="pill st-未開始">🌙 已請假</span> <button class="btn ghost small" data-leave="${esc(m.meetingId)}" data-on="0" style="margin-top:0">取消</button>` : `<button class="btn ghost small" data-leave="${esc(m.meetingId)}" data-on="1" style="margin-top:0">請假</button>`}</div>`).join('')}</section>` : ''}
@@ -1624,7 +1651,7 @@ async function renderMine() {
     <section class="card"><h2>👤 我的帳號</h2>
       <div class="list-row"><span class="grow">帳號</span><b>${esc(me.username)}</b></div>
       <div class="list-row"><span class="grow">稱呼</span><b>${esc(me.nickname)}</b></div>
-      ${me.role ? `<div class="list-row"><span class="grow">身分</span><b>${esc(me.role)}</b></div>` : ''}
+      <div class="list-row"><span class="grow">身分</span><b>${esc(me.isOwner ? '最高管理員' : me.isCentral ? '總團' : me.role ? (secFull(me.section || '小狼') + ' ' + (me.title || me.role)) : me.isScoutSelf ? '童軍本人帳號（僅檢視自己）' : '家長')}</b></div>
       <details><summary class="fold">✏️ 修改稱呼</summary>
         <form id="fn"><input name="nickname" type="text" value="${esc(me.nickname)}" required><button class="btn" type="submit">儲存</button><div class="out"></div></form></details>
       <details><summary class="fold">🔒 修改密碼</summary>
@@ -1633,15 +1660,29 @@ async function renderMine() {
           <label>再輸入一次新密碼</label><input name="newPassword2" type="password" autocomplete="new-password" required>
           <button class="btn" type="submit">修改密碼</button><div class="out"></div></form></details>
     </section>
-    <section class="card"><h2>🧒 綁定的孩子</h2>
+    <section class="card"><h2>${me.isScoutSelf ? '🎒 綁定的本人資料' : '🧒 綁定的孩子'}</h2>
       ${me.cubs.length ? me.cubs.map((c) => `
         <div class="unit" style="padding:14px">
-          <div class="name">${esc(c.name)}</div>
+          <div class="name">${esc(c.name)} <span class="pill st-未開始">${esc(secFull(c.section || '小狼'))}</span>${c.relation === '本人' ? ' <span class="pill st-進行中">本人</span>' : ''}</div>
           <div class="muted small">同意個資說明：第 ${esc(c.consentVersion)} 版${c.consentAt ? '，' + esc(new Date(c.consentAt).toLocaleString('zh-TW')) : ''}</div>
-          <button class="btn danger small unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>
+          ${me.isScoutSelf ? '' : `<button class="btn danger small unbind" data-id="${esc(c.cubId)}" data-name="${esc(c.name)}">解除綁定</button>`}
         </div>`).join('') : '<p class="muted">目前沒有綁定任何孩子。</p>'}
-      ${requestsHtml(me.requests)}
-      <details style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary class="fold">＋ 新增孩子（送出申請，由團長審核）</summary>
+      ${(() => {
+        const eligible = !me.isScoutSelf && hasTab('parent_create_scout', true) ? (me.cubs || []).filter((c) => SELF_ELIGIBLE_SECTIONS.includes(c.section) && c.relation !== '本人') : [];
+        if (!eligible.length) return '';
+        return `<details style="margin-top:12px"><summary class="fold">📱 為童軍以上孩子建立本人帳號（有手機專用）</summary>
+          <p class="muted small" style="margin:6px 0 10px">建立後，孩子可用自己的手機登入，<b>僅能查看自己的進度與總團開放的內容</b>，不會看到其他團員或他分團資料。</p>
+          <form id="fScoutSelf">
+            <label>選擇孩子（限童軍／行義／羅浮）</label>
+            <select name="cubId">${eligible.map((c) => `<option value="${esc(c.cubId)}">${esc(c.name)}（${esc(secFull(c.section))}）</option>`).join('')}</select>
+            <label>孩子登入帳號（英數字，至少 4 碼）</label><input name="username" type="text" autocomplete="off" required>
+            <label>初始密碼（至少 8 碼）</label><input name="password" type="password" autocomplete="new-password" required>
+            <label>顯示稱呼（留空則用孩子姓名）</label><input name="nickname" type="text">
+            <button class="btn green" type="submit">建立本人帳號</button><div class="out"></div>
+          </form></details>`;
+      })()}
+      ${me.isScoutSelf ? '' : requestsHtml(me.requests)}
+      ${me.isScoutSelf ? '<div style="display:none">' : ''}<details style="margin-top:12px" ${me.cubs.length ? '' : 'open'}><summary class="fold">＋ 新增孩子（送出申請，由團長審核）</summary>
         <form id="fr">
           <div id="kidBox2">${childInputsHtml([])}</div>
           <button type="button" class="btn ghost small" id="addKid2">＋ 再加一位孩子</button>
@@ -1654,7 +1695,7 @@ async function renderMine() {
           <label>孩子的姓名</label><input name="childName" type="text" autocomplete="off">
           ${consent ? `<label class="check"><input type="checkbox" name="agree"> 我已閱讀並同意下方的個資說明（第 ${esc(consent.version)} 版）</label>` : ''}
           <button class="btn" type="submit">新增綁定</button><div class="out"></div>
-        </form></details>
+        </form></details>${me.isScoutSelf ? '</div>' : ''}
     </section>
     <section class="card"><h2>📜 個資說明</h2>
       <details><summary class="fold">看完整內容（第 ${esc(consent ? consent.version : '')} 版）</summary>
@@ -1670,6 +1711,13 @@ async function renderMine() {
   $('#toProgress').onclick = () => renderCatalog('progress');
   $('#toBadges').onclick = () => renderCatalog('badges');
   $('#toHome').onclick = renderHome;
+  if ($('#fScoutSelf')) bindForm($('#fScoutSelf'), async (fd, out) => {
+    const r = await api('parentCreateScoutAccount', {
+      cubId: fd.get('cubId'), username: fd.get('username'), password: fd.get('password'), nickname: fd.get('nickname')
+    });
+    msg(out, `已為「${r.cubName}」建立童軍本人帳號：${r.username}，現在孩子可以用這個帳號登入查看自己的資料。`, 'ok');
+    $('#fScoutSelf').reset();
+  });
   bindForm($('#fn'), async (fd, out) => {
     await api('updateNickname', { nickname: fd.get('nickname') });
     state.me.nickname = fd.get('nickname').trim();
@@ -1716,7 +1764,13 @@ async function renderMine() {
 // ═════════════ 公開頁面：首頁、進程查詢、技能章查詢（不用登入，不含任何孩子的資料） ═════════════
 
 let catalogData = null;
-const PUBLIC_TABS = () => [['home', '🏠', '首頁'], ['notices', '📣', '公佈欄'], ['progress', '🗺️', '進程查詢'], ['badges', '🎖️', '章查詢'], ['login', '🔑', state.me ? '我的頁面' : '登入']];
+const PUBLIC_TABS = () => [
+  ['home', '🏠', '首頁'],
+  hasTab('pub_notices', true) && ['notices', '📣', '公佈欄'],
+  hasTab('pub_progress', true) && ['progress', '🗺️', '進程查詢'],
+  hasTab('pub_badges', true) && ['badges', '🎖️', '章查詢'],
+  ['login', '🔑', state.me ? '我的頁面' : '登入'],
+].filter(Boolean);
 const PUBLIC_HASH = { home: '#home', progress: '#progress', badges: '#badges' };
 /** 公開頁面目前看的分團（進程、章查詢用；網址 #cub/progress）。沒指定時用上次看的，再沒有就是小狼 */
 let pubSec = null;
@@ -1816,12 +1870,13 @@ function renderHome() {
   $app.innerHTML = `
     <section class="card"><h2 style="font-size:22px;margin-bottom:4px">🏕️ 22 團</h2>
       <p class="muted" style="margin:0">從稚齡童軍到羅浮童軍，五個分團一起成長。點分團看各自的公告、行事曆、進程與章；家長、服務員登入後看自己孩子與分團的資料。</p></section>
-    <div class="quick" id="secCards" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${SECTIONS.map((x) => `<button data-sec="${esc(x)}"><span class="ic">${SEC_INFO[x].icon}</span>${esc(secFull(x))}<br><span class="s">${esc(SEC_INFO[x].ages)}</span></button>`).join('')}</div>
+    ${state.me && !isTopAdmin() ? `<div class="msg info" style="margin:0 0 10px">🔒 分團內容隔離中：目前僅顯示你所屬分團（${myAllowedSecs().map(secFull).join('、')}）與全團開放內容。</div>` : ''}
+    <div class="quick" id="secCards" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${myAllowedSecs().map((x) => `<button data-sec="${esc(x)}"><span class="ic">${SEC_INFO[x].icon}</span>${esc(secFull(x))}<br><span class="s">${esc(SEC_INFO[x].ages)}</span></button>`).join('')}</div>
     <div class="quick" style="grid-template-columns:repeat(2,1fr)">
       <button class="pri" data-go="login"><span class="ic">🔑</span>${state.me ? '回到我的頁面' : '登入／註冊'}</button>
       <button data-info="notices"><span class="ic">📣</span>公佈欄</button>
     </div>
-    <div class="chips" id="homeLinks">${['calendar', 'events', 'about'].map((k) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
+    <div class="chips" id="homeLinks">${[['calendar', 'pub_calendar'], ['events', 'parent_events'], ['about', 'pub_about']].filter(([, tid]) => hasTab(tid, true)).map(([k]) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
     <section class="card" id="calCard" hidden></section>
     <section class="card"><h2>怎麼登入？</h2>
       <p class="small" style="margin:0">家長、團長、服務員都從這裡登入，系統會依帳號自動帶你到對的地方：家長看到自己孩子的資料；團長、服務員進入所屬分團的後台。第一次使用請按「登入／註冊 → 註冊新帳號」，選孩子所屬的分團送出申請，團長審核後就能使用。</p></section>
@@ -2044,35 +2099,91 @@ const isLeader = () => !!state.me && state.me.role === '團長';
 /** 目前分團有沒有進程（簽核、頒章、總覽、列印、項目管理） */
 const secHasProgress = () => hasProgressSec(state.me && state.me.section);
 const canShared = (f) => !!(state.me && (state.me.shared || []).includes(f));
-const ADMIN_TABS_ALL = [['home', '🏠', '首頁'], ['roll', '📋', '點名'], ['sign', '✅', '簽核'], ['cubs', '👥', '團員'], ['more', '☰', '更多']];
-const adminTabs = () => ADMIN_TABS_ALL.filter((t) => t[0] !== 'sign' || secHasProgress());
-/** 「更多」裡的功能（依身分過濾）；寬螢幕直接列在左側選單 */
-/** 「更多」裡的功能（依身分過濾），第 5 欄是分組；寬螢幕直接列在左側選單 */
-const ADMIN_GROUPS = ['每次集會', '名單', '設定', '系統'];
-function adminMoreItems() {
-  const L = isLeader(), P = secHasProgress();
-  return [
-    ['award', '🏅', '頒章', L && P, '每次集會'], ['notices', '📣', '公佈欄', true, '每次集會'], ['events', '🎪', '活動報名', L, '每次集會'],
-    ['requests', '📝', '帳號申請', L, '名單'], [P ? 'overview' : 'attOverview', '📊', P ? '總覽' : '出席總覽', true, '名單'], ['print', '🖨️', '列印紙本', P, '名單'],
-    ['calendar', '📅', '行事曆', L, '設定'], ['squads', '🏕️', '小隊設定', L, '設定'], ['items', '📚', '項目管理', L && P, '設定'], ['settings', '⚙️', '設定', L, '設定'],
-    ['admins', '🛡️', '帳號與權限', L, '設定'], ['staff', '🏷️', '分團身分與邀請碼', !!(state.me && state.me.canManageStaff), '設定'],
-    ['privacy', '🔐', '個資處理', L, '系統'], ['backup', '💾', '備份與權限', canShared('備份'), '系統'], ['line', '💬', '連結 LINE 通知', true, '系統'], ['mine', '👤', '我的帳號（改密碼）', true, '系統'], ['pub', '📖', '公開網站', true, '系統'],
-  ].filter((x) => x[3]);
-}
-/** 電腦版左側選單：依分組排列 */
-function adminSideTabs() {
-  const more = adminMoreItems(), base = (k) => adminTabs().find((t) => t[0] === k);
-  const of = (g) => more.filter((x) => x[4] === g).map(([k, ic, t]) => [k, ic, t]);
-  return [['#', '', '每次集會'], base('home'), base('roll'), base('sign')].filter(Boolean).concat(of('每次集會'), [['#', '', '名單'], base('cubs')], of('名單'), [['#', '', '設定']], of('設定'), [['#', '', '系統']], of('系統'));
-}
-/** 合併成同一個選單項目的頁面：頁面上方用切換鈕互換（SPEC 附錄第 47 點） */
+/** 精簡後台導覽：結合動態權限（me.tabs）與頁面上方分頁切換，將原本 21 個側邊項目收斂為 8 個主要入口 */
 const PAGE_GROUPS = [
-  [['overview', '📊 進程'], ['attOverview', '🐾 出席']],
-  [['calendar', '📅 集會行事曆'], ['periods', '🎯 年度出席']],
-  [['admins', '👥 管理員'], ['accounts', '🔑 所有帳號']],
+  [['roll', '📋 點名'], ['calendar', '📅 行事曆'], ['periods', '🎯 年度出席']],
+  [['sign', '✅ 簽核'], ['award', '🏅 頒章'], ['overview', '📊 進程總覽'], ['print', '🖨️ 列印']],
+  [['cubs', '👥 團員名單'], ['requests', '📝 帳號申請'], ['squads', '🏕️ 小隊'], ['attOverview', '🐾 出席總覽']],
+  [['notices', '📣 公佈欄'], ['events', '🎪 活動報名']],
+  [['admins', '👥 分團管理員'], ['accounts', '🔑 所有帳號'], ['staff', '🏷️ 分團身分'], ['perms', '🎛️ 權限設定']],
+  [['settings', '⚙️ 系統與網站'], ['items', '📚 項目管理'], ['privacy', '🔐 個資處理'], ['backup', '💾 備份'], ['handover', '🤝 移交中心']],
 ];
-/** 合併頁面裡目前這個人能用的頁（沒有進程的分團沒有「進程」總覽；帳號管理由 admin 指定誰能用） */
-const pageOk = (k) => (k === 'overview' ? secHasProgress() : k === 'accounts' ? canShared('帳號管理') : true);
+
+/** 判斷單一後台頁面是否可存取（優先讀取動態權限表 me.tabs，未設定時退回角色預設） */
+function pageOk(k) {
+  const L = isLeader(), P = secHasProgress();
+  switch (k) {
+    case 'home': return hasTab('tab_home', true);
+    case 'roll': return hasTab('tab_attendance', true);
+    case 'calendar':
+    case 'periods': return hasTab('tab_calendar', L);
+    case 'sign': return P && hasTab('tab_signoff', true);
+    case 'award': return P && hasTab('tab_award', L);
+    case 'overview': return P && hasTab('tab_home', true);
+    case 'print': return P && hasTab('tab_print', true);
+    case 'cubs': return hasTab('tab_roster', true);
+    case 'requests': return hasTab('tab_requests', L);
+    case 'squads': return hasTab('tab_cubs_manage', L);
+    case 'attOverview': return hasTab('tab_home', true);
+    case 'notices': return hasTab('tab_notices', true);
+    case 'events': return hasTab('tab_events', L);
+    case 'admins': return hasTab('tab_admins', L);
+    case 'accounts': return hasTab('tab_accounts', canShared('帳號管理'));
+    case 'staff': return !!(state.me && state.me.canManageStaff);
+    case 'perms': return hasTab('tab_permissions', isTopAdmin());
+    case 'handover': return hasTab('tab_handover', isTopAdmin());
+    // 分團團長要改自己分團的設定（小隊、體驗次數、小狼進程設定），全團的部分由權限設定決定（附錄第 74、76 點）
+    case 'settings': return L || hasTab('tab_settings', false) || hasTab('tab_site', false) || hasTab('tab_consent', false);
+    case 'items': return P && hasTab('tab_items', L);
+    case 'privacy': return hasTab('tab_privacy', L);
+    case 'backup': return hasTab('tab_backup', canShared('備份'));
+    case 'mine':
+    case 'line':
+    case 'pub': return true;
+    default: return true;
+  }
+}
+
+/** 找出某個頁面群組的第一個可用分頁 */
+const firstPageOf = (keys) => keys.find(pageOk) || null;
+
+const ADMIN_TABS_ALL = [
+  ['home', '🏠', '首頁'],
+  ['roll', '📋', '集會'],
+  ['sign', '✅', '進程'],
+  ['cubs', '👥', '團員'],
+  ['more', '☰', '更多'],
+];
+const adminTabs = () => ADMIN_TABS_ALL.filter((t) => (t[0] === 'more' ? true : t[0] === 'sign' ? !!firstPageOf(['sign', 'award', 'overview', 'print']) : pageOk(t[0])));
+
+/** 精簡版「更多」選單（手機版）與寬螢幕左側選單項目 */
+const ADMIN_GROUPS = ['團務互動', '系統與權限', '個人'];
+function adminMoreItems() {
+  const commFirst = firstPageOf(['notices', 'events']);
+  const authFirst = firstPageOf(['admins', 'accounts', 'staff', 'perms']);
+  const setFirst = firstPageOf(['settings', 'items', 'privacy', 'backup']);
+  return [
+    commFirst && [commFirst, '📣', '公告與活動', true, '團務互動'],
+    authFirst && [authFirst, '🛡️', '帳號與權限', true, '系統與權限'],
+    setFirst && [setFirst, '⚙️', '團務設定', true, '系統與權限'],
+    ['mine', '👤', '我的帳號與 LINE', true, '個人'],
+    ['pub', '📖', '查看公開網站', true, '個人'],
+  ].filter(Boolean);
+}
+
+/** 電腦版左側選單（精簡為最多 8 項，一眼掃完不雜亂） */
+function adminSideTabs() {
+  const more = adminMoreItems();
+  const of = (g) => more.filter((x) => x[4] === g).map(([k, ic, t]) => [k, ic, t]);
+  const mainItems = [
+    pageOk('home') && ['home', '🏠', '首頁'],
+    firstPageOf(['roll', 'calendar', 'periods']) && [firstPageOf(['roll', 'calendar', 'periods']), '📋', '集會與點名'],
+    firstPageOf(['sign', 'award', 'overview', 'print']) && [firstPageOf(['sign', 'award', 'overview', 'print']), '✅', '進程與頒章'],
+    firstPageOf(['cubs', 'requests', 'squads', 'attOverview']) && [firstPageOf(['cubs', 'requests', 'squads', 'attOverview']), '👥', '團員管理'],
+  ].filter(Boolean);
+  const comm = of('團務互動'), sys = of('系統與權限'), personal = of('個人');
+  return [['#', '', '日常作業']].concat(mainItems, comm, sys.length ? [['#', '', '管理與設定']] : [], sys, [['#', '', '個人']], personal);
+}
 const pageGroup = (name) => PAGE_GROUPS.find((g) => g.some((x) => x[0] === name));
 function mountPageSeg(name) {
   const g0 = pageGroup(name), g = g0 && g0.filter((x) => pageOk(x[0]));
@@ -2150,7 +2261,7 @@ const ADMIN_PAGES = {
     (h.trials || []).filter((t) => t.ready).forEach((t) => todo.push([t, `體驗 ${t.count}／${t.need} 次`, '可入團', 'st-進行中']));
     h.waiting.forEach((p) => todo.push([p, `${unitLabel(p)} 項目完成，${p.waitingUntil ? '間隔到 ' + fmtDate(p.waitingUntil) + ' 才滿' : '出席 ' + p.attendSinceLast + '／' + p.attendRequired + ' 次'}`, '等條件', 'st-未開始']));
     h.near.forEach((p) => todo.push([p, `${unitLabel(p)} 還差 ${p.remaining} 項`, '快達標', 'st-已完成待頒發']));
-    // 完成期限（稚齡；附錄第 75 點：只提醒、不擋頒章）
+    // 完成期限（稚齡；附錄第 77 點：只提醒、不擋頒章）
     (h.due || []).forEach((p) => todo.push([p, `${unitLabel(p)} 完成期限 ${fmtDate(p.deadline)}（已完成 ${p.done}／${p.total}）`, p.over ? '已過期限' : '快到期', p.over ? 'st-未開始' : 'st-進行中']));
     (h.trials || []).filter((t) => !t.ready).forEach((t) => todo.push([t, `體驗 ${t.count}／${t.need} 次`, '體驗中', 'st-未開始']));
     const cnt = (n) => (n ? `<span class="cnt-badge">${n}</span>` : '');
@@ -2161,11 +2272,8 @@ const ADMIN_PAGES = {
       ${h.allSections.sections.map((x) => `<tr class="tap" data-sw="${esc(x.section)}"><td>${SEC_INFO[x.section].icon} ${esc(secFull(x.section))}${x.section === sec ? ' ◀' : ''}</td><td>${x.active}</td><td>${x.trial}</td><td>${x.staff}</td><td>${x.requests || ''}</td></tr>`).join('')}</tbody></table></div>
       ${h.allSections.unassigned ? `<p class="small" style="margin-bottom:0">📝 還沒指定分團的申請 ${h.allSections.unassigned} 筆（在任一分團的「帳號申請」都看得到）</p>` : ''}
       <p class="muted small" style="margin-bottom:0">點一列切換到該分團。</p></section>` : '';
-    const parentBtn = '<button data-go="parent"><span class="ic">👨‍👩‍👧</span>家長畫面</button>';
-    const intro = sec === '小狼' ? homeIntroHtml(parentBtn, false) : sec === '稚齡' ? beaverIntroHtml(parentBtn)
-      : `<section class="card"><h2 style="font-size:22px;margin-bottom:4px">${SEC_INFO[sec].icon} 22 團 ${esc(secFull(sec))}</h2><p class="muted" style="margin:0">名單、點名、公告、行事曆與活動都可以用了；${esc(secFull(sec))}的進程與章準備中。</p></section>`;
-    $app.innerHTML = intro + `
-      <h2 class="zone-title" id="adminZone">🛠️ 後台：今天要做的事</h2>
+    // [簡化後台] 登入後台直接顯示今日儀表板，不再於上方塞入整頁公開介紹（可由選單「查看公開網站」前往）
+    $app.innerHTML = `
       ${allCard}
       <section class="card">
         <div class="muted small">${esc(h.me.name)}${h.me.name === rn ? '' : '（' + esc(rn) + '）'}・${fmtDate(today)}</div>
@@ -2173,10 +2281,10 @@ const ADMIN_PAGES = {
         : `<h2 style="margin:4px 0">今天沒有集會</h2><div class="muted small">${nextM ? `下次集會：${fmtDate(nextM.date)} ${esc(nextM.name)}` : (L ? '行事曆還沒有之後的集會。' : '')}</div>
           ${!nextM && L ? '<button class="btn ghost small" id="goCal">📅 輸入行事曆</button>' : ''}`}</section>
       <div class="quick" id="adminQuick">
-        <button class="${todayM ? 'pri' : ''}" id="goRoll"><span class="ic">📋</span>${todayM ? '開始點名' : '點名'}</button>
-        ${P ? '<button id="goSign"><span class="ic">✅</span>簽核進程</button>' : '<button id="qCubs"><span class="ic">👥</span>團員名單</button>'}
-        ${L ? `${P ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button>` : '<button id="qNotice"><span class="ic">📣</span>公佈欄</button>'}<button id="qReq"><span class="ic">📝</span>帳號申請${cnt(al.pendingRequests)}</button>`
-          : `${P ? '<button id="qCubs"><span class="ic">👥</span>團員名單</button>' : ''}<button id="qOver"><span class="ic">📊</span>${P ? '進程總覽' : '出席總覽'}</button>`}
+        ${pageOk('roll') ? `<button class="${todayM ? 'pri' : ''}" id="goRoll"><span class="ic">📋</span>${todayM ? '開始點名' : '點名'}</button>` : ''}
+        ${pageOk('sign') ? '<button id="goSign"><span class="ic">✅</span>簽核進程</button>' : pageOk('cubs') ? '<button id="qCubs"><span class="ic">👥</span>團員名單</button>' : ''}
+        ${pageOk('award') ? `<button id="qAward"><span class="ic">🏅</span>頒章${cnt(h.pending.length)}</button>` : pageOk('notices') ? '<button id="qNotice"><span class="ic">📣</span>公佈欄</button>' : ''}
+        ${pageOk('requests') ? `<button id="qReq"><span class="ic">📝</span>帳號申請${cnt(al.pendingRequests)}</button>` : pageOk('overview') || pageOk('attOverview') ? `<button id="qOver"><span class="ic">📊</span>${P ? '進程總覽' : '出席總覽'}</button>` : ''}
       </div>
       ${al.pendingRequests ? `<section class="card"><div class="row-flex"><span class="grow"><b>📝 有 ${al.pendingRequests} 筆註冊申請等待審核</b></span><button class="btn cta small" id="toReq" style="margin-top:0">前往審核</button></div></section>` : ''}
       <section class="card"><h2>待辦 <span class="s">${P ? `待頒章 ${h.pending.length}・快達標 ${h.near.length}${(h.due || []).length ? '・期限 ' + h.due.length : ''}` : '體驗者'}</span></h2>
@@ -2184,7 +2292,7 @@ const ADMIN_PAGES = {
           : `<p class="muted">${P ? '目前沒有待頒章的團員，也沒有快達標的。' : '目前沒有體驗中的團員。'}</p>`}
         ${h.pending.length && L ? '<button class="btn cta" id="toAward">🏅 前往頒章</button>' : ''}</section>
       <section class="card"><details ${hot ? 'open' : ''}><summary class="fold" id="sysTips">系統提示（${alerts.length}）${hot ? ' ⚠️' : ''}</summary>${alerts.map(([c, ic, t]) => `<div class="alert ${c}"><span>${ic}</span><span>${esc(t)}</span></div>`).join('')}</details></section>`;
-    if (sec === '小狼' || sec === '稚齡') wireHomeIntro([sec]);
+    // 精簡首頁不載入公開介紹區塊
     const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
     const tabTo = (t) => { state.admin = { tab: t, page: null }; renderAdmin(); };
     on('#toAward', () => goAdmin('award')); on('#qAward', () => goAdmin('award'));
@@ -2257,7 +2365,7 @@ const ADMIN_PAGES = {
     $('#exp').onclick = (ev) => act(ev.currentTarget, async () => {
       const r = await api('itemsExport');
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob(['﻿' + r.csv], { type: 'text/csv;charset=utf-8' }));
+      a.href = URL.createObjectURL(new Blob(['\ufeff' + r.csv], { type: 'text/csv;charset=utf-8' }));
       a.download = r.filename; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
     });
     $('#rl').onclick = (ev) => act(ev.currentTarget, async () => { await api('itemsReload'); catalogData = null; toast('已重新載入'); go({}); });
@@ -2411,6 +2519,13 @@ const ADMIN_PAGES = {
           ${ev ? `<label class="check"><input type="checkbox" name="enabled" ${ev.enabled ? 'checked' : ''}> 開放（取消勾選＝關閉活動，網站上不再顯示）</label>` : ''}
           <button class="btn cta" type="submit">${ev ? '儲存' : '建立活動'}</button><div class="out"></div></form></section>`;
       wireBack({ name: 'events', params: ev ? { regs: ev.id } : {} });
+      // [修補] 勾選「全團」與個別分團互斥，避免畫面誤導
+      $$('#evTargets [data-tg]').forEach((cb) => {
+        cb.onchange = () => {
+          if (cb.dataset.tg === '全團' && cb.checked) $$('#evTargets [data-tg]').forEach((x) => { if (x !== cb) x.checked = false; });
+          else if (cb.dataset.tg !== '全團' && cb.checked) { const allCb = $('#evTargets [data-tg="全團"]'); if (allCb) allCb.checked = false; }
+        };
+      });
       const wireQ = () => {
         $$('[data-rmq]').forEach((b) => { b.onclick = () => b.closest('[data-qrow]').remove(); });
         $$('[data-qrow]').forEach((el) => { const t = $('[data-q=type]', el), o = $('[data-opts]', el); const f = () => { o.hidden = t.value !== 'choice'; }; t.onchange = f; f(); });
@@ -2437,11 +2552,22 @@ const ADMIN_PAGES = {
     $$('[data-ev]').forEach((b) => { b.onclick = () => goAdmin('events', { regs: b.dataset.ev }); });
   },
 
-  // ───── 我的帳號（改密碼、改稱呼；管理員在後台也找得到） ─────
+  // ───── 我的帳號（整合 LINE 通知連結、改稱呼、改密碼） ─────
   async mine() {
     await renderMine();
-    $app.insertAdjacentHTML('afterbegin', backBtn());
+    const me = state.me;
+    const lineCard = `<section class="card"><h2>💬 LINE 通知連結</h2>
+      <p class="small">${me.lineLinked ? '✅ 你已連結 LINE 通知，團員達標時會在 LINE 收到提醒，也可以在官方帳號輸入「點名」「可晉級」「快達標」。' : '連結後可收到達標提醒，並在官方帳號使用「點名」「可晉級」「快達標」關鍵字。'}</p>
+      <div class="row-flex"><button class="btn alt small" id="mineLineGo">${me.lineLinked ? '重新連結 LINE' : '取得配對碼'}</button>
+      ${me.lineLinked ? '<button class="btn danger small" id="mineLineUn">解除連結</button>' : ''}</div><div id="mineLineOut"></div></section>`;
+    $app.insertAdjacentHTML('afterbegin', backBtn() + lineCard);
     wireBack();
+    $('#mineLineGo').onclick = (ev) => act(ev.currentTarget, async () => {
+      const r = await api('lineLinkStart');
+      $('#mineLineOut').innerHTML = `<div class="codebox">${esc(r.code)}</div><p class="muted small">請在 22 團 LINE 官方帳號聊天室輸入以上 6 位數字（${r.expiresInMin} 分鐘內有效）。</p>`;
+    });
+    const un = $('#mineLineUn');
+    if (un) un.onclick = (ev) => { if (confirm('解除後就不會收到 LINE 通知了，確定嗎？')) act(ev.currentTarget, async () => { await api('lineUnlink'); state.me.lineLinked = false; toast('已解除 LINE 連結'); goAdmin('mine'); }); };
   },
 
   // ───── 設定（團長，SPEC 7.8） ─────
@@ -3219,7 +3345,7 @@ const ADMIN_PAGES = {
 
   /** 分團身分與邀請碼（SPEC 附錄第 68 點）：只有管理員（admin）或總團看得到 */
   async staff() {
-    const [st, acc] = await Promise.all([api('staffList'), api('accountList')]);
+    const [st, acc] = await Promise.all([api('staffList'), api('accountList').catch(() => ({ accounts: [], denied: true }))]);
     const roles = st.isOwner ? ['服務員', '團長', '總團'] : ['服務員'];
     const opt = (list, cur) => list.map((r) => `<option ${r === cur ? 'selected' : ''}>${esc(r)}</option>`).join('');
     const label = (x) => (x.role === '總團' ? '總團（全部分團）' : x.section + '／' + x.role);
@@ -3230,7 +3356,7 @@ const ADMIN_PAGES = {
     const keyOf = (x) => (x.role === '總團' ? '總團' : x.section);
     const bySec = st.sections.concat(['總團']).map((sec) => [sec, st.staff.filter((x) => keyOf(x) === sec)]).filter((g) => g[1].length);
     $app.innerHTML = `${backBtn()}<section class="card"><h2>🏷️ 分團身分</h2>
-      <p class="muted small">同一個人可以在不同分團各有一個身分。小狼以外的分團目前只有身分、功能準備中。${st.isOwner ? '' : '你可以設定服務員；總團、團長只有 admin 能指定。'}</p>
+      <p class="muted small">同一個人可以在不同分團各有一個身分（進程模組目前開放小狼，其餘分團已可使用名單、點名、行事曆、公告與活動）。${st.isOwner ? '' : '你可以設定服務員；總團、團長只有 admin 能指定。'}</p>
       ${bySec.map(([sec, list]) => `<h3>${esc(sec)}</h3>${list.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.name)}</span> <span class="pill ${x.role === '服務員' ? 'st-進行中' : 'st-已頒發'}">${esc(x.role)}</span>${x.title ? ' ' + esc(x.title) : ''}${x.owner ? ' <span class="pill st-未開始">🔒 admin</span>' : ''}${x.lineLinked ? ' 💬' : ''}<br><span class="s">帳號 ${esc(x.username)}</span></span>
         ${x.owner && !st.isOwner ? '' : `<button class="btn ghost small" data-sf="${esc(x.accountId)}" data-k="${esc(x.key)}">管理</button>`}</div>`).join('')}`).join('') || '<p class="muted">還沒有任何身分。</p>'}</section>
       <section class="card"><h2>🎟️ 產生邀請碼</h2><p class="muted small">邀請碼已指定分團與身分，對方到網站「登入 → 註冊新帳號 → 我有綁定碼」輸入就生效。</p>
@@ -3347,6 +3473,117 @@ const ADMIN_PAGES = {
     $('#pc').onclick = (ev) => act(ev.currentTarget, async () => { await api('permCheck'); goAdmin('backup'); });
   },
 
+  // ───── 權限與分頁設定（新增：不同權限顯示不同分頁與內容） ─────
+  async perms() {
+    const d = await api('permSettingsGet');
+    const groups = [...new Set(d.features.map((f) => f.group))];
+    const row = (f) => `<div class="list-row" style="display:block" data-pf="${esc(f.id)}">
+      <div class="row-flex" style="justify-content:space-between">
+        <div><span class="t">${esc(f.name)}</span>${f.locked ? ' <span class="pill st-未開始">🔒 防自鎖</span>' : ''}<br><span class="s">${esc(f.id)}</span></div>
+        <select data-lv style="width:auto;min-width:120px">${f.options.map((o) => `<option value="${esc(o)}" ${o === f.level ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+      </div>
+      ${f.locked ? '' : `<div class="chips" style="margin-top:6px"><span class="s" style="align-self:center">停用分團：</span>${d.sections.map((sec) => `<label class="check" style="margin:2px 8px 2px 0;font-weight:700;font-size:14px"><input type="checkbox" data-dis="${esc(sec)}" ${(f.disabledSections || []).includes(sec) ? 'checked' : ''} style="width:18px;height:18px"> ${esc(sec)}</label>`).join('')}</div>`}
+    </div>`;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🎛️ 權限與分頁設定</h2>
+      <p class="muted small">僅「總團」與「最高管理員」可設定。下方六大分類會即時控制前台分頁、家長／童軍本人可見內容與各分團後台功能。</p>
+      <div class="msg info" style="margin:8px 0 12px">
+        <b>角色階層說明：</b>管理員／總團（看全部內容）＞ 分團正副團長（限所屬分團）＞ 分團服務員（限所屬分團）＞ 家長（限所屬孩子與開放內容）＞ 童軍本人（童軍／行義／羅浮有手機帳號，僅看自己）。勾選「停用分團」後，該分團的團長、服務員、家長與童軍本人都會隱藏該功能，總團與管理員不受影響。
+      </div>
+      <form id="fpms">${groups.map((g) => `<h3>${esc(g)}</h3>${d.features.filter((f) => f.group === g).map(row).join('')}`).join('')}
+        <div class="savebar"><button class="btn green" type="submit">💾 儲存權限設定</button><div class="out"></div></div></form></section>`;
+    wireBack();
+    const snap = () => {
+      const m = {};
+      $$('[data-pf]').forEach((el) => {
+        const dis = $$('[data-dis]:checked', el).map((c) => c.dataset.dis).join('、');
+        m[el.dataset.pf] = $('[data-lv]', el).value + '|' + dis;
+      });
+      return m;
+    };
+    const orig = snap();
+    const diff = () => {
+      const cur = snap(), out = [];
+      $$('[data-pf]').forEach((el) => {
+        const id = el.dataset.pf;
+        if (cur[id] !== orig[id]) out.push({ id, level: $('[data-lv]', el).value, disabledSections: $$('[data-dis]:checked', el).map((c) => c.dataset.dis) });
+      });
+      return out;
+    };
+    leaveGuard = Object.assign(() => !diff().length || confirm('權限設定還沒儲存，確定要離開嗎？'), { dirty: () => diff().length > 0 });
+    bindForm($('#fpms'), async (fd, out) => {
+      const updates = diff();
+      if (!updates.length) return msg(out, '沒有修改任何權限設定。', 'info');
+      const r = await api('permSettingsSave', { updates });
+      leaveGuard = null;
+      // 重新同步 me.tabs 與 publicTabs，讓側邊欄與分頁立刻反映最新權限
+      try { state.me = await api('me'); } catch (e) {}
+      siteData = null;
+      toast(`已儲存 ${r.changed} 項權限設定`);
+      goAdmin('perms');
+    });
+  },
+
+  async handover() {
+    const d = await api('handoverSummary');
+    const secRows = d.sections.map((s) => `<tr>
+      <td><b>${esc(s.fullName)}</b></td>
+      <td>${s.activeCubs} 人</td>
+      <td>${s.leaders.length ? s.leaders.map((x) => esc(x.name) + '（' + esc(x.title || '團長') + (x.lineLinked ? '・LINE✓' : '') + '）').join('<br>') : '<span class="pill st-未開始">⚠️ 尚未指派</span>'}</td>
+      <td>${s.assistants.length ? s.assistants.map((x) => esc(x.name)).join('、') : '<span class="muted">無</span>'}</td>
+    </tr>`).join('');
+    $app.innerHTML = `${backBtn()}
+      <section class="card"><h2>🤝 團務移交與交接中心</h2>
+        <p class="muted small">集中檢視全團權責名單、交接準備度，並可安全移交「最高管理員」權限給下一任負責人（無須共用密碼）。</p>
+        <div class="list-row"><span class="grow">現任最高管理員</span><b>${d.owner ? esc(d.owner.name + '（' + d.owner.username + '）') : '尚未指定'}</b></div>
+        <div class="list-row"><span class="grow">總團幹部（可看全團並設定權限）</span><b>${d.central.length ? d.central.map((c) => esc(c.name) + (c.isOwner ? '★' : '')).join('、') : '尚無'}</b></div>
+        <div style="margin-top:12px"><button class="btn ghost small" id="exportHandover">📥 匯出交接清冊（CSV）</button></div>
+      </section>
+      <section class="card"><h2>✅ 交接準備度檢查</h2>
+        ${d.checklist.map((c) => `<div class="list-row"><span class="grow"><b>${c.ok ? '✅' : '⚠️'} ${esc(c.label)}</b><br><span class="s">${esc(c.note)}</span></span><span class="pill ${c.ok ? 'st-已頒發' : 'st-未開始'}">${c.ok ? '就緒' : '待處理'}</span></div>`).join('')}
+      </section>
+      <section class="card"><h2>🏕️ 各分團權責交接表</h2>
+        <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>分團</th><th>在團人數</th><th>正／副團長</th><th>服務員</th></tr></thead><tbody>${secRows}</tbody></table></div>
+      </section>
+      ${d.isOwner ? `<section class="card"><h2>🔑 移交最高管理權限</h2>
+        <p class="muted small">移交後，接任者將成為新的最高管理員並自動加入「總團」；系統會自動記錄於操作日誌，原管理員可選擇保留「總團」身分陪同過渡。</p>
+        ${d.candidates.length ? `<form id="fHandover">
+          <label>選擇接任帳號（限啟用中的總團或分團團長）</label>
+          <select name="targetAccountId">${d.candidates.map((c) => `<option value="${esc(c.accountId)}">${esc(c.name)}（${esc(c.username)}｜${esc(c.roleLabel)}）</option>`).join('')}</select>
+          <label>請輸入接任者的「帳號名稱」以二次確認</label><input name="confirmUsername" type="text" autocomplete="off" required placeholder="例如：leader_wang">
+          <label>請輸入你目前的密碼</label><input name="password" type="password" autocomplete="current-password" required>
+          <label class="check"><input type="checkbox" name="keepAsCentral" checked> 移交後保留我的「總團」身分（方便陪同新任交接）</label>
+          <button class="btn danger" type="submit">確認移交最高管理權</button><div class="out"></div>
+        </form>` : '<p class="muted">目前沒有其他可接任的「總團」或「分團團長」帳號，請先到「帳號與權限 → 分團身分」指派下一任負責人。</p>'}
+      </section>` : ''}`;
+    wireBack();
+    $('#exportHandover').onclick = () => {
+      const lines = [['分團', '在團人數', '職稱／角色', '姓名', '帳號', 'LINE綁定']];
+      d.central.forEach((c) => lines.push(['總團', '-', c.isOwner ? '最高管理員（總團）' : (c.title || '總團'), c.name, c.username, c.lineLinked ? '已綁定' : '未綁定']));
+      d.sections.forEach((s) => {
+        s.leaders.forEach((x) => lines.push([s.fullName, String(s.activeCubs), x.title || '團長', x.name, x.username, x.lineLinked ? '已綁定' : '未綁定']));
+        s.assistants.forEach((x) => lines.push([s.fullName, String(s.activeCubs), x.title || '服務員', x.name, x.username, x.lineLinked ? '已綁定' : '未綁定']));
+        if (!s.leaders.length && !s.assistants.length) lines.push([s.fullName, String(s.activeCubs), '（尚無幹部）', '', '', '']);
+      });
+      const csv = '\ufeff' + lines.map((r) => r.map((v) => '"' + String(v || '').replace(/"/g, '""') + '"').join(',')).join('\r\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = '22團_交接清冊_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.click();
+    };
+    if ($('#fHandover')) bindForm($('#fHandover'), async (fd, out) => {
+      if (!confirm('確定要將系統「最高管理員」權限移交給所選帳號嗎？移交後立即生效。')) return;
+      const r = await api('handoverTransfer', {
+        targetAccountId: fd.get('targetAccountId'),
+        confirmUsername: fd.get('confirmUsername'),
+        password: fd.get('password'),
+        keepAsCentral: !!fd.get('keepAsCentral')
+      });
+      msg(out, `已完成移交！新任最高管理員為：${r.newOwnerName}（${r.newOwnerUsername}）。`, 'ok');
+      try { state.me = await api('me'); } catch (e) {}
+      setTimeout(() => renderAdmin(), 1200);
+    });
+  },
+
   async line() {
     const me = await api('me');
     $app.innerHTML = `${backBtn()}<section class="card"><h2>💬 連結 LINE 通知</h2>
@@ -3370,6 +3607,7 @@ if (BOOT) {
   if (BOOT.catalog && BOOT.catalog.units) catalogData = { 小狼: BOOT.catalog };
   if (Array.isArray(BOOT.notices)) noticeData = BOOT.notices;
   if (BOOT.site && BOOT.site.meetings) siteData = BOOT.site;
+  if (BOOT.publicTabs) state.publicTabs = BOOT.publicTabs;
   if (BOOT.images) unitImgs = BOOT.images;
   gasBase = BOOT.webUrl || '';
 }
