@@ -69,8 +69,38 @@ var Logic = (function () {
   /** 網址代號（#cub/progress）與完整名稱（畫面標題用） */
   var SECTION_SLUG = { '稚齡': 'beaver', '小狼': 'cub', '童軍': 'scout', '行義': 'venture', '羅浮': 'rover' };
   var SECTION_FULL = { '稚齡': '稚齡童軍', '小狼': '幼童軍', '童軍': '童軍', '行義': '行義童軍', '羅浮': '羅浮童軍' };
-  /** 目前有進程模組的分團（第 1 期只有小狼；簽核、頒章、項目管理只在這些分團開放） */
-  var PROGRESS_SECTIONS = ['小狼'];
+  // ───────────── 進程模組（SPEC 附錄第 73 點⑨⑩、第 75 點） ─────────────
+  /**
+   * 每個有進程的分團一個模組：級別順序、要算間隔的級別、技能章分類、項目ID 前綴，以及特殊規則。
+   *  - newbie：有「剛入團」級（已頒上面幾級時視為通過）——只有小狼
+   *  - autoItem：出席滿次數自動完成指定項目（設定「出席自動完成項目ID」）——只有小狼
+   *  - deadlines：各級「幾個月內完成」的期限（上限，只提醒、不擋頒章；地球從入團日起算，其餘從上一級頒發日起算）——稚齡
+   * 次數、月數一律放在設定（各分團一組），這裡只放預設值。新增分團的進程＝在這裡加一個模組，不改小狼。
+   */
+  var PROGRESS_MODULES = {
+    '小狼': { levels: LEVELS, intervalLevels: INTERVAL_LEVELS, badgeGroups: ['服務類', '健身類', '技巧類'], idPrefix: '', newbie: true, autoItem: true },
+    '稚齡': {
+      levels: ['地球', '星星', '月亮', '太陽'], intervalLevels: [], badgeGroups: ['服務類', '運動類', '技巧類'], idPrefix: '稚齡-',
+      levelAttendDef: 0, deadlines: { '地球': 6, '星星': 6, '月亮': 12, '太陽': 12 }
+    }
+  };
+  /** 目前有進程模組的分團（簽核、頒章、項目管理只在這些分團開放） */
+  var PROGRESS_SECTIONS = Object.keys(PROGRESS_MODULES).sort(function (a, b) { return SECTIONS.indexOf(a) - SECTIONS.indexOf(b); });
+  /** 某分團的進程模組；沒有進程的分團回 null */
+  function progressModule(section) { return PROGRESS_MODULES[sectionOf(section)] || null; }
+  /** 這個名稱是不是某分團的進程級別 */
+  function isLevelOf(section, unit) { var m = progressModule(section); return !!m && m.levels.indexOf(unit) >= 0; }
+  /** 項目ID 前綴：小狼沒有前綴（P-狼-國旗-1），其他分團加分團名（稚齡-P-地球-1） */
+  function idPrefixOf(section) { var m = progressModule(section); return m ? m.idPrefix : sectionOf(section) + '-'; }
+  /** 某分團的進程級別（沒有進程的分團回空陣列） */
+  function levelsOf(section) { var m = progressModule(section); return m ? m.levels.slice() : []; }
+  /** 依頒章紀錄算出某分團目前的級別（頒章、撤銷、補登後寫回名單「目前級別」） */
+  function currentLevelOf(awardsOfCub, section) {
+    var sec = sectionOf(section), have = {}, lv = '';
+    (awardsOfCub || []).forEach(function (a) { if (sectionOf(a.sec) === sec) have[a.unit] = true; });
+    levelsOf(sec).forEach(function (l) { if (have[l]) lv = l; });
+    return lv;
+  }
 
   function isSection(v) { return SECTIONS.indexOf(clean(v)) >= 0; }
   /** 集會、公告的對象：「全團」或分團名稱；空白＝小狼（舊資料） */
@@ -300,6 +330,25 @@ var Logic = (function () {
       SETTINGS.push({ key: s.key + '（' + sec + '）', base: s.key, section: sec, scope: 'section', optional: true, type: s.type, def: s.def, min: s.min, max: s.max, desc: sec + '：' + s.desc });
     });
   });
+  // 進程模組的設定（附錄第 73 點⑩）：小狼用原本的鍵（scope 'cub'）；其他有進程的分團各一組，鍵後面加「（分團）」
+  Object.keys(PROGRESS_MODULES).forEach(function (sec) {
+    if (sec === DEFAULT_SECTION) return;
+    var m = PROGRESS_MODULES[sec];
+    var add = function (base, def, extra) {
+      var s0 = SETTINGS.filter(function (x) { return x.key === base; })[0] || {};
+      SETTINGS.push(Object.assign({ key: base + '（' + sec + '）', base: base, section: sec, scope: 'progress', optional: true, type: 'int', def: def, min: s0.min, max: s0.max, desc: sec + '：' + (s0.desc || '') }, extra || {}));
+    };
+    if (m.intervalLevels.length) add('晉級間隔月數', 6, { desc: sec + '：' + m.intervalLevels.join('、') + '級距上一級頒發日期需滿幾個月' });
+    add('晉級所需出席次數', m.levelAttendDef === undefined ? 8 : m.levelAttendDef, { desc: sec + '：上一級頒發日之後需「出席」幾次才達標（遲到算、請假不算、設為不計入進程的集會不算）；填 0 表示不要求' });
+    add('快達標門檻（剩幾項以內）', 2);
+    add('未頒章再提醒天數', 14);
+    if (m.deadlines) {
+      m.levels.forEach(function (lv, i) {
+        add('完成期限月數：' + lv, m.deadlines[lv], { min: 0, max: 60, desc: sec + '：' + (i === 0 ? '入團日' : '獲頒' + m.levels[i - 1] + '章') + '後幾個月內要完成' + lv + '級（只在後台提醒，不擋頒章）；填 0 表示不提醒' });
+      });
+      add('期限前幾天提醒', 30, { min: 0, max: 180, desc: sec + '：離完成期限剩幾天時列入「快到期」（後台首頁與團員頁）' });
+    }
+  });
   // 全團共用功能由誰使用（只有管理員 admin 可以改）
   SHARED_FUNCS.forEach(function (f) {
     SETTINGS.push({ key: '共用功能權限：' + f, scope: 'shared', optional: true, type: 'choice', options: SHARED_LEVELS, def: CENTRAL, desc: '誰可以用「' + f + '」：管理員＝只有 admin；總團＝admin 與總團；團長＝再加上各分團團長' });
@@ -313,6 +362,25 @@ var Logic = (function () {
   }
   /** 某分團這個設定的實際鍵名 */
   function sectionSettingKey(key, section) { return sectionOf(section) === DEFAULT_SECTION ? key : key + '（' + sectionOf(section) + '）'; }
+
+  /**
+   * 某分團計算進程用的參數（交給 computeCubProgress；呼叫端再補 cubId、items 等資料）。
+   * 只取這個分團模組用得到的設定：小狼才有剛入團與出席自動完成，稚齡才有完成期限。
+   */
+  function progressParams(values, section) {
+    var sec = sectionOf(section), m = progressModule(sec);
+    if (!m) return null;
+    var g = function (k) { return sectionSetting(values, k, sec); };
+    var p = { section: sec, levelAttendCount: g('晉級所需出席次數') || 0, intervalMonths: m.intervalLevels.length ? (g('晉級間隔月數') || 0) : 0 };
+    if (m.newbie) p.newbieAttendCount = values['剛入團所需出席次數'] || 0;
+    if (m.autoItem) { p.autoItemId = values['出席自動完成項目ID']; p.autoCount = values['自動完成所需出席次數']; }
+    if (m.deadlines) {
+      p.deadlines = {};
+      m.levels.forEach(function (lv) { p.deadlines[lv] = g('完成期限月數：' + lv) || 0; });
+      p.deadlineWarnDays = g('期限前幾天提醒') || 0;
+    }
+    return p;
+  }
 
   /**
    * 讀取設定分頁（二維陣列，含標題列），驗證範圍。
@@ -433,28 +501,31 @@ var Logic = (function () {
   /**
    * 讀取項目總表（含標題列）並容錯：
    * 略過空白列、去除前後空白；項目ID 重複、缺少級別或章名、類別不對、啟用欄不是是/否時略過該列並回報列號。
-   * 欄位：項目ID、類別、級別或章名、大項、項目內容、排序、啟用
+   * 欄位：項目ID、類別、級別或章名、大項、項目內容、排序、啟用、分團（空白＝小狼；附錄第 77 點）
+   * 回傳的 item.section 是「大項」（舊名稱沿用），分團放在 item.sec。
    */
   function parseItems(rows) {
     var items = [], errors = [], seen = {};
     (rows || []).slice(1).forEach(function (r, i) {
       var rowNo = i + 2;
-      var cells = [0, 1, 2, 3, 4, 5, 6].map(function (j) { return clean(r[j]); });
+      var cells = [0, 1, 2, 3, 4, 5, 6, 7].map(function (j) { return clean(r[j]); });
       if (cells.every(function (c) { return c === ''; })) return;
       var id = cells[0], cat = cells[1], unit = cells[2], section = cells[3] || NO_SECTION, text = cells[4];
-      var order = Number(cells[5]), enabled = cells[6];
+      var order = Number(cells[5]), enabled = cells[6], sec = sectionOf(cells[7]), mod = progressModule(sec);
       var reason = null;
       if (!id) reason = '缺少項目ID';
       else if (seen[id]) reason = '項目ID 重複（與第 ' + seen[id] + ' 列相同）';
       else if (cat !== CATEGORY.PROGRESS && cat !== CATEGORY.BADGE) reason = '類別只能是「進程」或「技能章」';
       else if (!unit) reason = '缺少級別或章名';
-      else if (cat === CATEGORY.PROGRESS && LEVELS.indexOf(unit) < 0) reason = '進程級別只能是' + LEVELS.join('、');
+      else if (!isSection(sec)) reason = '分團只能是' + SECTIONS.join('、') + '（空白＝小狼）';
+      else if (!mod) reason = sec + '還沒有進程模組';
+      else if (cat === CATEGORY.PROGRESS && mod.levels.indexOf(unit) < 0) reason = sec + '的進程級別只能是' + mod.levels.join('、');
       else if (!text) reason = '缺少項目內容';
       else if (enabled !== '是' && enabled !== '否') reason = '啟用欄只能是「是」或「否」';
       if (reason) { errors.push({ row: rowNo, id: id, reason: reason }); return; }
       seen[id] = rowNo;
       items.push({
-        id: id, category: cat, unit: unit, section: section, text: text,
+        id: id, category: cat, unit: unit, section: section, text: text, sec: sec,
         order: isFinite(order) && cells[5] !== '' ? order : 9999,
         enabled: enabled === '是', row: rowNo
       });
@@ -467,11 +538,12 @@ var Logic = (function () {
    * 產生新的項目ID：同前綴取「用過的最大序號 + 1」，含已停用項目，永不重用。
    * @param {Array<string>} existingIds 項目總表中所有曾出現的ID（含停用、含格式錯誤列）
    */
-  function nextItemId(existingIds, category, unit, section) {
+  function nextItemId(existingIds, category, unit, section, sec) {
     var prefix;
     if (category === CATEGORY.PROGRESS) {
       prefix = (section && section !== NO_SECTION) ? 'P-' + unit + '-' + section + '-' : 'P-' + unit + '-';
     } else prefix = 'B-' + unit + '-';
+    prefix = idPrefixOf(sec) + prefix; // 小狼沒有前綴；稚齡為「稚齡-P-地球-1」
     var max = 0;
     (existingIds || []).forEach(function (id) {
       id = clean(id);
@@ -486,24 +558,26 @@ var Logic = (function () {
    * 種子資料轉為項目總表列（setup 第一次匯入用）。
    * CSV 欄位：類別,級別或章名,大項或分類,項目內容
    * 技能章的第三欄是「分類」，寫入級別與章說明；項目的大項填「－」。
+   * @param sec 分團（小狼或空白：分團欄留空，沿用舊格式）
    * @return {{itemRows: Array, unitRows: Array}} 均不含標題列
    */
-  function buildSeed(csvText, progressRules) {
+  function buildSeed(csvText, progressRules, sec) {
+    var secCell = sectionOf(sec) === DEFAULT_SECTION ? '' : sectionOf(sec);
     var rows = parseCsv(csvText).slice(1);
     var ids = [], itemRows = [], units = {}, unitOrder = [];
     rows.forEach(function (r, i) {
       var cat = clean(r[0]), unit = clean(r[1]), third = clean(r[2]), text = clean(r[3]);
       var section = cat === CATEGORY.PROGRESS ? (third || NO_SECTION) : NO_SECTION;
-      var id = nextItemId(ids, cat, unit, section);
+      var id = nextItemId(ids, cat, unit, section, sec);
       ids.push(id);
-      itemRows.push([id, cat, unit, section, text, (i + 1) * 10, '是']);
+      itemRows.push([id, cat, unit, section, text, (i + 1) * 10, '是', secCell]);
       if (!units[unit + '|' + cat]) {
         units[unit + '|' + cat] = true;
         unitOrder.push({ name: unit, category: cat, group: cat === CATEGORY.BADGE ? third : '' });
       }
     });
     var unitRows = unitOrder.map(function (u, i) {
-      return [u.name, u.category, u.group, '', u.category === CATEGORY.PROGRESS ? ((progressRules || {})[u.name] || '') : '', (i + 1) * 10];
+      return [u.name, u.category, u.group, '', u.category === CATEGORY.PROGRESS ? ((progressRules || {})[u.name] || '') : '', (i + 1) * 10, secCell];
     });
     return { itemRows: itemRows, unitRows: unitRows };
   }
@@ -690,10 +764,13 @@ var Logic = (function () {
    *  - cubId
    *  - intervalMonths: 晉級間隔月數
    *  - today: 'YYYY-MM-DD'
+   *  - section: 分團（空白＝小狼）；只算這個分團的項目與頒章，級別與規則依該分團的進程模組（progressParams 產生其餘參數）
+   *  - deadlines／deadlineWarnDays／joinDate：有完成期限的分團（稚齡）用
    * @return {{units: Array, currentLevel: string|null, nextLevel: string|null}}
    */
   function computeCubProgress(p) {
     var cubId = p.cubId;
+    var sec = sectionOf(p.section), M = progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION], LV = M.levels;
     var done = {};
     (p.completions || []).forEach(function (c) {
       if (c.cubId !== cubId || !isCountedCompletion(c)) return;
@@ -704,16 +781,17 @@ var Logic = (function () {
     var attended = (p.attendance || []).filter(function (a) { return isPresent(a.status) && a.counts !== false && isDateStr(a.date); })
       .map(function (a) { return a.date; }).sort();
     var awarded = {};
-    (p.awards || []).forEach(function (a) { if (a.cubId === cubId) awarded[a.unit] = a; });
+    // 頒章紀錄依分團分開（稚齡和小狼都有「種植」章；升團後舊分團的章不會算到新分團）
+    (p.awards || []).forEach(function (a) { if (a.cubId === cubId && sectionOf(a.sec) === sec) awarded[a.unit] = a; });
     // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）。
     // 舊生用補登剛入團，不設「啟用基準日」（SPEC 附錄第 64、65 點）
-    if (!awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
+    if (M.newbie && !awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
       awarded[NEWBIE] = { cubId: cubId, unit: NEWBIE, date: null, occasion: '已晉級（視為通過）', implicit: true };
     }
     // 出席滿次數 → 自動完成指定項目（計算而得，不寫入完成紀錄；出席被修改時自動重算）。
     // 項目屬於某一級進程時，只算「上一級頒發日之後（不含當天）」的出席；上一級還沒頒發就不自動完成
     //（SPEC 附錄第 64 點：羚羊的「參加團集會至少4次」從剛入團頒發後才開始算）。視為通過、沒有日期的上一級：全部出席都算。
-    if (p.autoItemId && p.autoCount > 0) {
+    if (M.autoItem && p.autoItemId && p.autoCount > 0) {
       var autoIt = (p.items || []).filter(function (it) { return it.id === p.autoItemId; })[0];
       var autoPool = attended, li = autoIt && autoIt.category === CATEGORY.PROGRESS ? LEVELS.indexOf(autoIt.unit) : -1;
       if (li > 0) {
@@ -729,19 +807,19 @@ var Logic = (function () {
     }
 
     var currentLevel = null;
-    LEVELS.forEach(function (lv) { if (awarded[lv]) currentLevel = lv; });
-    var nextLevel = currentLevel === null ? LEVELS[0] : (LEVELS[LEVELS.indexOf(currentLevel) + 1] || null);
+    LV.forEach(function (lv) { if (awarded[lv]) currentLevel = lv; });
+    var nextLevel = currentLevel === null ? LV[0] : (LV[LV.indexOf(currentLevel) + 1] || null);
 
-    // 依類別與名稱分組（只算啟用項目）
+    // 依類別與名稱分組（只算這個分團的啟用項目）
     var groups = {}, order = [];
     (p.items || []).forEach(function (it) {
-      if (!it.enabled) return;
+      if (!it.enabled || sectionOf(it.sec) !== sec) return;
       var k = it.category + '|' + it.unit;
       if (!groups[k]) { groups[k] = { category: it.category, unit: it.unit, items: [] }; order.push(k); }
       groups[k].items.push(it);
     });
     // 進程各級即使沒有項目也要列出
-    LEVELS.forEach(function (lv) {
+    LV.forEach(function (lv) {
       var k = CATEGORY.PROGRESS + '|' + lv;
       if (!groups[k]) { groups[k] = { category: CATEGORY.PROGRESS, unit: lv, items: [] }; order.push(k); }
     });
@@ -755,7 +833,7 @@ var Logic = (function () {
         return { id: it.id, section: it.section, text: it.text, done: !!c, date: c ? c.date : null, signer: c ? c.signer : null, auto: !!(c && c.auto) };
       });
       var allDone = total > 0 && doneCount === total;
-      var award = awarded[g.unit] && (g.category === CATEGORY.PROGRESS ? LEVELS.indexOf(g.unit) >= 0 : true) ? awarded[g.unit] : null;
+      var award = awarded[g.unit] && (g.category === CATEGORY.PROGRESS ? LV.indexOf(g.unit) >= 0 : true) ? awarded[g.unit] : null;
       var status;
       if (award) status = STATUS.AWARDED;
       else if (allDone) status = STATUS.DONE_PENDING;
@@ -770,15 +848,39 @@ var Logic = (function () {
         eligible: false, eligibleDate: null
       };
       if (!award) {
+        var isNb = M.newbie && g.unit === NEWBIE;
         var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today,
-          g.unit === NEWBIE && p.newbieAfter ? attended.filter(function (d) { return d > p.newbieAfter; }) : attended,
-          g.unit === NEWBIE ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0));
+          isNb && p.newbieAfter ? attended.filter(function (d) { return d > p.newbieAfter; }) : attended,
+          isNb ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0), M);
         u.eligible = e.eligible; u.eligibleDate = e.date; u.waitingUntil = e.waitingUntil || null;
         if (e.attendRequired) { u.attendRequired = e.attendRequired; u.attendSinceLast = e.attendSinceLast; }
+        // 完成期限（稚齡；附錄第 73 點⑨：只提醒、不擋頒章）：只看正在挑戰的那一級
+        if (g.category === CATEGORY.PROGRESS && g.unit === nextLevel && p.deadlines) {
+          var dl = levelDeadline(LV, g.unit, awarded, p.joinDate, p.deadlines[g.unit]);
+          if (dl) {
+            u.deadline = dl;
+            u.deadlineState = p.today > dl ? 'over' : (p.deadlineWarnDays > 0 && addDays(p.today, p.deadlineWarnDays) >= dl ? 'soon' : '');
+          }
+        }
       }
       return u;
     });
-    return { units: units, currentLevel: currentLevel, nextLevel: nextLevel };
+    return { units: units, currentLevel: currentLevel, nextLevel: nextLevel, section: sec };
+  }
+
+  /** 完成期限：第一級從入團日起算、其餘從上一級頒發日起算 + 月數；沒有起算日或月數為 0 時回 null */
+  function levelDeadline(levels, unit, awarded, joinDate, months) {
+    if (!(months > 0)) return null;
+    var i = levels.indexOf(unit);
+    var base = i === 0 ? joinDate : (awarded[levels[i - 1]] && awarded[levels[i - 1]].date);
+    return isDateStr(base) ? addMonths(base, months) : null;
+  }
+
+  /** 加 n 天（'YYYY-MM-DD'） */
+  function addDays(dateStr, n) {
+    var p = dateStr.split('-').map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n));
+    return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
   }
 
   /**
@@ -789,16 +891,17 @@ var Logic = (function () {
    *    （0 表示不要求；請假不算）；狼、鹿、豹另需今天 ≥ 上一級頒發日期 + 間隔月數。
    * 回傳的 date 是「達標日期」= 以上各條件都滿足的最早日期。
    */
-  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed) {
+  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed, mod) {
     if (!allDone) return { eligible: false, date: null };
     if (category === CATEGORY.BADGE) return { eligible: true, date: lastDate };
+    var M = mod || PROGRESS_MODULES[DEFAULT_SECTION], LV = M.levels;
     var prevDate = '', date = lastDate;
-    if (unit !== LEVELS[0]) {
-      var prev = LEVELS[LEVELS.indexOf(unit) - 1];
+    if (unit !== LV[0]) {
+      var prev = LV[LV.indexOf(unit) - 1];
       if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
       prevDate = awarded[prev].date || '';
       // [修補] 確保 prevDate 為合法日期字串再計算 addMonths，避免產生 NaN-NaN-NaN
-      if (INTERVAL_LEVELS.indexOf(unit) >= 0 && isDateStr(prevDate)) {
+      if (M.intervalLevels.indexOf(unit) >= 0 && isDateStr(prevDate)) {
         var ready = addMonths(prevDate, intervalMonths || 0);
         if (ready > date) date = ready;
       }
@@ -908,21 +1011,22 @@ var Logic = (function () {
    * 補登進程級別時，列出較低級別中沒有頒章紀錄者，供前端提示是否一併補登。
    */
   function planBackfill(p) {
-    var items = (p.items || []).filter(function (it) { return it.enabled && it.unit === p.unit && it.category === p.category; });
+    var items = (p.items || []).filter(function (it) { return it.enabled && it.unit === p.unit && it.category === p.category && sectionOf(it.sec) === sectionOf(p.section); });
     var doneIds = {};
     (p.completions || []).forEach(function (c) { if (c.cubId === p.cubId && isCountedCompletion(c)) doneIds[c.itemId] = true; });
     var newCompletions = items.filter(function (it) { return !doneIds[it.id]; }).map(function (it) {
       return { cubId: p.cubId, itemId: it.id, date: p.date, signer: p.signer, note: '上線補登', reporter: '', reportStatus: '' };
     });
+    var sec = sectionOf(p.section), LV = (progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION]).levels;
     var awardedUnits = {};
-    (p.awards || []).forEach(function (a) { if (a.cubId === p.cubId) awardedUnits[a.unit] = true; });
+    (p.awards || []).forEach(function (a) { if (a.cubId === p.cubId && sectionOf(a.sec) === sec) awardedUnits[a.unit] = true; });
     var missingLower = [];
     if (p.category === CATEGORY.PROGRESS) {
-      LEVELS.slice(0, LEVELS.indexOf(p.unit)).forEach(function (lv) { if (!awardedUnits[lv]) missingLower.push(lv); });
+      LV.slice(0, LV.indexOf(p.unit)).forEach(function (lv) { if (!awardedUnits[lv]) missingLower.push(lv); });
     }
     return {
       alreadyAwarded: !!awardedUnits[p.unit],
-      award: { cubId: p.cubId, unit: p.unit, date: p.date, occasion: p.occasion || '', note: '上線補登', signer: p.signer },
+      award: { cubId: p.cubId, unit: p.unit, date: p.date, occasion: p.occasion || '', note: '上線補登', signer: p.signer, sec: sectionOf(p.section) },
       newCompletions: newCompletions,
       missingLowerLevels: missingLower,
       notify: false // 補登不觸發任何推播
@@ -930,10 +1034,10 @@ var Logic = (function () {
   }
 
   /** 撤銷進程頒章後，目前級別退回「剩下已頒發中最高的一級」 */
-  function levelAfterRevoke(awardsOfCub, revokedUnit) {
+  function levelAfterRevoke(awardsOfCub, revokedUnit, section) {
     var lv = null;
-    LEVELS.forEach(function (l) {
-      if (l !== revokedUnit && awardsOfCub.some(function (a) { return a.unit === l; })) lv = l;
+    levelsOf(section).forEach(function (l) {
+      if (l !== revokedUnit && awardsOfCub.some(function (a) { return a.unit === l && sectionOf(a.sec) === sectionOf(section); })) lv = l;
     });
     return lv;
   }
@@ -1488,7 +1592,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,

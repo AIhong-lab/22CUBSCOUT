@@ -42,8 +42,11 @@ test('setup：建立所有分頁、匯入種子資料、產生第一位團長邀
     assert.equal(env.sheet(n).frozen, 1);
     assert.equal(env.sheet(n).protections.length, 1, '標題列保護');
   }
-  assert.equal(env.rows('項目總表').length, 168, '官方 163 項＋剛入團 5 項');
-  assert.equal(env.rows('級別與章說明').length, 31);
+  assert.equal(env.rows('項目總表').length, 226, '官方 163 項＋剛入團 5 項＋稚齡 58 項（附錄第 77 點）');
+  assert.equal(env.rows('項目總表').filter((r) => r[7] === '稚齡').length, 58);
+  assert.equal(env.rows('項目總表').find((r) => r[7] === '稚齡' && r[2] === '地球')[0], '稚齡-P-地球-1');
+  assert.equal(env.rows('級別與章說明').filter((r) => r[6] === '稚齡').length, 19, '稚齡 4 級＋15 章');
+  assert.equal(env.rows('級別與章說明').length, 50);
   assert.deepEqual(env.rows('項目總表').filter((x) => x[2] === '剛入團').map((x) => x[0]), ['P-剛入團-1', 'P-剛入團-2', 'P-剛入團-3', 'P-剛入團-4', 'P-剛入團-5']);
   assert.equal(env.rows('進程細項').length, 375, '團自訂細項只匯入一次');
   assert.equal(env.rows('告知同意內容').length, 1);
@@ -62,7 +65,7 @@ test('setup 可重複執行，已有資料一律不覆蓋、不重新匯入', ()
   env.sheet('項目總表').getRange(2, 5, 1, 1).setValues([['團長改過的文字']]);
   env.sheet('設定').getRange(2, 2, 1, 1).setValues([['8']]);
   const second = env.ctx.setupCore_();
-  assert.equal(env.rows('項目總表').length, 168);
+  assert.equal(env.rows('項目總表').length, 226);
   assert.equal(env.rows('項目總表')[0][4], '團長改過的文字');
   assert.equal(String(env.rows('設定')[0][1]), '8');
   assert.equal(env.rows('告知同意內容').length, 1);
@@ -297,7 +300,7 @@ test('合併檔 dist/Code.gs 可獨立運作', () => {
   const env = loadGas({ bundle: true });
   env.ctx.setupCore_();
   assert.equal(env.api({ action: 'ping' }).ok, true);
-  assert.equal(env.rows('項目總表').length, 168);
+  assert.equal(env.rows('項目總表').length, 226);
 });
 
 test('試算表選單：只有分頁顯示切換，沒有邀請碼（SPEC 附錄第 33 點）', () => {

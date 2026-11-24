@@ -26,6 +26,7 @@ function setupCore_() {
     if (dataRowCount_(SHEET.UNITS) === 0) { appendRows_(SHEET.UNITS, seed.unitRows); report.seeded.push(SHEET.UNITS + ' ' + seed.unitRows.length + ' 列'); }
     var newbie = ensureNewbieLevel_();
     if (newbie) report.seeded.push(newbie);
+    ensureSectionSeeds_().forEach(function (x) { report.seeded.push(x); });
     if (dataRowCount_(SHEET.DETAILS) === 0) {
       var details = Logic.buildDetailSeed(SEED.detailsCsv);
       if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
@@ -132,11 +133,36 @@ function ensureNewbieLevel_() {
       if (ups.length) { updateRows_(SHEET.DETAILS, ups); done.push(SHEET.DETAILS + ' ' + ups.length + ' 條改掛到剛入團'); }
     }
   }
-  if (!loadUnits_()[Logic.CATEGORY.PROGRESS + '|' + NB]) {
+  if (!loadUnits_(Logic.DEFAULT_SECTION)[Logic.CATEGORY.PROGRESS + '|' + NB]) {
     appendRows_(SHEET.UNITS, [[NB, Logic.CATEGORY.PROGRESS, '', seed.desc, seed.rule, 5]]);
     done.push(SHEET.UNITS + ' 新增剛入團');
   }
   return done.join('、');
+}
+
+/**
+ * 匯入其他分團的官方進程與章（附錄第 77 點；目前是稚齡）：項目總表還沒有該分團的項目時，才在最下面新增；
+ * 級別與章說明只補該分團還沒有的名稱。只新增列、不改任何既有資料；已匯入就不再執行（團長改過的內容不會被蓋掉）。
+ * @return {string[]} 報告文字
+ */
+function ensureSectionSeeds_() {
+  var out = [], sections = (typeof SEED !== 'undefined' && SEED.sections) || {};
+  Object.keys(sections).forEach(function (sec) {
+    if (!Logic.progressModule(sec)) return;
+    var seed = Logic.buildSeed(sections[sec].itemsCsv, sections[sec].progressRules, sec);
+    // 格式錯誤的列也算（看原始的分團欄），避免重複匯入
+    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.sectionOf(r[7]) === sec; });
+    if (!hasAny) {
+      var taken = {};
+      readRows_(SHEET.ITEMS).forEach(function (r) { taken[Logic.clean(r[0])] = true; });
+      var rows = seed.itemRows.filter(function (r) { return !taken[r[0]]; });
+      if (rows.length) { appendRows_(SHEET.ITEMS, rows); out.push(SHEET.ITEMS + ' 新增' + sec + ' ' + rows.length + ' 項'); }
+    }
+    var have = loadUnits_(sec);
+    var units = seed.unitRows.filter(function (u) { return !have[u[1] + '|' + u[0]]; });
+    if (units.length) { appendRows_(SHEET.UNITS, units); out.push(SHEET.UNITS + ' 新增' + sec + ' ' + units.length + ' 列'); }
+  });
+  return out;
 }
 
 /**

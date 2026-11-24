@@ -23,7 +23,7 @@ function world() {
   const P = env.api({ action: 'register', code: cub.code, childName: '測試小狼甲', username: 'parent01', password: 'parentpass1', nickname: '測試小狼甲媽媽', consentVersion: v });
   return { env, call, L: L.token, A: A.token, P: P.token, cubId: cub.cubId, code: cub.code };
 }
-const itemsOf = (env, unit) => env.rows('項目總表').filter((r) => r[2] === unit).map((r) => r[0]);
+const itemsOf = (env, unit, sec = '') => env.rows('項目總表').filter((r) => r[2] === unit && (r[7] || '') === sec).map((r) => r[0]);
 
 test('權限：家長不能呼叫後台；服務員不能做團長專屬操作', () => {
   const { call, L, A, P, cubId } = world();
@@ -571,7 +571,7 @@ test('項目管理：樹狀資料、改文字（ID 不變）、新增（自動 I
   call(L, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
   const add = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線' });
   assert.equal(add.needConfirm, true);
-  assert.match(add.warnings[0], /1 位小狼的「嚮導」從「已完成待頒發」變成「進行中」：測試小狼甲/);
+  assert.match(add.warnings[0], /1 位團員的「嚮導」從「已完成待頒發」變成「進行中」：測試小狼甲/);
   assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導').length, 2, '未確認前不寫入');
   const ok = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線', confirm: true });
   assert.equal(ok.id, 'B-嚮導-3', '序號取最大 + 1');
