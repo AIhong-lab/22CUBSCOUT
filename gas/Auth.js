@@ -130,8 +130,8 @@ function requireAccount_(token, section) {
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
   var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
-  var oid = ownerId_();
-  var isOwner = oid ? (acc.accountId === oid && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
+  var oids = ownerIds_();
+  var isOwner = oids.length ? (oids.indexOf(acc.accountId) >= 0 && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
   var sections = Logic.staffSections(rows, isOwner);
   var pick = Logic.pickSection(sections, section);
   var admin = null;

@@ -22,22 +22,7 @@ const acc = (env, name) => env.rows('帳號').find((r) => r[1] === name)[0];
 const say = (env, text, userId) => env.ctx.doPost({ parameter: { key: env.props.WEBHOOK_KEY }, postData: { contents: JSON.stringify({ events: [{ type: 'message', message: { type: 'text', text }, source: { type: 'user', userId }, replyToken: 'rt' }] }) } });
 const link = (env, call, token, userId) => { const { code } = call(token, 'lineLinkStart'); say(env, code, userId); };
 
-test('移交：取消「保留總團」會移除原管理員的總團身分；接任者必須是啟用中的總團或團長', () => {
-  const { env, call, O, v, adminPassword } = world();
-  const owner = acc(env, 'admin');
-  // admin 原本也有總團身分
-  const cg = call(O, 'inviteCreate', { role: '總團', name: '總團甲' });
-  assert.equal(cg.ok, true);
-  env.sheet('管理員').getRange(env.sheet('管理員').getLastRow() + 1, 1, 1, 9).setValues([[owner, '管理員', '總團', new Date(), owner, '', '', '', '總團']]);
-  // 一般家長不能接任
-  const kid = call(O, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-01-01' });
-  env.api({ action: 'register', code: kid.code, childName: '測試小狼甲', username: 'mom01', password: 'mompass12', nickname: '家長', consentVersion: v });
-  assert.match(call(O, 'handoverTransfer', { targetAccountId: acc(env, 'mom01'), confirmUsername: 'mom01', password: adminPassword }).message, /只能移交給/);
-  const r = call(O, 'handoverTransfer', { targetAccountId: acc(env, 'scoutlead'), confirmUsername: 'scoutlead', password: adminPassword, keepAsCentral: false });
-  assert.equal(r.ok, true);
-  assert.ok(!env.rows('管理員').some((x) => x[0] === owner && x[2] === '總團'), '原管理員的總團身分已移除');
-  assert.ok(env.rows('管理員').some((x) => x[0] === acc(env, 'scoutlead') && x[2] === '總團'));
-});
+// 移交時「不保留總團」改為最高管理員自己卸任時的選項，測試在 tests/owners.test.js（附錄第 79 點）
 
 test('活動報名：家長有多個孩子時，只要有一個在團孩子的分團開放報名就可以（不只看第一個孩子）', () => {
   const { env, call, W, O, S, v } = world();

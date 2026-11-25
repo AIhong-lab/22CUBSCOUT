@@ -107,7 +107,8 @@ const PAGE = 'https://pages.test/web/';
   assert.ok(env.rows('權限設定').some((r) => r[0] === 'tab_events' && r[3] === '服務員'));
   await page.evaluate(() => goAdmin('handover'));
   await page.getByText('交接準備度檢查').waitFor();
-  assert.match(await text(), /移交最高管理權限/);
+  assert.match(await text(), /我要卸任最高管理員/);
+  assert.match(await text(), /至少要有一位最高管理員/);
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();
 

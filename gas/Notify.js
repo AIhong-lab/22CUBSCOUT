@@ -174,7 +174,7 @@ function handleKeyword_(text, lineUserId, replyToken) {
   // 帳號已停用（或已刪除）的人即使沒解除 LINE，也不回覆名單（附錄第 78 點）
   var meAcc = accountsById_()[me.accountId];
   if (!meAcc || meAcc.status !== '啟用') return null;
-  var isOwner = me.accountId === ownerId_();
+  var isOwner = isOwnerId_(me.accountId);
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
   if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));

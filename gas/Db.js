@@ -213,11 +213,12 @@ function loadAdmins_(section) {
   var rows = loadAdminRows_(), line = {};
   rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
   var list = Logic.effectiveAdmins(rows, sec);
-  var ownerAcc = ownerId_();
-  if (ownerAcc && !list.some(function (a) { return a.accountId === ownerAcc; })) {
+  // 每一位最高管理員在每個分團都是團長（附錄第 79 點可以有多位）
+  ownerIds_().forEach(function (ownerAcc) {
+    if (list.some(function (a) { return a.accountId === ownerAcc; })) return;
     var orow = rows.filter(function (r) { return r.accountId === ownerAcc; })[0];
     if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員', _synthetic: true }));
-  }
+  });
   // LINE 通知是跟著人走的：同一人任何一列有連結都算
   return list.map(function (a) {
     return a.lineUserId || !line[a.accountId] ? a : Object.assign({}, a, { lineUserId: line[a.accountId] });

@@ -427,7 +427,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-25a';
+const APP_VERSION = '2026-11-25b';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -3544,8 +3544,8 @@ const ADMIN_PAGES = {
     </tr>`).join('');
     $app.innerHTML = `${backBtn()}
       <section class="card"><h2>🤝 團務移交與交接中心</h2>
-        <p class="muted small">集中檢視全團權責名單、交接準備度，並可安全移交「最高管理員」權限給下一任負責人（無須共用密碼）。</p>
-        <div class="list-row"><span class="grow">現任最高管理員</span><b>${d.owner ? esc(d.owner.name + '（' + d.owner.username + '）') : '尚未指定'}</b></div>
+        <p class="muted small">集中檢視全團權責名單與交接準備度。最高管理員最多 ${d.maxOwners || 3} 位、權限一樣；新增或卸下別人請由能編輯試算表的人用試算表選單「👑 最高管理員」（附錄第 79 點）。</p>
+        <div class="list-row"><span class="grow">最高管理員</span><b>${(d.owners || []).length ? d.owners.map((o) => esc(o.name + '（' + o.username + '）') + (o.isMe ? '（你）' : '')).join('、') : '尚未指定'}</b></div>
         <div class="list-row"><span class="grow">總團幹部（可看全團並設定權限）</span><b>${d.central.length ? d.central.map((c) => esc(c.name) + (c.isOwner ? '★' : '')).join('、') : '尚無'}</b></div>
         <div style="margin-top:12px"><button class="btn ghost small" id="exportHandover">📥 匯出交接清冊（CSV）</button></div>
       </section>
@@ -3555,16 +3555,13 @@ const ADMIN_PAGES = {
       <section class="card"><h2>🏕️ 各分團權責交接表</h2>
         <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>分團</th><th>在團人數</th><th>正／副團長</th><th>服務員</th></tr></thead><tbody>${secRows}</tbody></table></div>
       </section>
-      ${d.isOwner ? `<section class="card"><h2>🔑 移交最高管理權限</h2>
-        <p class="muted small">移交後，接任者將成為新的最高管理員並自動加入「總團」；系統會自動記錄於操作日誌，原管理員可選擇保留「總團」身分陪同過渡。</p>
-        ${d.candidates.length ? `<form id="fHandover">
-          <label>選擇接任帳號（限啟用中的總團或分團團長）</label>
-          <select name="targetAccountId">${d.candidates.map((c) => `<option value="${esc(c.accountId)}">${esc(c.name)}（${esc(c.username)}｜${esc(c.roleLabel)}）</option>`).join('')}</select>
-          <label>請輸入接任者的「帳號名稱」以二次確認</label><input name="confirmUsername" type="text" autocomplete="off" required placeholder="例如：leader_wang">
+      ${d.isOwner ? `<section class="card"><h2>👑 我要卸任最高管理員</h2>
+        ${d.canResign ? `<p class="muted small">卸任後你就不是最高管理員（其他最高管理員照舊）；可以選擇保留「總團」身分陪同交接。卸任後要再回來，需由能編輯試算表的人用選單新增。</p>
+        <form id="fResign">
           <label>請輸入你目前的密碼</label><input name="password" type="password" autocomplete="current-password" required>
-          <label class="check"><input type="checkbox" name="keepAsCentral" checked> 移交後保留我的「總團」身分（方便陪同新任交接）</label>
-          <button class="btn danger" type="submit">確認移交最高管理權</button><div class="out"></div>
-        </form>` : '<p class="muted">目前沒有其他可接任的「總團」或「分團團長」帳號，請先到「帳號與權限 → 分團身分」指派下一任負責人。</p>'}
+          <label class="check"><input type="checkbox" name="keepAsCentral" checked> 卸任後保留我的「總團」身分</label>
+          <button class="btn danger" type="submit">確認卸任</button><div class="out"></div>
+        </form>` : '<p class="muted">系統至少要有一位最高管理員。要交接時，請先在試算表選單「👑 新增最高管理員」加入接任者，確認對方能登入後，再回來卸任。</p>'}
       </section>` : ''}`;
     wireBack();
     $('#exportHandover').onclick = () => {
@@ -3581,15 +3578,10 @@ const ADMIN_PAGES = {
       a.download = '22團_交接清冊_' + new Date().toISOString().slice(0, 10) + '.csv';
       a.click();
     };
-    if ($('#fHandover')) bindForm($('#fHandover'), async (fd, out) => {
-      if (!confirm('確定要將系統「最高管理員」權限移交給所選帳號嗎？移交後立即生效。')) return;
-      const r = await api('handoverTransfer', {
-        targetAccountId: fd.get('targetAccountId'),
-        confirmUsername: fd.get('confirmUsername'),
-        password: fd.get('password'),
-        keepAsCentral: !!fd.get('keepAsCentral')
-      });
-      msg(out, `已完成移交！新任最高管理員為：${r.newOwnerName}（${r.newOwnerUsername}）。`, 'ok');
+    if ($('#fResign')) bindForm($('#fResign'), async (fd, out) => {
+      if (!confirm('確定要卸任最高管理員嗎？卸任後立即生效。')) return;
+      await api('ownerResign', { password: fd.get('password'), keepAsCentral: !!fd.get('keepAsCentral') });
+      msg(out, '已卸任最高管理員。', 'ok');
       try { state.me = await api('me'); } catch (e) {}
       setTimeout(() => renderAdmin(), 1200);
     });

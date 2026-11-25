@@ -189,9 +189,18 @@ var Logic = (function () {
 
   /**
    * 分團身分異動（由管理員或總團在後台設定，SPEC 附錄第 68 點）。
-   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：admin 帳號ID（沒有則空）
+   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：最高管理員帳號ID，或多位的陣列（附錄第 79 點；沒有則空）
    * change {type: 'add'|'update'|'remove', targetId, section, role, title}
    */
+  /** 最高管理員：單一帳號ID、陣列或「、」分隔的字串 → 陣列（附錄第 79 點最多 MAX_OWNERS 位） */
+  var MAX_OWNERS = 3;
+  function ownerList(v) {
+    var list = Array.isArray(v) ? v : String(v == null ? '' : v).split(/[、,，\s]+/);
+    var out = [];
+    list.forEach(function (x) { x = clean(x); if (x && out.indexOf(x) < 0) out.push(x); });
+    return out;
+  }
+
   function validateStaffChange(rows, actor, change, ownerId) {
     rows = rows || []; actor = actor || {}; change = change || {};
     if (!actor.isOwner && !actor.isCentral) return { ok: false, error: '只有管理員或總團可以設定分團身分' };
@@ -202,7 +211,9 @@ var Logic = (function () {
       if (role !== CENTRAL && SECTIONS.indexOf(section) < 0) return { ok: false, error: '請選擇分團' };
       if (clean(change.title).length > 20) return { ok: false, error: '職稱最多 20 個字' };
     }
-    if (ownerId && change.targetId === ownerId && actor.accountId !== ownerId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var owners = ownerList(ownerId);
+    // 最高管理員的身分只有他自己能動（另一位最高管理員也不行；附錄第 79 點）
+    if (owners.indexOf(change.targetId) >= 0 && actor.accountId !== change.targetId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
     var key = function (r) { return r.role === CENTRAL ? CENTRAL : sectionOf(r.section); };
     var wantKey = role === CENTRAL ? CENTRAL : section;
     var mine = rows.filter(function (r) { return r.accountId === change.targetId; });
@@ -213,7 +224,7 @@ var Logic = (function () {
     // 總團、團長只有管理員（admin）能指定或取消；沒有 admin 帳號時總團也可以
     var high = function (r) { return r && (r.role === CENTRAL || r.role === ROLE.LEADER); };
     if ((high({ role: role }) && change.type !== 'remove') || high(target)) {
-      if (ownerId ? actor.accountId !== ownerId : !actor.isCentral) return { ok: false, error: '只有管理員（admin）可以指定或取消總團、團長' };
+      if (owners.length ? owners.indexOf(actor.accountId) < 0 : !actor.isCentral) return { ok: false, error: '只有最高管理員可以指定或取消總團、團長' };
     }
     // 小狼至少保留一位團長（總團也算）
     var after = rows.filter(function (r) { return r !== target; });
@@ -1435,8 +1446,8 @@ var Logic = (function () {
    * @return {{ok: boolean, error?: string}}
    */
   /** ownerId：最高權限帳號（admin）的帳號ID；有的話只有它能指定或取消團長，且它本身不能被更動（SPEC 附錄第 46 點）。沒有就照舊 */
-  var OWNER_ONLY_MESSAGE = '只有最高權限帳號（admin）可以指定或取消團長。';
-  var OWNER_LOCKED_MESSAGE = 'admin 是最高權限帳號，不能更動。';
+  var OWNER_ONLY_MESSAGE = '只有最高管理員可以指定或取消團長。';
+  var OWNER_LOCKED_MESSAGE = '這是最高管理員的帳號，只有他自己能更動。';
   function validateAdminChange(admins, actorId, change, ownerId) {
     var actor = (admins || []).filter(function (a) { return a.accountId === actorId; })[0];
     if (!actor || actor.role !== ROLE.LEADER) return { ok: false, error: '只有團長可以管理管理員' };
@@ -1444,10 +1455,11 @@ var Logic = (function () {
     // 總團身分不在這裡改（SPEC 附錄第 68 點：在「分團身分」設定）
     if (target && target.scope === CENTRAL && change.type !== 'add') return { ok: false, error: '這位是總團，請到「分團身分」調整' };
     var leaders = admins.filter(function (a) { return a.role === ROLE.LEADER; }).length;
-    if (ownerId) {
-      if (change.targetId === ownerId && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var owners = ownerList(ownerId);
+    if (owners.length) {
+      if (owners.indexOf(change.targetId) >= 0 && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
       var touchesLeader = change.role === ROLE.LEADER || (target && target.role === ROLE.LEADER && change.type !== 'add');
-      if (touchesLeader && actorId !== ownerId) return { ok: false, error: OWNER_ONLY_MESSAGE };
+      if (touchesLeader && owners.indexOf(actorId) < 0) return { ok: false, error: OWNER_ONLY_MESSAGE };
     }
     if (change.type === 'add') {
       if (target) return { ok: false, error: '這個帳號已經是管理員' };
@@ -1625,7 +1637,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, ownerList: ownerList, MAX_OWNERS: MAX_OWNERS, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
@@ -1772,7 +1784,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-25a';
+var APP_VERSION = '2026-11-25b';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -2039,11 +2051,12 @@ function loadAdmins_(section) {
   var rows = loadAdminRows_(), line = {};
   rows.forEach(function (r) { if (r.lineUserId) line[r.accountId] = r.lineUserId; });
   var list = Logic.effectiveAdmins(rows, sec);
-  var ownerAcc = ownerId_();
-  if (ownerAcc && !list.some(function (a) { return a.accountId === ownerAcc; })) {
+  // 每一位最高管理員在每個分團都是團長（附錄第 79 點可以有多位）
+  ownerIds_().forEach(function (ownerAcc) {
+    if (list.some(function (a) { return a.accountId === ownerAcc; })) return;
     var orow = rows.filter(function (r) { return r.accountId === ownerAcc; })[0];
     if (orow) list.push(Object.assign({}, orow, { role: Logic.ROLE.LEADER, scope: '管理員', _synthetic: true }));
-  }
+  });
   // LINE 通知是跟著人走的：同一人任何一列有連結都算
   return list.map(function (a) {
     return a.lineUserId || !line[a.accountId] ? a : Object.assign({}, a, { lineUserId: line[a.accountId] });
@@ -2325,8 +2338,8 @@ function requireAccount_(token, section) {
   var acc = findAccountById_(Logic.clean(ses[1]));
   if (!acc || acc.status !== '啟用') throw fail;
   var rows = loadAdminRows_().filter(function (a) { return a.accountId === acc.accountId; });
-  var oid = ownerId_();
-  var isOwner = oid ? (acc.accountId === oid && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
+  var oids = ownerIds_();
+  var isOwner = oids.length ? (oids.indexOf(acc.accountId) >= 0 && rows.length > 0) : (isReservedUsername_(acc.username) && rows.length > 0);
   var sections = Logic.staffSections(rows, isOwner);
   var pick = Logic.pickSection(sections, section);
   var admin = null;
@@ -3075,6 +3088,9 @@ function onOpen() {
     .addItem('🔑 團長預設帳號（admin）', 'menuDefaultAdmin')
     .addItem('把帳號設為團長', 'menuSetLeader')
     .addSeparator()
+    .addItem('👑 新增最高管理員', 'menuAddOwner')
+    .addItem('👑 卸下最高管理員', 'menuRemoveOwner')
+    .addSeparator()
     .addItem('📱 安裝 LINE 圖文選單', 'menuInstallRichMenu')
     .addSeparator()
     .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
@@ -3172,6 +3188,56 @@ function setLeaderByUsername_(username) {
 /** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
 function menuShowAllSheets() { var ui0 = SpreadsheetApp.getUi(); organizeSheets_(false); ui0.alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
 function menuHideSystemSheets() { var ui0 = SpreadsheetApp.getUi(); var n = organizeSheets_(true); ui0.alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
+
+// ───────────── 最高管理員（SPEC 附錄第 79 點） ─────────────
+// 最多 Logic.MAX_OWNERS 位、權限一樣。只能在這裡（能編輯試算表的人）新增或卸下；網站上只能自己卸任。
+
+function menuAddOwner() {
+  var ui = SpreadsheetApp.getUi();
+  var ans = ui.prompt('👑 新增最高管理員', '請輸入要成為最高管理員的「帳號」（要先在網站註冊好）。\n最高管理員可以指定團長與總團、完全刪除資料、調整權限，最多 ' + Logic.MAX_OWNERS + ' 位：', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  ui.alert(addOwnerByUsername_(ans.getResponseText()).message);
+}
+
+function menuRemoveOwner() {
+  var ui = SpreadsheetApp.getUi();
+  var ans = ui.prompt('👑 卸下最高管理員', '目前的最高管理員：' + ownerIds_().map(function (id) { return (findAccountById_(id) || {}).username; }).join('、') + '\n請輸入要卸下的「帳號」（至少要留一位；他的總團與分團身分不會被移除）：', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  ui.alert(removeOwnerByUsername_(ans.getResponseText()).message);
+}
+
+function addOwnerByUsername_(username) {
+  return withLock_(function () {
+    var acc = findAccountByName_(username);
+    if (!acc) return { ok: false, message: '找不到帳號「' + Logic.clean(username) + '」。請先在網站註冊，再回來設定。' };
+    if (acc.status !== '啟用') return { ok: false, message: '這個帳號已停用，請先啟用。' };
+    var owners = ownerIds_();
+    if (owners.indexOf(acc.accountId) >= 0) return { ok: false, message: '「' + acc.username + '」已經是最高管理員了。' };
+    if (owners.length >= Logic.MAX_OWNERS) return { ok: false, message: '最高管理員最多 ' + Logic.MAX_OWNERS + ' 位，請先卸下一位。' };
+    // 最高管理員也加為總團（看得到全團、收全團的 LINE 通知）
+    var rows = loadAdminRows_();
+    if (!rows.some(function (r) { return r.accountId === acc.accountId && r.role === Logic.CENTRAL; })) {
+      var name = (rows.filter(function (r) { return r.accountId === acc.accountId; })[0] || {}).name || acc.nickname || acc.username;
+      appendRows_(SHEET.ADMINS, [[acc.accountId, name, Logic.CENTRAL, new Date(), '試算表選單', '', '', '', '總團']]);
+    }
+    writeOwners_(owners.concat([acc.accountId]));
+    logOp_('試算表選單', '新增最高管理員', acc.username, '', '');
+    return { ok: true, message: '已把「' + acc.username + '」設為最高管理員（目前共 ' + (owners.length + 1) + ' 位）。請他重新登入網站。' };
+  });
+}
+
+function removeOwnerByUsername_(username) {
+  return withLock_(function () {
+    var acc = findAccountByName_(username);
+    var owners = ownerIds_();
+    if (!acc || owners.indexOf(acc.accountId) < 0) return { ok: false, message: '「' + Logic.clean(username) + '」不是最高管理員。' };
+    var rest = owners.filter(function (id) { return id !== acc.accountId; });
+    if (!rest.length) return { ok: false, message: '系統至少要有一位最高管理員，請先新增另一位再卸下。' };
+    writeOwners_(rest);
+    logOp_('試算表選單', '卸下最高管理員', acc.username, '', '');
+    return { ok: true, message: '已卸下「' + acc.username + '」的最高管理員（他的總團與分團身分不變）。' };
+  });
+}
 
 // ════════════════ AdminApi.js ════════════════
 /**
@@ -3847,41 +3913,60 @@ function accountsById_() {
 
 /** 設定分頁裡記錄「最高管理員」的鍵（移交中心寫入，SPEC 附錄第 76 點） */
 var OWNER_SETTING_KEY = '最高管理員帳號ID';
-/** 最高權限帳號的帳號ID：移交後以設定分頁記錄的為準，否則是 admin；都沒有就回傳空字串（SPEC 附錄第 46、76 點） */
-function ownerId_() {
-  // 「最高管理員帳號ID」不在 Logic.SETTINGS 裡（不讓設定頁直接改），所以直接讀設定分頁的原始列；只能由移交中心寫入
-  var configured = '';
-  readRows_(SHEET.SETTINGS).forEach(function (r) { if (Logic.clean(r[0]) === OWNER_SETTING_KEY) configured = Logic.clean(r[1]); });
-  if (configured) {
-    var cAcc = findAccountById_(configured);
-    if (cAcc && cAcc.status === '啟用') return cAcc.accountId;
-  }
+/**
+ * 最高管理員（可以有多位、最多 Logic.MAX_OWNERS 位，權限一樣；SPEC 附錄第 46、76、79 點）：
+ * 設定分頁「最高管理員帳號ID」用「、」分隔多個帳號ID（舊版只有一個也照讀）；只算啟用中的帳號。
+ * 沒有這一列或裡面的帳號都不能用時，是 admin 帳號；都沒有就是空陣列。
+ * 這一列不在 Logic.SETTINGS 裡（設定頁看不到、不能改），只能由試算表選單新增或卸下、網站上自己卸任。
+ */
+function ownerIds_() {
+  var configured = [];
+  readRows_(SHEET.SETTINGS).forEach(function (r) { if (Logic.clean(r[0]) === OWNER_SETTING_KEY) configured = Logic.ownerList(r[1]); });
+  var ok = configured.filter(function (id) { var a = findAccountById_(id); return a && a.status === '啟用'; }).slice(0, Logic.MAX_OWNERS);
+  if (ok.length) return ok;
   var a = findAccountByName_(DEFAULT_ADMIN_USERNAME);
-  return a ? a.accountId : '';
+  return a ? [a.accountId] : [];
+}
+/** 第一位最高管理員（只用來判斷「有沒有最高管理員」）；判斷某人是不是要用 isOwnerId_ */
+function ownerId_() { return ownerIds_()[0] || ''; }
+function isOwnerId_(id) { return !!id && ownerIds_().indexOf(id) >= 0; }
+
+/** 寫入最高管理員清單（試算表選單與卸任用） */
+function writeOwners_(ids) {
+  var sRows = readRows_(SHEET.SETTINGS);
+  var cur = sRows.filter(function (r) { return Logic.clean(r[0]) === OWNER_SETTING_KEY; })[0];
+  var vals = [OWNER_SETTING_KEY, ids.join('、'), '最高管理員帳號ID（最多 ' + Logic.MAX_OWNERS + ' 位，用「、」分隔；請用試算表選單「👑 最高管理員」新增或卸下，不要手動修改）'];
+  if (cur) updateRows_(SHEET.SETTINGS, [{ row: cur._row, values: vals }]);
+  else appendRows_(SHEET.SETTINGS, [vals]);
 }
 
 /**
  * [修補] 帳號管理用：跨全分團檢查對象是否為 admin、總團或任一分團團長。
  * 原本只看 loadAdmins_()（目前分團），切換到別的分團時會漏判他分團團長。
  */
-function guardOwner_(targetId, who, allAdminRows) {
-  var owner = ownerId_();
-  if (!owner) return;
-  if (targetId === owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE + '要重設密碼請用試算表選單。');
+function guardOwner_(targetId, who, allAdminRows, opts) {
+  var owners = ownerIds_();
+  if (!owners.length) return;
+  var actorIsOwner = owners.indexOf(who.account.accountId) >= 0;
+  if (owners.indexOf(targetId) >= 0) {
+    // 最高管理員之間只能互相產生臨時碼（忘記密碼時互相備援）；不能停用、刪除（附錄第 79 點）
+    if (opts && opts.tempCode && actorIsOwner) return;
+    throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE + (opts && opts.tempCode ? '忘記密碼時請另一位最高管理員產生臨時碼，或用試算表選單重設 admin。' : ''));
+  }
   var rows = (allAdminRows || loadAdminRows_()).filter(function (a) { return a.accountId === targetId; });
   var isHigh = rows.some(function (a) { return a.role === Logic.ROLE.LEADER || a.role === Logic.CENTRAL; });
-  if (isHigh && who.account.accountId !== owner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_ONLY_MESSAGE);
+  if (isHigh && !actorIsOwner) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_ONLY_MESSAGE);
 }
 
 registerAdmin_('adminList', 'manageAdmins', function () {
-  var acc = accountsById_(), owner = ownerId_();
+  var acc = accountsById_(), owners = ownerIds_(), owner = owners[0] || '';
   var names = adminNames_();
   // 只列在目前分團有權限的人（總團也列，標記 central）；其他分團的身分在「分團身分」頁（SPEC 附錄第 68 點）
   return {
     ownerExists: !!owner,
     admins: loadAdmins_().map(function (a) {
       var r = a._raw, id = a.accountId;
-      return { owner: !!owner && id === owner, accountId: id, name: a.name, role: a.role, central: a.scope === Logic.CENTRAL, title: a.title, username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!a.lineUserId };
+      return { owner: owners.indexOf(id) >= 0, accountId: id, name: a.name, role: a.role, central: a.scope === Logic.CENTRAL, title: a.title, username: (acc[id] || {}).username || '（帳號已刪除）', joinedAt: ms_(r[3]), assignedBy: names[Logic.clean(r[4])] || Logic.clean(r[4]), lineLinked: !!a.lineUserId };
     })
   };
 });
@@ -3908,7 +3993,7 @@ registerAdmin_('adminAdd', 'manageAdmins', function (req, who) {
   return withLock_(function () {
     var target = accountsById_()[Logic.clean(req.accountId)];
     if (!target || target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
-    var v = Logic.validateAdminChange(loadAdmins_(), who.account.accountId, { type: 'add', targetId: target.accountId, role: role }, ownerId_());
+    var v = Logic.validateAdminChange(loadAdmins_(), who.account.accountId, { type: 'add', targetId: target.accountId, role: role }, ownerIds_());
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     appendRows_(SHEET.ADMINS, [[target.accountId, name, role, new Date(), who.account.accountId, '', '', curSec_(), Logic.clean(req.title).slice(0, 20)]]);
     logOp_(who.account.accountId, '指定管理員', target.username, '', role + '：' + name);
@@ -3921,13 +4006,13 @@ registerAdmin_('adminUpdate', 'manageAdmins', function (req, who) {
     var admins = loadAdmins_();
     var t = admins.filter(function (a) { return a.accountId === Logic.clean(req.accountId); })[0];
     if (!t) throw new ApiError(ERR.NOT_FOUND, '找不到這位管理員。');
-    if (t.accountId === ownerId_() && who.account.accountId !== t.accountId) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE);
+    if (isOwnerId_(t.accountId) && who.account.accountId !== t.accountId) throw new ApiError(ERR.BAD_INPUT, Logic.OWNER_LOCKED_MESSAGE);
     // [修補] 避免 admin 切換到別的分團時，透過合成列誤蓋原本分團的設定
     if (t._synthetic) throw new ApiError(ERR.BAD_INPUT, '這個帳號在「' + curSec_() + '」沒有獨立身分列，請到「分團身分」設定。');
     var row = t._raw.slice(0, HEADERS[SHEET.ADMINS].length);
     var before = row[2] + '：' + row[1];
     if (req.role && Logic.clean(req.role) !== t.role) {
-      var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'setRole', targetId: t.accountId, role: Logic.clean(req.role) }, ownerId_());
+      var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'setRole', targetId: t.accountId, role: Logic.clean(req.role) }, ownerIds_());
       if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
       row[2] = Logic.clean(req.role);
     } else if (!Logic.can(who.admin.role, 'manageAdmins')) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
@@ -3949,7 +4034,7 @@ registerAdmin_('adminRemove', 'manageAdmins', function (req, who) {
     var admins = loadAdmins_();
     var t = admins.filter(function (a) { return a.accountId === Logic.clean(req.accountId); })[0];
     if (!t) throw new ApiError(ERR.NOT_FOUND, '找不到這位管理員。');
-    var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'remove', targetId: t.accountId }, ownerId_());
+    var v = Logic.validateAdminChange(admins, who.account.accountId, { type: 'remove', targetId: t.accountId }, ownerIds_());
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
     deleteRows_(SHEET.ADMINS, [t._row]);
     // [修補] 一併清理該管理員在目前分團的小隊輔設定
@@ -4005,7 +4090,7 @@ registerAdmin_('accountTempCode', 'manageAccounts', function (req, who) {
   return withLock_(function () {
     var acc = accountsById_()[Logic.clean(req.accountId)];
     if (!acc) throw new ApiError(ERR.NOT_FOUND, '找不到這個帳號。');
-    if (acc.accountId !== who.account.accountId) guardOwner_(acc.accountId, who);
+    if (acc.accountId !== who.account.accountId) guardOwner_(acc.accountId, who, null, { tempCode: true });
     var settings = loadSettings_().values;
     var code = Logic.generateCode(8, randInt_, []);
     var exp = new Date(Date.now() + settings['臨時碼有效小時數'] * 3600000);
@@ -4308,8 +4393,16 @@ registerAdmin_('handoverSummary', 'manageHandover', function (req, who) {
     });
   });
 
+  var ownerIdList = ownerIds_();
   return {
     isOwner: !!who.isOwner,
+    // 最高管理員（最多 Logic.MAX_OWNERS 位；附錄第 79 點）
+    owners: ownerIdList.map(function (id) {
+      var a = accById[id] || {}, row = allAdminRows.filter(function (r) { return r.accountId === id; })[0];
+      return { username: a.username || '', name: (row && row.name) || a.nickname || a.username || '', lineLinked: !!(row && row.lineUserId), isMe: id === who.account.accountId };
+    }),
+    maxOwners: Logic.MAX_OWNERS,
+    canResign: !!who.isOwner && ownerIdList.length >= 2,
     owner: ownerAcc ? {
       accountId: ownerAcc.accountId, username: ownerAcc.username,
       name: (ownerAdminRow && ownerAdminRow.name) || ownerAcc.nickname || ownerAcc.username,
@@ -4322,68 +4415,41 @@ registerAdmin_('handoverSummary', 'manageHandover', function (req, who) {
     checklist: [
       { label: '權限設定工作表已啟用', ok: permSheetExists, note: permSheetExists ? '已就緒' : '尚未建立（到「權限設定」儲存一次即可自動建立）' },
       { label: '有團員的分團皆已指派團長', ok: !sections.some(function (s) { return s.needsLeader; }), note: sections.filter(function (s) { return s.needsLeader; }).map(function (s) { return s.section; }).join('、') || '全部分團皆有負責團長' },
+      { label: '最高管理員有兩位以上（一位忘記密碼或離開時不會卡住）', ok: ownerIdList.length >= 2, note: '目前 ' + ownerIdList.length + ' 位；在試算表選單「👑 新增最高管理員」加人' },
       { label: '總團或管理員已設定兩人以上（避免單人交接斷層）', ok: central.length >= 2 || candidates.length >= 1, note: '目前總團 ' + central.length + ' 人、可接任候選 ' + candidates.length + ' 人' },
       { label: '待審核註冊申請已清空', ok: pendingReqs === 0, note: pendingReqs ? '尚有 ' + pendingReqs + ' 筆待審核' : '目前無積壓申請' }
     ]
   };
 });
 
-registerAdmin_('handoverTransfer', 'manageHandover', function (req, who) {
-  if (!who.isOwner) throw new ApiError(ERR.FORBIDDEN, '只有現任最高管理員可以執行最高管理權移交。');
+/**
+ * 最高管理員自己卸任（附錄第 79 點）：要輸入自己的密碼（錯誤計入登入失敗、可被鎖定），至少要留一位。
+ * 新增最高管理員只能在試算表選單（menuAddOwner），網站上不能新增或移交給別人。
+ * keepAsCentral === false 時一併移除自己的總團身分（各分團身分不動）。
+ */
+registerAdmin_('ownerResign', 'manageHandover', function (req, who) {
+  if (!who.isOwner) throw new ApiError(ERR.FORBIDDEN, '只有最高管理員可以卸任。');
   var password = String(req.password || '');
-  var targetId = Logic.clean(req.targetAccountId);
-  var confirmUsername = Logic.clean(req.confirmUsername);
-  if (!password) throw new ApiError(ERR.BAD_INPUT, '請輸入你目前的密碼以確認移交。');
-  if (!targetId || targetId === who.account.accountId) throw new ApiError(ERR.BAD_INPUT, '請選擇要接任的帳號。');
+  if (!password) throw new ApiError(ERR.BAD_INPUT, '請輸入你目前的密碼以確認卸任。');
   return withLock_(function () {
-    // 再確認一次目前的密碼（錯太多次會鎖住，和登入共用失敗紀錄）
     var settingsV = loadSettings_().values, me = findAccountById_(who.account.accountId);
     assertNotLocked_('登入', me.username.toLowerCase(), settingsV);
     if (!Logic.verifyPassword(password, me.salt, me.passwordHash, hmacHex_)) {
       recordFailure_('登入', me.username.toLowerCase());
-      throw new ApiError(ERR.BAD_INPUT, '目前密碼不正確，已取消移交。');
+      throw new ApiError(ERR.BAD_INPUT, '目前密碼不正確，沒有卸任。');
     }
-    var target = findAccountById_(targetId);
-    if (!target || target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到接任帳號，或該帳號已停用。');
-    // 接任者必須是啟用中的總團或某分團團長（和移交中心的候選名單一致；附錄第 78 點）
-    if (!loadAdminRows_().some(function (r) { return r.accountId === target.accountId && (r.role === Logic.CENTRAL || r.role === Logic.ROLE.LEADER); })) {
-      throw new ApiError(ERR.BAD_INPUT, '只能移交給總團或分團團長，請先在「分團身分與邀請碼」指定他的身分。');
-    }
-    if (confirmUsername.toLowerCase() !== target.username.toLowerCase()) {
-      throw new ApiError(ERR.BAD_INPUT, '請完整輸入接任帳號的帳號名稱（' + target.username + '）以確認移交。');
-    }
-    var now = new Date();
-    // 1. 確保接任者具備「總團」身分
-    var rows = loadAdminRows_();
-    var targetCentral = rows.filter(function (r) { return r.accountId === target.accountId && r.role === Logic.CENTRAL; })[0];
-    if (!targetCentral) {
-      var existingName = (rows.filter(function (r) { return r.accountId === target.accountId; })[0] || {}).name || target.nickname || target.username;
-      appendRows_(SHEET.ADMINS, [[target.accountId, existingName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '總團']]);
-    }
-    // 2. 若原管理員未指定移除總團身分，確保原管理員保留「總團」以便陪同交接
-    var myCentralRows = rows.filter(function (r) { return r.accountId === who.account.accountId && r.role === Logic.CENTRAL; });
+    var owners = ownerIds_();
+    var rest = owners.filter(function (id) { return id !== me.accountId; });
+    if (!rest.length) throw new ApiError(ERR.BAD_INPUT, '系統至少要有一位最高管理員；請先在試算表選單「👑 新增最高管理員」加另一位，再卸任。');
+    // 剩下的人寫成明確的清單（不再退回 admin 帳號）
+    writeOwners_(rest);
     if (req.keepAsCentral === false) {
-      // 不保留：移除原管理員的總團身分（各分團身分不動；附錄第 78 點）
-      if (myCentralRows.length) {
-        deleteRows_(SHEET.ADMINS, myCentralRows.map(function (r) { return r._row; }));
-        logOp_(who.account.accountId, '移交後移除總團身分', who.account.username, '總團', '');
-      }
-    } else {
-      var myCentral = myCentralRows[0];
-      if (!myCentral) {
-        var myName = (rows.filter(function (r) { return r.accountId === who.account.accountId; })[0] || {}).name || who.account.nickname || who.account.username;
-        appendRows_(SHEET.ADMINS, [[who.account.accountId, myName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '交接顧問']]);
-      }
+      var mine = loadAdminRows_().filter(function (r) { return r.accountId === me.accountId && r.role === Logic.CENTRAL; });
+      if (mine.length) deleteRows_(SHEET.ADMINS, mine.map(function (r) { return r._row; }));
     }
-    // 3. 寫入「設定」工作表：最高管理員帳號ID
-    var sRows = readRows_(SHEET.SETTINGS);
-    var curSetting = sRows.filter(function (r) { return Logic.clean(r[0]) === OWNER_SETTING_KEY; })[0];
-    var sVals = [OWNER_SETTING_KEY, target.accountId, '系統最高管理員帳號（只能由後台移交中心更新，請不要手動修改）'];
-    if (curSetting) updateRows_(SHEET.SETTINGS, [{ row: curSetting._row, values: sVals }]);
-    else appendRows_(SHEET.SETTINGS, [sVals]);
-    logOp_(who.account.accountId, '移交最高管理權', target.username, who.account.username, target.username + '（' + target.accountId + '）');
+    logOp_(who.account.accountId, '卸任最高管理員', me.username, '', req.keepAsCentral === false ? '不保留總團' : '保留總團');
     clearPublicCache_();
-    return { newOwnerUsername: target.username, newOwnerName: target.nickname || target.username };
+    return { owners: rest.length };
   });
 });
 
@@ -4760,8 +4826,7 @@ registerAdmin_('privacyExecute', 'privacy', function (req, who) {
   return withLock_(function () {
     var mode = Logic.clean(req.mode);
     // 完全刪除只有最高權限帳號（admin）可以；還沒有 admin 帳號時照舊（SPEC 附錄第 48 點）
-    var owner = ownerId_();
-    if (mode === 'delete' && owner && who.account.accountId !== owner) throw new ApiError(ERR.FORBIDDEN, '只有最高權限帳號（admin）可以刪除小狼；其他團長可以用匿名化。');
+    if (mode === 'delete' && ownerId_() && !isOwnerId_(who.account.accountId)) throw new ApiError(ERR.FORBIDDEN, '只有最高管理員可以完全刪除；其他團長可以用匿名化。');
     // [修補] 驗證目標團員屬於目前分團，防止跨分團匿名化或刪除
     var cub = findCub_(req.cubId);
     var plan = Logic.planPrivacy(privacyData_(), cub.cubId, mode);
@@ -6013,10 +6078,10 @@ registerAdmin_('itemsReload', 'manageItems', function () {
 
 /** 只有管理員（admin）或總團可以用 */
 function requireStaffManager_(who) {
-  var owner = ownerId_();
-  var isOwner = !!owner && who.account.accountId === owner;
+  var owners = ownerIds_();
+  var isOwner = owners.indexOf(who.account.accountId) >= 0;
   if (!isOwner && !who.isCentral) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
-  return { accountId: who.account.accountId, isOwner: isOwner, isCentral: !!who.isCentral, ownerId: owner };
+  return { accountId: who.account.accountId, isOwner: isOwner, isCentral: !!who.isCentral, ownerId: owners };
 }
 
 /** 一列的代號：總團或分團名稱（同一人同一代號只會有一列） */
@@ -6030,7 +6095,7 @@ AUTHED_ACTIONS.staffList = function (req, who) {
     staff: loadAdminRows_().map(function (r) {
       return {
         accountId: r.accountId, key: staffKey_(r), name: r.name, username: (acc[r.accountId] || {}).username || '（帳號已刪除）',
-        section: r.section, role: r.role, title: r.title, owner: !!actor.ownerId && r.accountId === actor.ownerId, lineLinked: !!r.lineUserId
+        section: r.section, role: r.role, title: r.title, owner: actor.ownerId.indexOf(r.accountId) >= 0, lineLinked: !!r.lineUserId
       };
     })
   };
@@ -6274,7 +6339,7 @@ function handleKeyword_(text, lineUserId, replyToken) {
   // 帳號已停用（或已刪除）的人即使沒解除 LINE，也不回覆名單（附錄第 78 點）
   var meAcc = accountsById_()[me.accountId];
   if (!meAcc || meAcc.status !== '啟用') return null;
-  var isOwner = me.accountId === ownerId_();
+  var isOwner = isOwnerId_(me.accountId);
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
   if (text === '點名') return lineReply_(replyToken, rollReplyText_(home ? home.section : Logic.DEFAULT_SECTION));
