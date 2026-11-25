@@ -8,7 +8,8 @@
 
 /** 做完這些後台動作後重算達標並通知；值為 true 表示用「摘要」文字（項目或設定修改造成的批次變動） */
 var NOTIFY_AFTER = {
-  signoff: false, signoffRevoke: false, award: false, awardRevoke: false, awardEdit: false, backfill: false,
+  // 補登頒章不在這裡：SPEC 7.6「補登不觸發任何推播」（附錄第 78 點）；之後的每日排程照常重算
+  signoff: false, signoffRevoke: false, award: false, awardRevoke: false, awardEdit: false,
   attendanceSave: false, cubLeave: false, cubJoin: false, itemSave: true, itemToggle: true, settingsSave: true
 };
 
@@ -133,7 +134,7 @@ function eligibleMessage_(list, title) {
         { type: 'text', text: [p.squad || '未分小隊', '入團 ' + (p.joinDate || '－'), '達標日 ' + (p.eligibleDate || '－')].join('・'), size: 'sm', color: '#6b7385', wrap: true }
       ] },
       footer: { type: 'box', layout: 'vertical', contents: [
-        { type: 'button', style: 'primary', color: '#1f4e9c', action: { type: 'uri', label: '前往頒章', uri: webUrl_() + 'web/#award=' + encodeURIComponent(p.cubId + ',' + p.unit) } }
+        { type: 'button', style: 'primary', color: '#1f4e9c', action: { type: 'uri', label: '前往頒章', uri: webUrl_() + 'web/#award=' + encodeURIComponent(p.cubId + ',' + p.unit + (p.section && p.section !== Logic.DEFAULT_SECTION ? ',' + p.section : '')) } }
       ] }
     };
   });
@@ -170,6 +171,9 @@ function handleKeyword_(text, lineUserId, replyToken) {
   // 已連結 LINE 的管理員（任何分團）；LINE 跟著人走
   var rows = loadAdminRows_(), me = rows.filter(function (a) { return a.lineUserId === lineUserId; })[0];
   if (!me) return null;
+  // 帳號已停用（或已刪除）的人即使沒解除 LINE，也不回覆名單（附錄第 78 點）
+  var meAcc = accountsById_()[me.accountId];
+  if (!meAcc || meAcc.status !== '啟用') return null;
   var isOwner = me.accountId === ownerId_();
   var secs = Logic.staffSections(rows.filter(function (a) { return a.accountId === me.accountId; }), isOwner);
   var home = Logic.pickSection(secs, '');
@@ -209,7 +213,7 @@ function rollReplyText_(section) {
   var lines = [(m.date === today ? '📋 今天 ' : '📋 下一場：') + Number(d[1]) + '/' + Number(d[2]) + '（' + wd + '）' + m.name];
   if (m.date === today) lines.push('已點名出席 ' + present + ' 位');
   lines.push(leave.length ? '🌙 已請假 ' + leave.length + ' 位：\n' + leave.map(function (c) { return '・' + c.name + (c.squad ? '（' + c.squad + '）' : ''); }).join('\n') : '🌙 目前沒有人請假');
-  lines.push('點名：' + webUrl_() + 'web/#roll=' + encodeURIComponent(m.meetingId));
+  lines.push('點名：' + webUrl_() + 'web/#roll=' + encodeURIComponent(m.meetingId + (sec !== Logic.DEFAULT_SECTION ? ',' + sec : '')));
   return lines.join('\n').slice(0, 4500);
 }
 
@@ -225,7 +229,8 @@ function runDaily_() {
 }
 
 /** 安裝每日排程（時間依設定「每日排程時間（幾點）」）；重複執行不會重複安裝 */
-function installDailyTrigger() {
+function installDailyTrigger() { assertEditorRun_(); installDailyTrigger_(); }
+function installDailyTrigger_() {
   removeTriggers_('dailyJob');
   var hour = loadSettings_().values['每日排程時間（幾點）'];
   ScriptApp.newTrigger('dailyJob').timeBased().everyDays(1).atHour(hour).create();
@@ -238,6 +243,6 @@ function ensureDailyTrigger_() {
   var hour = String(loadSettings_().values['每日排程時間（幾點）']);
   var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'dailyJob'; });
   if (has && PropertiesService.getScriptProperties().getProperty('DAILY_HOUR') === hour) return false;
-  installDailyTrigger();
+  installDailyTrigger_();
   return true;
 }

@@ -112,7 +112,8 @@ function loadGas(opts = {}) {
   // 另外建立的試算表（每個活動一份存檔）：ext.books[id]；ext.fail = true 模擬建立失敗
   const ext = { books: {}, fail: false };
   const html = {};
-  const flags = { sheetCache: false };
+  // activeUser：目前執行的人（空字串＝GAS 網頁版的匿名訪客）；effectiveUser 是指令碼擁有者
+  const flags = { sheetCache: false, activeUser: 'owner@example.test' };
   const mkHtml = (content) => { const o = { kind: 'html', content, meta: {}, getContent: () => o.content, setTitle(t) { o.title = t; return o; }, addMetaTag(k, v) { o.meta[k] = v; return o; } }; return o; };
   drive.api = {
     Access: { ANYONE: 'ANYONE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK', PRIVATE: 'PRIVATE' },
@@ -142,6 +143,7 @@ function loadGas(opts = {}) {
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); },
       deleteProperty: (k) => { delete props[k]; }, getProperties: () => ({ ...props }) }) },
+    Session: { getActiveUser: () => ({ getEmail: () => flags.activeUser }), getEffectiveUser: () => ({ getEmail: () => 'owner@example.test' }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock() { return true; }, releaseLock() {} }) },
     Logger: { log: (m) => logs.push(['log', m]) },
     // 模擬 HtmlService：html[檔名] 有內容才找得到檔案

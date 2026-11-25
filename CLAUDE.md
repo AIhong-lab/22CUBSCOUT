@@ -70,6 +70,7 @@
   - 最高管理員：`ownerId_()` 先讀設定分頁原始列「最高管理員帳號ID」（`OWNER_SETTING_KEY`，不在 `Logic.SETTINGS`、設定頁看不到），沒有才是 admin；`loadAdmins_` 合成列用 `ownerId_()` 並標 `_synthetic`（`adminUpdate` 拒絕改合成列）。API `handoverSummary`、`handoverTransfer`（重新讀帳號核對密碼、失敗計入登入鎖定、確認帳號名稱、接任者加總團、原管理員可保留總團）。
   - 童軍本人：`Logic.SCOUT_SELF`／`SELF_ELIGIBLE_SECTIONS`；`bindCub_(accountId, cub, version, relation, skipCodeDecrement)`（有「本人」綁定的帳號不能再綁別人）；`apiParentCreateScoutAccount_`（TeamApi）；`apiCubDetail_` 依 `member_progress`／`member_attendance` 過濾；`parentLeave`、`eventRegister` 依 `parent_leave`／`parent_events`。
   - 前端：`hasTab(id, fallback)`、`state.publicTabs`、`isTopAdmin()`、`myAllowedSecs()`、`PARENT_TABS()`／`PARENT_SEGS()`（函式）、`pageOk(k)`、`firstPageOf`、`PAGE_GROUPS`（6 組：集會、進程、團員、公告活動、帳號權限、團務設定）、`adminMoreItems`／`adminSideTabs`（8 入口）、`ADMIN_PAGES.perms`／`handover`、`ADMIN_PAGES.mine` 含 LINE 連結。後台首頁不再呼叫 `homeIntroHtml`。e2e 用 `openPage(k)` 進頁面。測試 `tests/perms.test.js`。
+- **外部檢查修正（SPEC 附錄第 78 點，2026-11-25）**：`imgKey(cat, unit, sec)`（前端章圖鍵）；`assertEditorRun_()`（Setup.js，公開函式只限擁有者在編輯器執行；內部呼叫 `installDailyTrigger_`／`installBackupTrigger_`）；`assertNotScoutSelf_`（Api.js）；`Logic.replaceNameOnly`（個資姓名替換保護較長的姓名）；LINE 連結 `#award=團員ID,章名,分團`、`#roll=集會ID,分團`（前端 `linkSec` 先切分團）；`NOTIFY_AFTER` 不含 backfill；測試 mock 有 `Session`（`env.flags.activeUser`）。測試 `tests/review.test.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。

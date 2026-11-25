@@ -1169,6 +1169,10 @@ registerAdmin_('handoverTransfer', 'manageHandover', function (req, who) {
     }
     var target = findAccountById_(targetId);
     if (!target || target.status !== '啟用') throw new ApiError(ERR.NOT_FOUND, '找不到接任帳號，或該帳號已停用。');
+    // 接任者必須是啟用中的總團或某分團團長（和移交中心的候選名單一致；附錄第 78 點）
+    if (!loadAdminRows_().some(function (r) { return r.accountId === target.accountId && (r.role === Logic.CENTRAL || r.role === Logic.ROLE.LEADER); })) {
+      throw new ApiError(ERR.BAD_INPUT, '只能移交給總團或分團團長，請先在「分團身分與邀請碼」指定他的身分。');
+    }
     if (confirmUsername.toLowerCase() !== target.username.toLowerCase()) {
       throw new ApiError(ERR.BAD_INPUT, '請完整輸入接任帳號的帳號名稱（' + target.username + '）以確認移交。');
     }
@@ -1181,8 +1185,15 @@ registerAdmin_('handoverTransfer', 'manageHandover', function (req, who) {
       appendRows_(SHEET.ADMINS, [[target.accountId, existingName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '總團']]);
     }
     // 2. 若原管理員未指定移除總團身分，確保原管理員保留「總團」以便陪同交接
-    if (req.keepAsCentral !== false) {
-      var myCentral = rows.filter(function (r) { return r.accountId === who.account.accountId && r.role === Logic.CENTRAL; })[0];
+    var myCentralRows = rows.filter(function (r) { return r.accountId === who.account.accountId && r.role === Logic.CENTRAL; });
+    if (req.keepAsCentral === false) {
+      // 不保留：移除原管理員的總團身分（各分團身分不動；附錄第 78 點）
+      if (myCentralRows.length) {
+        deleteRows_(SHEET.ADMINS, myCentralRows.map(function (r) { return r._row; }));
+        logOp_(who.account.accountId, '移交後移除總團身分', who.account.username, '總團', '');
+      }
+    } else {
+      var myCentral = myCentralRows[0];
       if (!myCentral) {
         var myName = (rows.filter(function (r) { return r.accountId === who.account.accountId; })[0] || {}).name || who.account.nickname || who.account.username;
         appendRows_(SHEET.ADMINS, [[who.account.accountId, myName, Logic.CENTRAL, now, who.account.accountId, '', '', '', '交接顧問']]);

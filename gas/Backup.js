@@ -133,14 +133,15 @@ function ensureBackup_() {
     done.push('建立備份資料夾「' + BACKUP_FOLDER_NAME + '」');
   }
   if (!ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'weeklyBackup'; })) {
-    installBackupTrigger();
+    installBackupTrigger_();
     done.push('開啟每週日 03:00 自動備份');
   }
   return done;
 }
 
 /** 安裝每週備份排程（每週日凌晨 3 點）；重複執行不會重複安裝 */
-function installBackupTrigger() {
+function installBackupTrigger() { assertEditorRun_(); installBackupTrigger_(); }
+function installBackupTrigger_() {
   removeTriggers_('weeklyBackup');
   ScriptApp.newTrigger('weeklyBackup').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(3).create();
   Logger.log('已安裝每週備份排程（每週日 03:00）。');

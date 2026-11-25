@@ -86,10 +86,11 @@ HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '�
  * 需設為「純文字」格式的欄（1 起算），避免試算表把日期字串或全數字代碼自動轉型。
  */
 var TEXT_COLUMNS = {};
-TEXT_COLUMNS[SHEET.CUBS] = [1, 4, 6, 9, 10];
-TEXT_COLUMNS[SHEET.ACCOUNTS] = [1, 2];
+// 姓名、小隊、稱呼等使用者輸入的欄也設成純文字：輸入「=」開頭的字不會被當成公式（附錄第 78 點）
+TEXT_COLUMNS[SHEET.CUBS] = [1, 2, 3, 4, 6, 9, 10];
+TEXT_COLUMNS[SHEET.ACCOUNTS] = [1, 2, 3];
 TEXT_COLUMNS[SHEET.BINDINGS] = [1, 2];
-TEXT_COLUMNS[SHEET.ADMINS] = [1];
+TEXT_COLUMNS[SHEET.ADMINS] = [1, 2];
 TEXT_COLUMNS[SHEET.INVITES] = [1, 8];
 TEXT_COLUMNS[SHEET.ITEMS] = [1];
 TEXT_COLUMNS[SHEET.DETAILS] = [1];
@@ -101,7 +102,7 @@ TEXT_COLUMNS[SHEET.PERIODS] = [2, 3];
 TEXT_COLUMNS[SHEET.EXTRA] = [2];
 TEXT_COLUMNS[SHEET.NOTIFY] = [1];
 TEXT_COLUMNS[SHEET.CONSENT] = [3];
-TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 9];
+TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 4, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
@@ -115,7 +116,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-24a';
+var APP_VERSION = '2026-11-25a';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {

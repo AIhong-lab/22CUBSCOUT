@@ -1033,6 +1033,26 @@ var Logic = (function () {
     };
   }
 
+  /**
+   * 把字串裡的 name 換成 rep，但落在 longer（包含 name 的其他姓名）裡面的那幾段不換。
+   * 例如 name＝陳宇、longer＝[陳宇軒]：「陳宇、陳宇軒」→「rep、陳宇軒」。
+   */
+  function replaceNameOnly(str, name, rep, longer) {
+    var protect = [];
+    (longer || []).forEach(function (n) {
+      for (var i = str.indexOf(n); i >= 0; i = str.indexOf(n, i + 1)) protect.push([i, i + n.length]);
+    });
+    var out = '', pos = 0;
+    for (var j = str.indexOf(name); j >= 0; j = str.indexOf(name, j + 1)) {
+      if (j < pos) continue;
+      var inside = protect.some(function (p) { return j >= p[0] && j + name.length <= p[1]; });
+      if (inside) continue;
+      out += str.slice(pos, j) + rep;
+      pos = j + name.length;
+    }
+    return out + str.slice(pos);
+  }
+
   /** 撤銷進程頒章後，目前級別退回「剩下已頒發中最高的一級」 */
   function levelAfterRevoke(awardsOfCub, revokedUnit, section) {
     var lv = null;
@@ -1505,15 +1525,21 @@ var Logic = (function () {
       counts['綁定紀錄'] = del['綁定紀錄'].length;
     } else return { ok: false, error: '不支援的處理方式' };
 
-    // 操作日誌中出現該小狼姓名的地方一律替換（對象、修改前、修改後三欄）
+    // 操作日誌中出現該小狼姓名的地方一律替換（對象、修改前、修改後三欄）。
+    // 其他團員的姓名包含這個名字時（例如「陳宇」與「陳宇軒」）那一段不動（附錄第 78 點）
     var logUpd = [];
+    var longer = cubRows.slice(1).map(function (r, i) { return i + 1 === cubRowIdx ? '' : clean(r[1]); })
+      .filter(function (n) { return n && n !== cubName && n.indexOf(cubName) >= 0; });
     if (cubName) {
       (data['操作日誌'] || []).forEach(function (r, idx) {
         if (idx === 0) return;
         var changed = false, v = r.slice();
         [3, 4, 5].forEach(function (c) {
           var s = v[c] === null || v[c] === undefined ? '' : String(v[c]);
-          if (s.indexOf(cubName) >= 0) { v[c] = s.split(cubName).join(replacement); changed = true; }
+          if (s.indexOf(cubName) >= 0) {
+            var out = replaceNameOnly(s, cubName, replacement, longer);
+            if (out !== s) { v[c] = out; changed = true; }
+          }
         });
         if (changed) logUpd.push({ row: idx + 1, values: v });
       });

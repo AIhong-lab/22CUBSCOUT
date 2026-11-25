@@ -4,7 +4,18 @@
  * 請在 Apps Script 編輯器手動執行。
  */
 /** 給人在 Apps Script 編輯器按「執行」用：結果看執行記錄。不回傳內容（公開函式會被網頁訪客呼叫到，回傳值不能帶邀請碼） */
-function setup() { setupCore_(); }
+function setup() { assertEditorRun_(); setupCore_(); }
+
+/**
+ * 公開函式（名稱沒有底線結尾）在 GAS 網頁版可以被訪客用 google.script.run 呼叫到（附錄第 56、78 點）。
+ * 會改設定或排程的函式先確認是擁有者本人在 Apps Script 編輯器或試算表選單執行：
+ * 匿名訪客的 getActiveUser() 是空的，和執行身分（擁有者）不同。
+ */
+function assertEditorRun_() {
+  var a = '', e = '';
+  try { a = Session.getActiveUser().getEmail(); e = Session.getEffectiveUser().getEmail(); } catch (x) { /* 取不到就當成不是本人 */ }
+  if (!a || a !== e) throw new Error('請由擁有者在 Apps Script 編輯器或試算表選單執行這個函式。');
+}
 
 function setupCore_() {
   clearAllCaches_();
@@ -210,6 +221,7 @@ function printSetupReport_(r) {
 
 /** 清除階段 0B 的測試資料（Script Properties 中 T0B_ 開頭者） */
 function cleanup0B() {
+  assertEditorRun_();
   var props = PropertiesService.getScriptProperties();
   var n = 0;
   Object.keys(props.getProperties()).forEach(function (k) { if (k.indexOf('T0B_') === 0) { props.deleteProperty(k); n++; } });

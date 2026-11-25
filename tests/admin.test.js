@@ -339,8 +339,8 @@ test('備份：未設定資料夾提示、輪替保留份數、刪除所有舊�
   assert.equal(call(L, 'adminHome').alerts.permission.ok, false, '首頁顯示警告');
   env.drive.failCopy = true;
   assert.equal(call(L, 'backupNow').ok, false);
-  env.ctx.installBackupTrigger();
-  env.ctx.installBackupTrigger();
+  env.ctx.installBackupTrigger_();
+  env.ctx.installBackupTrigger_();
   assert.equal(env.triggers.filter((t) => t.getHandlerFunction() === 'weeklyBackup').length, 1, '重複安裝不重複');
 });
 

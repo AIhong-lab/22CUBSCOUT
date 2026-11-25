@@ -347,7 +347,10 @@ function apiChangePassword_(req, who) {
   return withLock_(function () {
     var settings = loadSettings_().values;
     var acc = findAccountById_(who.account.accountId);
+    // 舊密碼錯誤和登入共用失敗紀錄與鎖定（附錄第 78 點）
+    assertNotLocked_('登入', acc.username.toLowerCase(), settings);
     if (!Logic.verifyPassword(String(req.oldPassword || ''), acc.salt, acc.passwordHash, hmacHex_)) {
+      recordFailure_('登入', acc.username.toLowerCase());
       throw new ApiError(ERR.BAD_INPUT, '目前的密碼不正確。');
     }
     var pw = Logic.validatePassword(req.newPassword, settings['密碼最短長度'], acc.username);
@@ -374,6 +377,19 @@ function apiUpdateNickname_(req, who) {
 }
 
 // ───────────── 已登入：綁定與同意 ─────────────
+
+/**
+ * 童軍本人帳號（只有「本人」綁定、不是管理員）不能解除自己的綁定或申請新增孩子；
+ * 綁定別人已由 bindCub_ 擋下（附錄第 76、78 點）。
+ */
+function isScoutSelfAccount_(who) {
+  if (who.admin) return false;
+  var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+  return mine.length > 0 && mine.every(function (b) { return b.relation === Logic.RELATION.SELF; });
+}
+function assertNotScoutSelf_(who) {
+  if (isScoutSelfAccount_(who)) throw new ApiError(ERR.FORBIDDEN, '童軍本人帳號不能做這個操作，請家長處理。');
+}
 
 /** 已登入帳號新增綁定（第二個孩子），或輸入邀請碼成為管理員 */
 function apiBind_(req, who) {
@@ -409,6 +425,7 @@ function apiReconsent_(req, who) {
 
 /** 家長自行解除綁定：只刪除自己這個帳號與該小狼的綁定 */
 function apiUnbind_(req, who) {
+  assertNotScoutSelf_(who);
   return withLock_(function () {
     var rows = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === Logic.clean(req.cubId); });
     if (!rows.length) throw new ApiError(ERR.NOT_FOUND, '找不到這筆綁定。');
@@ -456,6 +473,7 @@ function registerByRequest_(req) {
 
 /** 已登入的家長再申請新增孩子（例如第二個孩子） */
 function apiRequestChildren_(req, who) {
+  assertNotScoutSelf_(who);
   return withLock_(function () {
     var v = Logic.validateChildNames(req.childNames, true);
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
@@ -504,14 +522,14 @@ function requestRows_(accountId, names, version, existing, now, sections) {
  */
 function apiStartup_(req, who) {
   var me = apiMe_(req, who), pre = {};
-  try {
-    if (who.admin) {
-      pre.adminHome = Object.assign({ ok: true }, AUTHED_ACTIONS.adminHome({}, who));
-      pre.meetingList = Object.assign({ ok: true }, AUTHED_ACTIONS.meetingList({}, who));
-    } else if (me.cubs && me.cubs.length && !me.needsConsent) {
-      pre.cubDetail = Object.assign({ ok: true }, apiCubDetail_({ cubId: me.cubs[0].cubId }, who));
-    }
-  } catch (e) { pre = {}; }
+  // 每一份預載各自處理錯誤：某一頁沒有權限（例如點名被關掉）時，其他已經拿到的照樣給（附錄第 78 點）
+  var tryPut = function (key, fn) { try { pre[key] = Object.assign({ ok: true }, fn()); } catch (e) { /* 沒拿到就由網頁自己再讀 */ } };
+  if (who.admin) {
+    tryPut('adminHome', function () { return AUTHED_ACTIONS.adminHome({}, who); });
+    tryPut('meetingList', function () { return AUTHED_ACTIONS.meetingList({}, who); });
+  } else if (me.cubs && me.cubs.length && !me.needsConsent) {
+    tryPut('cubDetail', function () { return apiCubDetail_({ cubId: me.cubs[0].cubId }, who); });
+  }
   return { me: me, prefetch: pre };
 }
 

@@ -87,15 +87,17 @@ function apiEventRegister_(req, who) {
   var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
   var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
   var isSelf = !who.admin && myBinds.length > 0 && !isPar;
-  var firstCub = myBinds[0] ? loadCubs_().filter(function (c) { return c.cubId === myBinds[0].cubId; })[0] : null;
-  if (!resolveWhoPerms_(who, isPar, isSelf, firstCub ? firstCub.section : '').tabs.parent_events) {
-    throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上活動報名。');
-  }
   return afterSync_(withLock_(function () {
-    if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
+    var secs = accountSections_(who);
+    if (!canRegisterEvents_(who, null, secs)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
     var ev = loadEvents_().filter(function (e) { return e.id === Logic.clean(req.eventId); })[0];
     if (!ev || !ev.enabled) throw new ApiError(ERR.NOT_FOUND, '找不到這個活動。');
-    if (!canRegisterEvents_(who, ev)) throw new ApiError(ERR.FORBIDDEN, '這個活動只開放給' + ev.targets.join('、') + '報名。');
+    if (!canRegisterEvents_(who, ev, secs)) throw new ApiError(ERR.FORBIDDEN, '這個活動只開放給' + ev.targets.join('、') + '報名。');
+    // 總團的「線上活動報名」權限（parent_events）：只要有一個「活動開放、而且這個人在那裡有在團孩子或身分」的分團開放報名就可以
+    //（多個孩子分屬不同分團時，不只看第一個孩子；附錄第 78 點）
+    var okSec = secs.filter(function (sec) { return Logic.targetsInclude(ev.targets, sec); })
+      .some(function (sec) { return resolveWhoPerms_(who, isPar, isSelf, sec).tabs.parent_events; });
+    if (!okSec) throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上活動報名。');
     var st = regState_(ev, nowStamp_());
     if (st !== '報名中') throw new ApiError(ERR.BAD_INPUT, '這個活動' + (st === '尚未開始' ? '還沒開始報名。' : '已經截止報名，請聯絡團長。'));
     var v = Logic.validateEventPeople(req.people, ev.questions);
