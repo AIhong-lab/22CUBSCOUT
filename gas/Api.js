@@ -136,7 +136,8 @@ function dispatch_(req) {
  */
 function apiCatalog_(req) {
   // 分團（附錄第 77 點）：沒帶或不是有進程的分團時是小狼（舊網址 #progress、#badges）
-  var sec = Logic.sectionOf(req && req.section);
+  // 行義和童軍共用一套（附錄第 80 點）：回傳童軍的資料
+  var sec = Logic.progressSec(req && req.section);
   if (!Logic.progressModule(sec)) return { units: [], section: sec, levels: [] };
   var cache = CacheService.getScriptCache(), ckey = 'CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec);
   var hit = cache.get(ckey);
@@ -154,7 +155,7 @@ function apiCatalog_(req) {
     }
     groups[k].items.push({ section: it.section, text: it.text, details: detailsView_(byItem, it.id) });
   });
-  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }), section: sec, levels: Logic.levelsOf(sec), badgeGroups: Logic.progressModule(sec).badgeGroups };
+  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }), section: sec, levels: Logic.levelsOf(sec), badgeGroups: Logic.progressModule(sec).badgeGroups, badgeLabel: Logic.progressModule(sec).badgeLabel || '技能章' };
   try { cache.put(ckey, JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
   return out;
 }

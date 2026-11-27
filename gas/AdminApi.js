@@ -589,7 +589,7 @@ registerAdmin_('award', 'award', function (req, who) {
 function findAward_(cubId, unit) {
   // [修補] 驗證目標團員屬於目前分團，防止跨分團修改或撤銷頒章；頒章紀錄依分團對應（附錄第 77 點）
   var cub = findCub_(cubId);
-  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit) && x.sec === cub.section; })[0];
+  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit) && x.sec === Logic.progressSec(cub.section); })[0];
   if (!a) throw new ApiError(ERR.NOT_FOUND, '找不到這筆頒章紀錄。');
   return a;
 }
@@ -932,7 +932,7 @@ function settingGroupFor_(def, who) {
   if (!def || def.type === 'list') return null;
   if (def.scope === 'shared') return who.isOwner || (!ownerId_() && who.isCentral) ? '權限' : null;
   if (def.scope === 'cub') return curSec_() === Logic.DEFAULT_SECTION ? '分團' : null;
-  if (def.scope === 'progress') return def.section === curSec_() ? '分團' : null;
+  if (def.scope === 'progress') return def.section === Logic.progressSec(curSec_()) ? '分團' : null;
   if (def.scope === 'section') return def.key === Logic.sectionSettingKey(def.base || def.key, curSec_()) ? '分團' : null;
   return canShared_(who, '系統設定') ? '全團' : null;
 }

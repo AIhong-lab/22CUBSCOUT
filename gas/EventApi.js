@@ -380,7 +380,7 @@ function deleteRegsOfAccount_(accountId) {
 
 /** 某分團的章圖：{ '類別|名稱': {image, _row} }（第 6 欄分團，空白＝小狼） */
 function loadUnitImages_(section) {
-  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || ''), map = {};
+  var sec = Logic.progressSec(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || ''), map = {};
   readRows_(SHEET.UNIT_IMAGES).forEach(function (r) {
     if (Logic.sectionOf(r[5]) !== sec) return;
     var k = Logic.clean(r[1]) + '|' + Logic.clean(r[0]);
@@ -395,7 +395,7 @@ function loadUnitImages_(section) {
  */
 function apiUnitImages_() {
   var out = {};
-  Logic.PROGRESS_SECTIONS.forEach(function (sec) {
+  Object.keys(Logic.PROGRESS_MODULES).forEach(function (sec) {
     var units = loadUnits_(sec), imgs = loadUnitImages_(sec);
     Object.keys(imgs).forEach(function (k) { if (units[k]) out[(sec === Logic.DEFAULT_SECTION ? '' : sec + '|') + k] = imgs[k].image; });
   });
@@ -407,7 +407,7 @@ PUBLIC_ACTIONS.unitImages = apiUnitImages_;
 registerAdmin_('unitImageSave', 'manageItems', function (req, who) {
   var category = Logic.clean(req.category), unit = Logic.clean(req.unit), image = String(req.image || '');
   if (image && !Logic.isUnitImage(image)) throw new ApiError(ERR.BAD_INPUT, '圖片格式不正確或檔案太大，請換一張圖再試。');
-  var sec = curSec_();
+  var sec = Logic.progressSec(curSec_());
   return withLock_(function () {
     var key = category + '|' + unit;
     if (!loadUnits_(sec)[key]) throw new ApiError(ERR.NOT_FOUND, '找不到這個級別或技能章。');

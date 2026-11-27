@@ -15,7 +15,7 @@ function itemsChanged_() {
 /** 項目總表的原始列；section 有給時只回該分團的列（第 8 欄分團，空白＝小狼） */
 function anyIdsOf_(items) { var m = {}; items.forEach(function (it) { m[it.id] = true; }); return m; }
 function rawItemRows_(section) {
-  return readRows_(SHEET.ITEMS).filter(function (r) { return Logic.clean(r[0]) && (!section || Logic.sectionOf(r[7]) === Logic.sectionOf(section)); });
+  return readRows_(SHEET.ITEMS).filter(function (r) { return Logic.clean(r[0]) && (!section || Logic.progressSec(r[7]) === Logic.progressSec(section)); });
 }
 function itemRowValues_(r) { return HEADERS[SHEET.ITEMS].map(function (h, j) { return r[j] === undefined ? '' : r[j]; }); }
 function findItemRow_(id) {
@@ -60,7 +60,7 @@ function itemsWith_(change) {
 }
 
 registerAdmin_('itemsTree', 'manageItems', function () {
-  var sec = curSec_(), mod = Logic.progressModule(sec);
+  var sec = Logic.progressSec(curSec_()), mod = Logic.progressModule(sec);
   var all = loadItems_();
   var parsed = { items: all.items.filter(function (it) { return it.sec === sec; }), errors: all.errors };
   var unitsMap = loadUnits_(sec);
@@ -206,10 +206,10 @@ registerAdmin_('sectionRename', 'manageItems', function (req, who) {
 registerAdmin_('unitSave', 'manageItems', function (req, who) {
   var category = Logic.clean(req.category), unit = Logic.clean(req.unit);
   var desc = Logic.clean(req.desc).slice(0, 1000), rule = Logic.clean(req.rule).slice(0, 1000), group = Logic.clean(req.group);
-  var sec = curSec_(), mod = Logic.progressModule(sec);
+  var sec = Logic.progressSec(curSec_()), mod = Logic.progressModule(sec);
   return withLock_(function () {
     var allRows = readRows_(SHEET.UNITS).filter(function (r) { return Logic.clean(r[0]); });
-    var rows = allRows.filter(function (r) { return Logic.sectionOf(r[6]) === sec; });
+    var rows = allRows.filter(function (r) { return Logic.progressSec(r[6]) === sec; });
     var find = function (n) { return rows.filter(function (r) { return Logic.clean(r[0]) === n && Logic.clean(r[1]) === category; })[0]; };
     if (category === Logic.CATEGORY.BADGE && mod.badgeGroups.indexOf(group) < 0) throw new ApiError(ERR.BAD_INPUT, '請選擇技能章分類（' + mod.badgeGroups.join('／') + '）。');
     if (req.isNew) {

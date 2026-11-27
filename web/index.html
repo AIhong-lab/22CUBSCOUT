@@ -428,7 +428,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-25b';
+const APP_VERSION = '2026-11-27a';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -445,15 +445,22 @@ const MARK_ICON = { '出席': '🐾', '遲到': '⏰', '請假': '🌙' };
 const LEVELS = ['剛入團', '羚羊', '狼', '鹿', '豹']; // 剛入團：本團在羚羊前加的一級（頒黃領巾，SPEC 附錄第 37 點）
 /** 級別名稱：剛入團不加「級」 */
 const lvName = (l) => (l === '剛入團' ? l : l + '級');
-const LEVEL_ICON = { '剛入團': '🌱', '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆', '地球': '🌍', '星星': '⭐', '月亮': '🌛', '太陽': '☀️' };
+const LEVEL_ICON = { '剛入團': '🌱', '羚羊': '🐐', '狼': '🐺', '鹿': '🦌', '豹': '🐆', '地球': '🌍', '星星': '⭐', '月亮': '🌛', '太陽': '☀️', '初級': '🔰', '中級': '🧭', '高級': '⛺', '獅級': '🦁', '長城': '🏯', '國花': '🌸', '見習羅浮': '🎒', '授銜羅浮': '🗡️', '服務羅浮': '🤝' };
 /** 各分團的進程級別（和後端 Logic.PROGRESS_MODULES 一致；SPEC 附錄第 77 點） */
-const SEC_LEVELS = { 小狼: LEVELS, 稚齡: ['地球', '星星', '月亮', '太陽'] };
+const SEC_LEVELS = { 小狼: LEVELS, 稚齡: ['地球', '星星', '月亮', '太陽'], 童軍: ['初級', '中級', '高級', '獅級', '長城', '國花'], 羅浮: ['見習羅浮', '授銜羅浮', '服務羅浮'] };
+/** 行義和童軍共用一套進程（附錄第 80 點）：資料、章圖、級別都看童軍 */
+const PROG_GROUP = { 行義: '童軍' };
+const progGroup = (s) => PROG_GROUP[s] || s || '小狼';
+/** 章的稱呼：童軍、行義叫「專科章」；羅浮沒有章 */
+const SEC_BADGE = { 童軍: '專科章', 羅浮: '' };
+const BL = (s) => { const g = progGroup(s || progSec); return g in SEC_BADGE ? SEC_BADGE[g] : '技能章'; };
+const hasBadges = (s) => !!BL(s);
 /** 闖關地圖終點的話 */
-const SEC_FINISH = { 小狼: '完成豹級，成為全能小狼！', 稚齡: '完成太陽級，準備邁向幼童軍！' };
+const SEC_FINISH = { 小狼: '完成豹級，成為全能小狼！', 稚齡: '完成太陽級，準備邁向幼童軍！', 童軍: '完成國花級，成為最高榮譽的童軍！', 羅浮: '成為服務羅浮，以服務為己任！' };
 /** 目前畫面是哪個分團的進程（家長＝孩子的分團、公開查詢＝選的分團、後台＝目前分團）；章圖與級別清單依此 */
 let progSec = '小狼';
-const setProgSec = (s) => { progSec = SEC_LEVELS[s] ? s : '小狼'; };
-const lvs = (s) => SEC_LEVELS[s || progSec] || LEVELS;
+const setProgSec = (s) => { const g = progGroup(s); progSec = SEC_LEVELS[g] ? g : '小狼'; };
+const lvs = (s) => SEC_LEVELS[progGroup(s || progSec)] || LEVELS;
 const BADGE_ICON = { 生活: '🛏️', 保健: '🦷', 交通: '🚥', 球類: '⚽', 騎車: '🛴', 體能: '🏃', 民俗: '🪢', 律動: '🎶', 益智: '🧩', 歌唱: '🎤', 美勞: '✂️', 嚮導: '🧭', 環保: '♻️', 交通安全: '🚦', 表演: '🎭', 種植: '🌱', 飼養: '🐹', 勞作: '🔨', 義工: '🤝', 球類運動: '⚽', 體適能運動: '💪', 民俗體育運動: '🪀', 游泳: '🏊', 自行車: '🚲', 旅行: '🎒', 休閒活動: '🎲', 舞蹈: '💃', 體操: '🤸', 繪畫: '🎨', 音樂: '🎵', 模型: '🏠', 口技: '🗣️', 書法: '🖌️', 歌詠: '🎤', 收集: '📦', 資訊: '💻', 語文: '📖' };
 // ───── 章的內建圖（SPEC 附錄第 53 點）：進程章是菱形方框＋Q 版動物；技能章是三角形＋分類顏色＋表情符號。
 // 團長在「項目管理」上傳圖片後，以上傳的為準。
@@ -486,7 +493,7 @@ const BADGES = {
     '<ellipse cx="50" cy="67" rx="8" ry="6" fill="#FFF3D6"/>' + EYES(57) + BLUSH(63) +
     '<path d="M48 64H52L50 66.3Z" fill="#E7708A"/><g stroke="#2b1d0e" stroke-width=".8" stroke-linecap="round"><path d="M44 67H39M44 69L39.5 70.5M56 67H61M56 69L60.5 70.5"/></g>'),
 };
-const BADGE_COLOR = { 健身類: '#0B8A3E', 運動類: '#0B8A3E', 服務類: '#E3101B', 技巧類: '#1360B5' };
+const BADGE_COLOR = { 健身類: '#0B8A3E', 運動類: '#0B8A3E', 服務類: '#E3101B', 技巧類: '#1360B5', 技能類: '#1360B5', 興趣類: '#8A4FBF' };
 const triBadge = (color, emoji) => `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 7L95 86H5Z" fill="#F5C21B" stroke="#F5C21B" stroke-width="10" stroke-linejoin="round"/><path d="M50 15L87 81H13Z" fill="${color}" stroke="${color}" stroke-width="5" stroke-linejoin="round"/><g transform="translate(0 12)">${FLEUR}</g><text x="50" y="66" font-size="27" text-anchor="middle" dominant-baseline="middle">${emoji}</text></svg>`;
 /** 級別或章的圖示：內建圖或表情符號；團長上傳官方圖片後自動換成圖片（SPEC 附錄第 50、53 點） */
 const iconOf = (u) => {
@@ -497,7 +504,7 @@ const iconOf = (u) => {
 };
 const lvIcon = (l) => iconOf({ category: '進程', unit: l });
 /** 章圖的鍵（和後端 unitImages 一致）：小狼「類別|名稱」，其他分團「分團|類別|名稱」 */
-const imgKey = (cat, unit, sec) => ((sec || progSec) === '小狼' ? '' : (sec || progSec) + '|') + cat + '|' + unit;
+const imgKey = (cat, unit, sec) => { const g = progGroup(sec || progSec); return (g === '小狼' ? '' : g + '|') + cat + '|' + unit; };
 /** 進程只顯示「目前這一級」與「下一級」（SPEC 附錄第 53 點）；還沒有級別時是第一、二級（小狼：剛入團與羚羊） */
 const levelWindow = (cur) => { const L = lvs(), i = Math.max(0, L.indexOf(cur || '')); return L.slice(i, i + 2); };
 let unitImgs = null;
@@ -560,7 +567,7 @@ const SEC_INFO = {
 const secOfSlug = (slug) => SECTIONS.find((s) => SEC_INFO[s].slug === slug) || null;
 const secFull = (s) => (SEC_INFO[s] ? SEC_INFO[s].full : s || '');
 /** 有進程的分團（簽核、頒章、項目管理）：小狼、稚齡；童軍、行義、羅浮之後陸續上線 */
-const PROGRESS_SECTIONS = ['稚齡', '小狼'];
+const PROGRESS_SECTIONS = ['稚齡', '小狼', '童軍', '行義', '羅浮'];
 const hasProgressSec = (s) => PROGRESS_SECTIONS.includes(s || '小狼');
 /** 職稱顯示：羅浮的團長稱「群長」（權限相同） */
 const roleName = (role, sec) => (role === '團長' && sec === '羅浮' ? '群長' : role || '');
@@ -1337,7 +1344,7 @@ const PARENT_TABS = () => [
 ].filter(Boolean);
 const PARENT_SEGS = () => [
   hasTab('member_progress', true) && ['map', '🗺️ 闖關'],
-  hasTab('member_progress', true) && ['badges', '🎖️ 徽章'],
+  hasTab('member_progress', true) && hasBadges(state.detail && state.detail.cub && state.detail.cub.section) && ['badges', '🎖️ 徽章'],
   hasTab('member_attendance', true) && ['attendance', '🐾 出席'],
 ].filter(Boolean);
 
@@ -1545,7 +1552,7 @@ function viewHome(d) {
       ${challenging.length ? challenging.map(unitCard).join('') : '<p class="muted">目前沒有進行中的關卡。</p>'}</section>
     <section class="card"><h2>已經拿到的</h2>
       ${got.length ? got.map(unitCard).join('') : '<p class="muted">還沒有拿到章，一起加油！💪</p>'}</section>
-    ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的技能章（${notStarted.length} 個）▾</summary>
+    ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的${esc(BL())}（${notStarted.length} 個）▾</summary>
       ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
   mountNotices(3, '.hero', [c.section || '小狼']);
   const tm = $('#toMap');
@@ -1615,7 +1622,7 @@ function viewBadges(d) {
     b.onclick = () => {
       const u = badges.find((x) => x.unit === b.dataset.unit);
 
-      openSheet(`<div class="center"><div style="font-size:64px">${iconOf(u)}</div><h2 style="text-align:center">${esc(u.unit)}技能章</h2>
+      openSheet(`<div class="center"><div style="font-size:64px">${iconOf(u)}</div><h2 style="text-align:center">${esc(u.unit)}${esc(BL())}</h2>
         <span class="pill st-${esc(u.status)}">${statusLabel(u)}</span></div>
         ${u.status === '已頒發' ? `<div class="msg ok">🏅 ${fmtDate(u.awardDate)} 頒發${u.awardOccasion ? '・' + esc(u.awardOccasion) : ''}</div>` : ''}
         ${u.status === '已完成待頒發' ? `<div class="msg info">${esc(u.statusText)}</div>` : ''}
@@ -1820,9 +1827,19 @@ const SEC_TEXT = {
     prog: '稚齡童軍進程', badge: '稚齡童軍技能章', search: '搜尋進程任務，例如：諾言、交通', bsearch: '搜尋技能章，例如：種植、球類',
     intro: '依序挑戰<b>地球 → 星星 → 月亮 → 太陽</b>四級，完成該級任務並經團長評定後頒授。點一級看任務。',
     src: '內容依據中華民國童軍總會〈稚齡童軍活動進程〉。', bsrc: '內容依據中華民國童軍總會〈稚齡童軍技能章合格標準〉。'
+  },
+  童軍: {
+    prog: '童軍、行義童軍進程', badge: '童軍、行義童軍專科章', search: '搜尋進程任務，例如：露營、結繩', bsearch: '搜尋專科章，例如：露營、急救',
+    intro: '依序挑戰<b>初級 → 中級 → 高級 → 獅級 → 長城 → 國花</b>：童軍從初級開始，行義童軍從高級接著往上（兩個分團共用同一套）。點一級看任務。',
+    src: '內容依據中華民國童軍總會〈童軍、行義童軍訓練進程〉；目前是匯入的官方原文，各分團團長核對中。', bsrc: '內容依據中華民國童軍總會〈童軍、行義童軍專科章考驗標準〉；各分團團長核對中。'
+  },
+  羅浮: {
+    prog: '羅浮童軍進程', badge: '', search: '搜尋進程內容，例如：服務、露營', bsearch: '',
+    intro: '依序為<b>見習羅浮 → 授銜羅浮 → 服務羅浮</b>。見習羅浮的「途徑1」「途徑2」完成其中一條；服務羅浮的「主題活動」任選一項。',
+    src: '內容依據中華民國童軍總會〈羅浮童軍組織與進程〉；目前是匯入的官方原文，群長核對中。', bsrc: ''
   }
 };
-const GROUP_ICON = { 服務類: '🤝', 健身類: '🏃', 運動類: '🏃', 技巧類: '🎨' };
+const GROUP_ICON = { 服務類: '🤝', 健身類: '🏃', 運動類: '🏃', 技巧類: '🎨', 技能類: '🛠️', 興趣類: '🎨' };
 /** 稚齡頁（公開）：進程四級、技能章三類 */
 function beaverIntroHtml(login) {
   const L = lvs('稚齡');
@@ -1932,11 +1949,12 @@ function renderSectionPage(sec) {
     wireHomeIntro(['稚齡']);
   } else {
     $app.innerHTML = `${back}<section class="card"><h2 style="font-size:22px;margin-bottom:4px">${SEC_INFO[sec].icon} 22 團 ${esc(secFull(sec))}</h2>
-        <p class="muted" style="margin:0">${esc(SEC_INFO[sec].ages)}。${esc(secFull(sec))}的進程與章查詢準備中，目前可以看公告與行事曆。</p></section>
-      <div class="quick" style="grid-template-columns:repeat(2,1fr)">${login}<button data-info="about"><span class="ic">🧭</span>認識 22 團</button></div>
-      <div class="chips" id="homeLinks">${['calendar', 'events'].map((k) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
+        <p class="muted" style="margin:0">${esc(SEC_INFO[sec].ages)}。查每一級要完成的任務${hasBadges(sec) ? '、可以挑戰的' + esc(BL(sec)) : ''}；家長登入後可以看孩子的進度。</p></section>
+      <div class="quick" style="grid-template-columns:repeat(${hasBadges(sec) ? 3 : 2},1fr)"><button data-ps="progress"><span class="ic">🗺️</span>進程查詢</button>${hasBadges(sec) ? `<button data-ps="badges"><span class="ic">🎖️</span>${esc(BL(sec))}查詢</button>` : ''}${login}</div>
+      <div class="chips" id="homeLinks">${['calendar', 'events', 'about'].map((k) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
       <section class="card" id="calCard" hidden></section>`;
     $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
+    $$('[data-ps]').forEach((b) => { b.onclick = () => renderCatalog(b.dataset.ps, { sec }); });
     $$('[data-info]').forEach((b) => { b.onclick = () => { if (canLeave()) renderInfo(b.dataset.info); }; });
     mountNotices(5, '#homeLinks', [sec]);
     mountCalendarAndFb([sec]);
@@ -2013,7 +2031,7 @@ async function renderCatalog(view, opt = {}) {
   }
   let data;
   setProgSec(sec);
-  const T = SEC_TEXT[sec] || SEC_TEXT['小狼'];
+  const T = SEC_TEXT[progGroup(sec)] || SEC_TEXT['小狼'];
   if (!catalogData || !catalogData[sec]) loading('正在打開任務手冊……');
   try { data = await loadCatalog(sec); }
   catch (e) {
@@ -2056,19 +2074,24 @@ async function renderCatalog(view, opt = {}) {
       ${sel ? `<section class="card" id="lvPanel"><h2>${lvIcon(sel.unit)} ${esc(lvName(sel.unit))}任務（${sel.items.length} 項）</h2>
         ${sel.desc ? `<p>${esc(sel.desc)}</p>` : ''}${sel.rule ? `<div class="msg info small"><b>晉級條件：</b>${esc(sel.rule)}</div>` : ''}
         ${catalogItemsHtml(sel)}</section>` : ''}
-      <p class="muted small center">${esc(T.src)}　<button class="linkbtn" id="other">看技能章 →</button></p>`;
+      <p class="muted small center">${esc(T.src)}${hasBadges(sec) ? `　<button class="linkbtn" id="other">看${esc(BL(sec))} →</button>` : ''}</p>`;
     wireSecBar();
     $$('.stage').forEach((st) => { st.onclick = () => { renderCatalog('progress', { sel: st.dataset.unit, sec }); const pn = $('#lvPanel'); if (pn && pn.scrollIntoView) pn.scrollIntoView({ behavior: 'smooth', block: 'start' }); }; });
     $('#q').oninput = () => drawHits(levels);
     drawHits(levels);
-    $('#other').onclick = () => renderCatalog('badges', { sec });
+    if ($('#other')) $('#other').onclick = () => renderCatalog('badges', { sec });
+  } else if (!hasBadges(sec)) {
+    $app.innerHTML = `${secBar}<section class="card center"><div style="font-size:56px">${SEC_INFO[sec].icon}</div><h2 style="justify-content:center">${esc(secFull(sec))}沒有技能章</h2>
+      <p class="muted">羅浮童軍的進程是見習、授銜、服務三個階段，請看進程查詢。</p><button class="btn" id="other">🗺️ 去看進程</button></section>`;
+    wireSecBar();
+    $('#other').onclick = () => renderCatalog('progress', { sec });
   } else {
     const badges = units.filter((u) => u.category === '技能章');
     const groups = data.badgeGroups || ['服務類', '健身類', '技巧類'];
     const other = badges.filter((u) => !groups.includes(u.group));
     $app.innerHTML = `${secBar}
       <section class="card center"><h2 style="justify-content:center">🎖️ ${esc(T.badge)}</h2>
-        <p class="muted">共 ${badges.length} 個技能章，點徽章看合格標準。</p>
+        <p class="muted">共 ${badges.length} 個${esc(BL(sec))}，點徽章看合格標準。</p>
         <div style="text-align:left">${searchBox(T.bsearch)}</div></section>
       ${groups.concat(other.length ? ['其他'] : []).map((g) => {
         const list = g === '其他' ? other : badges.filter((u) => u.group === g);
@@ -2339,9 +2362,9 @@ const ADMIN_PAGES = {
         <button class="btn ${i.enabled ? 'danger' : 'alt'} small" data-tog="${esc(i.id)}" data-on="${i.enabled ? '0' : '1'}">${i.enabled ? '停用' : '重新啟用'}</button></span></div>`;
     $app.innerHTML = `${backBtn()}<section class="card"><h2>📝 項目管理</h2>
       <p class="muted small">修改後立即生效。項目ID 不會改變，已完成與已頒章的紀錄都會保留；項目只能停用、不能刪除。新增、停用或重新啟用會先顯示對哪些團員有影響。</p>
-      <div class="chips">${['進程', '技能章'].map((c) => `<button class="chip ${c === cat ? 'on' : ''}" data-cat="${c}">${c === '進程' ? '🗺️ 進程' : '🎖️ 技能章'}</button>`).join('')}</div>
+      <div class="chips">${(hasBadges() ? ['進程', '技能章'] : ['進程']).map((c) => `<button class="chip ${c === cat ? 'on' : ''}" data-cat="${c}">${c === '進程' ? '🗺️ 進程' : '🎖️ ' + esc(BL())}</button>`).join('')}</div>
       <div class="chips" id="units">${list.map((u) => `<button class="chip ${sel && u.unit === sel.unit ? 'on' : ''}" data-unit="${esc(u.unit)}">${iconOf(u)} ${esc(unitLabel(u))}</button>`).join('')}
-        ${cat === '技能章' ? '<button class="chip" id="newBadge">＋ 新增技能章</button>' : ''}</div>
+        ${cat === '技能章' ? `<button class="chip" id="newBadge">＋ 新增${esc(BL())}</button>` : ''}</div>
       <div class="row-flex"><button class="btn ghost small" id="chk">🔍 檢查項目總表${errN ? `（${errN} 個問題）` : ''}</button><button class="btn ghost small" id="exp">⬇️ 匯出 CSV</button><button class="btn ghost small" id="rl">🔄 重新載入</button></div>
       <div id="chkOut"></div></section>
     ${sel ? `<section class="card"><h2>${iconOf(sel)} ${esc(unitLabel(sel))}${sel.group ? ` <span class="pill st-進行中">${esc(sel.group)}</span>` : ''}</h2>
@@ -2382,7 +2405,7 @@ const ADMIN_PAGES = {
     });
     $('#rl').onclick = (ev) => act(ev.currentTarget, async () => { await api('itemsReload'); catalogData = null; toast('已重新載入'); go({}); });
     const nb = $('#newBadge');
-    if (nb) nb.onclick = () => openSheet(`<h2>＋ 新增技能章</h2><form id="fb"><label>章名</label><input name="unit" type="text" maxlength="20" required>
+    if (nb) nb.onclick = () => openSheet(`<h2>＋ 新增${esc(BL())}</h2><form id="fb"><label>章名</label><input name="unit" type="text" maxlength="20" required>
       <label>分類</label><select class="full" name="group">${d.groups.map((g) => `<option>${g}</option>`).join('')}</select>
       <label>說明（可留空）</label><textarea name="desc"></textarea><button class="btn" type="submit">新增</button><div class="out"></div></form>`, (sh, close) => {
       bindForm($('#fb', sh), async (fd) => { const r = await api('unitSave', { category: '技能章', isNew: true, unit: fd.get('unit'), group: fd.get('group'), desc: fd.get('desc') }); close(); toast('已新增，接著新增合格標準'); goAdmin('items', { cat: '技能章', unit: r.unit }); });
@@ -2986,7 +3009,7 @@ const ADMIN_PAGES = {
     const badges = d.units.filter((u) => u.category === '技能章');
     // 沒有進程的分團（童軍、行義、羅浮）只有「家長帳號」
     const P = d.hasProgress !== false;
-    const tabs = (P ? [['prog', '進程'], ['badges', '技能章']] : []).concat(L ? [['bind', '家長帳號']] : []);
+    const tabs = (P ? [['prog', '進程']].concat(hasBadges(c.section) ? [['badges', BL(c.section)]] : []) : []).concat(L ? [['bind', '家長帳號']] : []);
     // 剛新增的團員先看綁定碼；其餘預設看進程
     const tab = tabs.some((x) => x[0] === params.tab) ? params.tab : (P && !(c.status === '體驗' && L) ? 'prog' : 'bind');
     const att = d.attendance;
@@ -3011,7 +3034,7 @@ const ADMIN_PAGES = {
       ${!P ? `<section class="card"><p class="muted" style="margin:0">${esc(secFull(c.section))}的進程與章準備中。</p></section>` : ''}
       ${tab === 'bind' ? (bindHtml || '<section class="card"><p class="muted">只有團長可以管理綁定碼與家長帳號。</p></section>') : ''}
       ${tab === 'prog' ? (c.status === '體驗' ? '<section class="card"><p class="muted">體驗者入團後才開始進程。</p></section>' : `<section class="card"><h2>🗺️ 進程</h2>${prog.map(unitRow).join('')}</section>`) : ''}
-      ${tab === 'badges' ? `<section class="card"><h2>🎖️ 技能章</h2>${badges.map(unitRow).join('')}</section>` : ''}`;
+      ${tab === 'badges' ? `<section class="card"><h2>🎖️ ${esc(BL(c.section))}</h2>${badges.map(unitRow).join('')}</section>` : ''}`;
     wireBack();
     const reload = () => goAdmin('cub', { cubId: c.cubId, tab });
     $$('#cseg button').forEach((b2) => { b2.onclick = () => goAdmin('cub', { cubId: c.cubId, tab: b2.dataset.seg }); });
@@ -3195,7 +3218,7 @@ const ADMIN_PAGES = {
     };
     $('#csv').onclick = () => {
       const rows = d.rows.filter((r) => squad === '全團' || r.squad === squad);
-      downloadCsv(`進程總覽_${todayStr()}.csv`, [['姓名', '小隊'].concat(lvs(), ['技能章數', '出席次數'])].concat(rows.map((r) => [r.name, r.squad || ''].concat(lvs().map((l) => { const x = r.levels[l] || { done: 0, total: 0, status: '' }; return x.status === '已頒發' ? '已頒發' : x.status === '已完成待頒發' ? '待頒發' : x.done + '/' + x.total; }), [r.badges, r.attended]))));
+      downloadCsv(`進程總覽_${todayStr()}.csv`, [['姓名', '小隊'].concat(lvs(), [BL() + '數', '出席次數'])].concat(rows.map((r) => [r.name, r.squad || ''].concat(lvs().map((l) => { const x = r.levels[l] || { done: 0, total: 0, status: '' }; return x.status === '已頒發' ? '已頒發' : x.status === '已完成待頒發' ? '待頒發' : x.done + '/' + x.total; }), [r.badges, r.attended]))));
     };
     onSquad((s) => { squad = s; draw(); });
     draw();

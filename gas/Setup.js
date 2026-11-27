@@ -162,7 +162,7 @@ function ensureSectionSeeds_() {
     if (!Logic.progressModule(sec)) return;
     var seed = Logic.buildSeed(sections[sec].itemsCsv, sections[sec].progressRules, sec);
     // 格式錯誤的列也算（看原始的分團欄），避免重複匯入
-    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.sectionOf(r[7]) === sec; });
+    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.progressSec(r[7]) === sec; });
     if (!hasAny) {
       var taken = {};
       readRows_(SHEET.ITEMS).forEach(function (r) { taken[Logic.clean(r[0])] = true; });

@@ -178,7 +178,7 @@ test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他�
   assert.deepEqual(call(S, 'cubList').cubs, [], '童軍的名單裡沒有小狼');
   assert.equal(call(S, 'cubList', { _sec: '小狼' }).cubs.length, 0, '送 _sec=小狼 也沒用，後端只認自己有身分的分團');
   assert.equal(call(S, 'cubAdminDetail', { cubId: env.rows('小狼名單')[0][0] }).code, 'NOT_FOUND', '別的分團的團員找不到');
-  for (const x of ['signoffData', 'overview']) assert.equal(call(S, x).code, 'FORBIDDEN', '童軍進程準備中：' + x);
+  for (const x of ['signoffData', 'overview']) assert.equal(call(S, x).ok, true, '童軍也有進程（附錄第 80 點）：' + x);
   assert.equal(call(S, 'adminList').code, 'FORBIDDEN', '服務員不能管理管理員');
   assert.ok(!call(L, 'adminList').admins.some((a) => a.name === '王童軍'), '小狼管理員名單不列其他分團');
   // 小狼服務員另外加一個童軍團長身分：小狼權限不變
@@ -567,12 +567,12 @@ test('項目管理：樹狀資料、改文字（ID 不變）、新增（自動 I
   assert.equal(row[4], '能說出升降旗的禮節（團改寫）');
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '修改項目' && /參與升降旗/.test(r[4])), '記錄修改前');
   // 讓小狼的嚮導全部完成 → 已完成待頒發；新增嚮導項目要先看到影響預覽
-  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導').map((r) => r[0]);
+  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導' && !r[7]).map((r) => r[0]);
   call(L, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
   const add = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線' });
   assert.equal(add.needConfirm, true);
   assert.match(add.warnings[0], /1 位團員的「嚮導」從「已完成待頒發」變成「進行中」：測試小狼甲/);
-  assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導').length, 2, '未確認前不寫入');
+  assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導' && !r[7]).length, 2, '未確認前不寫入');
   const ok = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線', confirm: true });
   assert.equal(ok.id, 'B-嚮導-3', '序號取最大 + 1');
   // 停用剛新增的 → 又回到已完成待頒發（預覽提示）

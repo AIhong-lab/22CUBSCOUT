@@ -263,7 +263,7 @@ function detailsView_(byItem, itemId) {
 /** 級別與章說明，全部分團（容錯：略過空白列與名稱空白列）；sec 是分團（空白＝小狼） */
 function loadAllUnits_() {
   return readRows_(SHEET.UNITS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.sectionOf(r[6]), _row: r._row };
+    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.progressSec(r[6]), _row: r._row };
   });
 }
 
@@ -272,7 +272,7 @@ function loadAllUnits_() {
  * @param section 分團；沒給時用目前分團（後台請求），再沒有就是小狼
  */
 function loadUnits_(section) {
-  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
+  var sec = Logic.progressSec(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
   var map = {};
   loadAllUnits_().forEach(function (u) { if (u.sec === sec) map[u.category + '|' + u.name] = u; });
   return map;
@@ -281,15 +281,15 @@ function loadUnits_(section) {
 /** 公開進程查詢的快取（每個有進程的分團一份） */
 function removeCatalogCache_() {
   var c = CacheService.getScriptCache();
-  Logic.PROGRESS_SECTIONS.forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
+  Object.keys(Logic.PROGRESS_MODULES).forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
 }
 
 /** 分團欄要寫的值：小狼留空（和舊資料一樣），其他寫分團名稱 */
-function secCell_(section) { var s = Logic.sectionOf(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
+function secCell_(section) { var s = Logic.progressSec(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
 
 /** 某分團的項目（含停用）；item.sec 是分團 */
 function sectionItems_(section) {
-  var sec = Logic.sectionOf(section);
+  var sec = Logic.progressSec(section);
   return loadItems_().items.filter(function (it) { return it.sec === sec; });
 }
 
@@ -304,7 +304,7 @@ function loadCompletions_() {
 
 function loadAwards_() {
   return readRows_(SHEET.AWARDS).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.sectionOf(r[7]), _row: r._row };
+    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.progressSec(r[7]), _row: r._row };
   });
 }
 
