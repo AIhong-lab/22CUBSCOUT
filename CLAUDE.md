@@ -80,6 +80,7 @@
   - 羅浮本人：`register` 的 `identity: '羅浮本人'` → `registerRoverSelf_`（申請類型「本人」、分團羅浮）；`requestApprove` 本人申請只能在羅浮核准、綁定 `RELATION.SELF`。個資告知分兩份：告知同意內容第 4 欄「對象」（`Logic.ROVER_AUDIENCE`），`latestConsent_(audience)`、`isAdultSelf_`／`isMinorSelf_`／`bindingNeedsConsent_`；**判斷「家長權限」用 `!isMinorSelf_`（成年羅浮本人＝家長），不要直接看 relation**。`me.consentAudience`；前端 `renderSignupRover`、設定頁 `#fcr`。
   - LINE 額度 `lineQuota_()`（Notify.js，快取 1 小時）→ `adminHome.alerts.lineQuota`。
   - 測試 `tests/scouts.test.js`、`promote.test.js`、`regis.test.js`、`rover.test.js`、`tests/web/all.js`。
+- **活動報名表設計再加強（SPEC 附錄第 81 點，2026-11-27）**：題目類型 `Logic.EVENT_Q_TYPES`（choice／multi／text）、選項加價 `q.fees`、`Logic.eventAmount`（身分費用 `identityFees` 或每人費用＋選項加價）、`Logic.eventSeats`；「活動」第 16、17 欄「人數上限」「身分費用」；報名狀態「候補」（`REG_WAIT`，`r.wait`；**算人數、應收一律排除候補**，`takenSeats_`）；`eventRegPromote`（團長轉正取）。前端 `feeText`、`optText`／`optEdit`／`parseOpt`、`[data-qm]` 複選、`[data-amt-est]` 預估金額。測試 `tests/eventform.test.js`、`tests/web/eventform.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -140,8 +141,8 @@
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
 | 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架）、分團（分團名稱或「全團」） |
 | 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
-| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼） |
-| 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/取消）、更新人、更新時間 |
+| 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼）、人數上限（空白＝不限）、身分費用（JSON） |
+| 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/候補/取消）、更新人、更新時間 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間、分團（空白＝小狼） |
 | 設定 | 鍵、值、說明（另有「最高管理員帳號ID」一列，只能由移交中心寫入） |
 | 權限設定 | 功能代碼、功能名稱、分類、最低權限、停用分團、更新人、更新時間（系統分頁，由後台權限設定頁維護） |
