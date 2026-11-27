@@ -7,10 +7,10 @@
 
 /** 只有管理員（admin）或總團可以用 */
 function requireStaffManager_(who) {
-  var owner = ownerId_();
-  var isOwner = !!owner && who.account.accountId === owner;
+  var owners = ownerIds_();
+  var isOwner = owners.indexOf(who.account.accountId) >= 0;
   if (!isOwner && !who.isCentral) throw new ApiError(ERR.FORBIDDEN, '你沒有權限執行這個操作。');
-  return { accountId: who.account.accountId, isOwner: isOwner, isCentral: !!who.isCentral, ownerId: owner };
+  return { accountId: who.account.accountId, isOwner: isOwner, isCentral: !!who.isCentral, ownerId: owners };
 }
 
 /** 一列的代號：總團或分團名稱（同一人同一代號只會有一列） */
@@ -24,7 +24,7 @@ AUTHED_ACTIONS.staffList = function (req, who) {
     staff: loadAdminRows_().map(function (r) {
       return {
         accountId: r.accountId, key: staffKey_(r), name: r.name, username: (acc[r.accountId] || {}).username || '（帳號已刪除）',
-        section: r.section, role: r.role, title: r.title, owner: !!actor.ownerId && r.accountId === actor.ownerId, lineLinked: !!r.lineUserId
+        section: r.section, role: r.role, title: r.title, owner: actor.ownerId.indexOf(r.accountId) >= 0, lineLinked: !!r.lineUserId
       };
     })
   };

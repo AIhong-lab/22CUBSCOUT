@@ -339,8 +339,8 @@ test('備份：未設定資料夾提示、輪替保留份數、刪除所有舊�
   assert.equal(call(L, 'adminHome').alerts.permission.ok, false, '首頁顯示警告');
   env.drive.failCopy = true;
   assert.equal(call(L, 'backupNow').ok, false);
-  env.ctx.installBackupTrigger();
-  env.ctx.installBackupTrigger();
+  env.ctx.installBackupTrigger_();
+  env.ctx.installBackupTrigger_();
   assert.equal(env.triggers.filter((t) => t.getHandlerFunction() === 'weeklyBackup').length, 1, '重複安裝不重複');
 });
 
@@ -980,14 +980,14 @@ test('最高權限鎖在 admin：只有 admin 能指定或取消團長，admin �
   assert.equal(list.admins.find((a) => a.accountId === owner).owner, true);
   assert.equal(list.admins.find((a) => a.accountId === helper).owner, false);
   // 一般團長：不能指定、升、降、移除團長
-  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '團長' }).message, /只有最高權限帳號（admin）/);
-  assert.match(call(L, 'adminAdd', { accountId: parent, role: '團長', name: '測試家長' }).message, /只有最高權限帳號（admin）/);
+  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '團長' }).message, /只有最高管理員/);
+  assert.match(call(L, 'adminAdd', { accountId: parent, role: '團長', name: '測試家長' }).message, /只有最高管理員/);
   assert.equal(call(O, 'adminUpdate', { accountId: helper, role: '團長' }).ok, true, 'admin 可以指定團長');
-  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '服務員' }).message, /只有最高權限帳號（admin）/);
-  assert.match(call(L, 'adminRemove', { accountId: helper }).message, /只有最高權限帳號（admin）/);
-  assert.match(call(L, 'accountStatus', { accountId: helper, status: '停用' }).message, /只有最高權限帳號（admin）/, '不能用停用帳號繞過');
-  assert.match(call(L, 'accountDelete', { accountId: helper, confirmUsername: 'helper01' }).message, /只有最高權限帳號（admin）/, '不能用刪除帳號繞過');
-  assert.match(call(L, 'accountTempCode', { accountId: helper }).message, /只有最高權限帳號（admin）/, '不能重設其他團長的密碼');
+  assert.match(call(L, 'adminUpdate', { accountId: helper, role: '服務員' }).message, /只有最高管理員/);
+  assert.match(call(L, 'adminRemove', { accountId: helper }).message, /只有最高管理員/);
+  assert.match(call(L, 'accountStatus', { accountId: helper, status: '停用' }).message, /只有最高管理員/, '不能用停用帳號繞過');
+  assert.match(call(L, 'accountDelete', { accountId: helper, confirmUsername: 'helper01' }).message, /只有最高管理員/, '不能用刪除帳號繞過');
+  assert.match(call(L, 'accountTempCode', { accountId: helper }).message, /只有最高管理員/, '不能重設其他團長的密碼');
   // 一般團長：仍可管理服務員
   assert.equal(call(L, 'adminAdd', { accountId: parent, role: '服務員', name: '測試家長' }).ok, true);
   assert.equal(call(L, 'adminUpdate', { accountId: parent, name: '測試家長乙' }).ok, true);
@@ -999,8 +999,8 @@ test('最高權限鎖在 admin：只有 admin 能指定或取消團長，admin �
     assert.equal(call(T, 'accountStatus', { accountId: owner, status: '停用' }).ok, false);
     assert.equal(call(T, 'accountDelete', { accountId: owner, confirmUsername: 'admin' }).ok, false);
   }
-  assert.match(call(L, 'adminUpdate', { accountId: owner, name: '改名' }).message, /最高權限帳號/);
-  assert.match(call(L, 'accountTempCode', { accountId: owner }).message, /最高權限帳號/);
+  assert.match(call(L, 'adminUpdate', { accountId: owner, name: '改名' }).message, /最高管理員/);
+  assert.match(call(L, 'accountTempCode', { accountId: owner }).message, /最高管理員/);
   assert.equal(env.rows('管理員').find((r) => r[0] === owner)[2], '團長');
   // admin 可以取消團長
   assert.equal(call(O, 'adminUpdate', { accountId: helper, role: '服務員' }).ok, true);
@@ -1014,7 +1014,7 @@ test('刪除小狼只有 admin 可以；其他團長只能匿名化（附錄第 
   const O = env.api({ action: 'login', username: made.username, password: made.password }).token;
   assert.equal(call(L, 'me').ownerExists, true);
   call(L, 'cubLeave', { cubId, leftDate: '2026-01-01' });
-  assert.match(call(L, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).message, /只有最高權限帳號（admin）可以刪除小狼/);
+  assert.match(call(L, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).message, /只有最高管理員可以完全刪除/);
   assert.ok(env.rows('小狼名單').some((r) => r[0] === cubId), '被拒絕時資料還在');
   assert.equal(call(O, 'privacyExecute', { cubId, mode: 'delete', confirmName: '測試小狼甲' }).ok, true);
   assert.ok(!env.rows('小狼名單').some((r) => r[0] === cubId));

@@ -428,7 +428,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-24a';
+const APP_VERSION = '2026-11-25b';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -493,9 +493,11 @@ const iconOf = (u) => {
   const emoji = (u.category === '進程' ? LEVEL_ICON[u.unit] : BADGE_ICON[u.unit]) || '🎖️';
   const art = u.category === '進程' ? (progSec === '小狼' ? BADGES[u.unit] : '') : (BADGE_COLOR[u.group] ? triBadge(BADGE_COLOR[u.group], emoji) : '');
   // 章圖的鍵：小狼「類別|名稱」，其他分團前面加「分團|」（稚齡和小狼都有種植章）
-  return `<span class="uic${art ? ' art' : ''}" data-uk="${esc((progSec === '小狼' ? '' : progSec + '|') + u.category + '|' + u.unit)}">${art || emoji}</span>`;
+  return `<span class="uic${art ? ' art' : ''}" data-uk="${esc(imgKey(u.category, u.unit))}">${art || emoji}</span>`;
 };
 const lvIcon = (l) => iconOf({ category: '進程', unit: l });
+/** 章圖的鍵（和後端 unitImages 一致）：小狼「類別|名稱」，其他分團「分團|類別|名稱」 */
+const imgKey = (cat, unit, sec) => ((sec || progSec) === '小狼' ? '' : (sec || progSec) + '|') + cat + '|' + unit;
 /** 進程只顯示「目前這一級」與「下一級」（SPEC 附錄第 53 點）；還沒有級別時是第一、二級（小狼：剛入團與羚羊） */
 const levelWindow = (cur) => { const L = lvs(), i = Math.max(0, L.indexOf(cur || '')); return L.slice(i, i + 2); };
 let unitImgs = null;
@@ -1251,6 +1253,13 @@ async function start() {
   if (!store.get('token')) return renderHome(); // 沒登入：先看首頁（SPEC 附錄第 34 點）
   loading();
   if (!state.section) state.section = store.get('sec') || null; // 上次選的分團
+  // LINE 連結指定了分團：先切到那個分團（後端會確認這個人在那個分團有身分）
+  const linkSec = (() => {
+    const pa0 = pendingAward.get(), pr0 = pendingRoll.get();
+    const s0 = pa0 ? String(pa0).split(',')[2] : pr0 ? String(pr0).split(',')[1] : '';
+    return SECTIONS.includes(s0) ? s0 : '';
+  })();
+  if (linkSec) state.section = linkSec;
   try {
     // 一趟拿到登入資料和第一個畫面要用的資料（SPEC 附錄第 58 點）；舊後端沒有 startup 時退回 me
     try { const st = await api('startup'); state.me = st.me; state.prefetch = st.prefetch || {}; }
@@ -1276,12 +1285,14 @@ async function start() {
   const pa = pendingAward.get();
   if (pa) {
     pendingAward.clear();
-    if (state.me.role === '團長') { state.mode = 'admin'; state.admin = { tab: 'home', page: { name: 'award', params: { deeplink: pa } } }; }
+    // 能不能頒章看權限設定（tab_award），沒有權限表時照舊只有團長
+    const [aCub, aUnit] = String(pa).split(',');
+    if (state.me.role && hasTab('tab_award', state.me.role === '團長')) { state.mode = 'admin'; state.admin = { tab: 'home', page: { name: 'award', params: { deeplink: aCub + ',' + aUnit } } }; }
   }
   const pr = pendingRoll.get();
   if (pr) {
     pendingRoll.clear();
-    if (state.me.role) { state.mode = 'admin'; state.admin = { tab: 'roll', page: { name: 'roll', params: { meetingId: pr } } }; }
+    if (state.me.role) { state.mode = 'admin'; state.admin = { tab: 'roll', page: { name: 'roll', params: { meetingId: String(pr).split(',')[0] } } }; }
   }
   route();
 }
@@ -2336,7 +2347,7 @@ const ADMIN_PAGES = {
     ${sel ? `<section class="card"><h2>${iconOf(sel)} ${esc(unitLabel(sel))}${sel.group ? ` <span class="pill st-進行中">${esc(sel.group)}</span>` : ''}</h2>
       <div class="row-flex" style="margin-bottom:6px"><span style="font-size:56px;line-height:1">${iconOf(sel)}</span>
         <span class="grow"><label class="btn ghost small" style="display:inline-block;margin-top:0;cursor:pointer">🖼️ 上傳這個章的圖片<input type="file" accept="image/*" id="uimg" hidden></label>
-          ${unitImgs && unitImgs[cat + '|' + sel.unit] ? '<button class="btn danger small" id="uimgDel" style="margin-top:0">移除圖片</button>' : ''}
+          ${unitImgs && unitImgs[imgKey(cat, sel.unit)] ? '<button class="btn danger small" id="uimgDel" style="margin-top:0">移除圖片</button>' : ''}
           <span class="muted small" id="uimgOut" style="display:block">請上傳官方的章圖（用手機拍布章也可以），系統會自動縮小。還沒上傳的會顯示表情符號。</span></span></div>
       <form id="fu">
         ${cat === '技能章' ? `<label>章名</label><input name="newName" type="text" maxlength="20" value="${esc(sel.unit)}" ${sel.hasAwards ? 'disabled' : ''}>
@@ -2353,7 +2364,7 @@ const ADMIN_PAGES = {
       ${cat === '進程' ? '<button class="btn ghost small" id="newSec">＋ 新增大項</button>' : (secs.length ? '' : '<button class="btn ghost small" data-add="－">＋ 新增一項</button>')}
     </section>` : ''}`;
     wireBack();
-    const saveImg = async (image) => { await api('unitImageSave', { category: cat, unit: sel.unit, image }); unitImgs = unitImgs || {}; if (image) unitImgs[cat + '|' + sel.unit] = image; else delete unitImgs[cat + '|' + sel.unit]; toast(image ? '圖片已更新' : '圖片已移除'); goAdmin('items', { cat, unit: sel.unit }); };
+    const saveImg = async (image) => { await api('unitImageSave', { category: cat, unit: sel.unit, image }); unitImgs = unitImgs || {}; if (image) unitImgs[imgKey(cat, sel.unit)] = image; else delete unitImgs[imgKey(cat, sel.unit)]; toast(image ? '圖片已更新' : '圖片已移除'); goAdmin('items', { cat, unit: sel.unit }); };
     const ui = $('#uimg');
     if (ui) ui.onchange = async () => { const f = ui.files[0]; if (!f) return; const out = $('#uimgOut'); out.textContent = '處理中…'; try { await saveImg(await shrinkImage(f)); } catch (e) { if (e.code !== 'SESSION_EXPIRED') out.textContent = '⚠️ ' + e.message; } };
     const ud = $('#uimgDel'); if (ud) ud.onclick = () => { if (confirm('移除這張圖片，改回表情符號？')) act(ud, () => saveImg('')); };
@@ -3016,7 +3027,7 @@ const ADMIN_PAGES = {
     on('#pr', () => goAdmin('print', { cubIds: [c.cubId] }));
     on('#priv', () => goAdmin('privacy', { cubId: c.cubId }));
     on('#role', () => {
-      if (!c.canLead && !c.role) return alert(P ? `${c.name} 目前不能擔任正副小隊長：狼級以上才可以；小隊裡沒有狼級以上的小狼時，羚羊級也可以。也請先確認已經設定小隊。` : `請先幫 ${c.name} 設定小隊。`);
+      if (!c.canLead && !c.role) return alert((c.section || '小狼') === '小狼' ? `${c.name} 目前不能擔任正副小隊長：狼級以上才可以；小隊裡沒有狼級以上的小狼時，羚羊級也可以。也請先確認已經設定小隊。` : `請先幫 ${c.name} 設定小隊。`);
       openSheet(`<h2>🎗️ 設定職務</h2><p class="muted small">${esc(c.name)}・${esc(c.squad || '未分小隊')}。每個小隊正、副小隊長各一位；換人時原本那位會自動卸任，並留下任期紀錄。</p>
         <form id="frl"><label>職務</label><select class="full" name="role">${['', '小隊長', '副小隊長'].map((r) => `<option value="${r}" ${r === (c.role || '') ? 'selected' : ''}>${r || '隊員（沒有職務）'}</option>`).join('')}</select>
         <label>開始日</label><input type="date" name="date" value="${todayStr()}" max="${todayStr()}">
@@ -3534,8 +3545,8 @@ const ADMIN_PAGES = {
     </tr>`).join('');
     $app.innerHTML = `${backBtn()}
       <section class="card"><h2>🤝 團務移交與交接中心</h2>
-        <p class="muted small">集中檢視全團權責名單、交接準備度，並可安全移交「最高管理員」權限給下一任負責人（無須共用密碼）。</p>
-        <div class="list-row"><span class="grow">現任最高管理員</span><b>${d.owner ? esc(d.owner.name + '（' + d.owner.username + '）') : '尚未指定'}</b></div>
+        <p class="muted small">集中檢視全團權責名單與交接準備度。最高管理員最多 ${d.maxOwners || 3} 位、權限一樣；新增或卸下別人請由能編輯試算表的人用試算表選單「👑 最高管理員」（附錄第 79 點）。</p>
+        <div class="list-row"><span class="grow">最高管理員</span><b>${(d.owners || []).length ? d.owners.map((o) => esc(o.name + '（' + o.username + '）') + (o.isMe ? '（你）' : '')).join('、') : '尚未指定'}</b></div>
         <div class="list-row"><span class="grow">總團幹部（可看全團並設定權限）</span><b>${d.central.length ? d.central.map((c) => esc(c.name) + (c.isOwner ? '★' : '')).join('、') : '尚無'}</b></div>
         <div style="margin-top:12px"><button class="btn ghost small" id="exportHandover">📥 匯出交接清冊（CSV）</button></div>
       </section>
@@ -3545,16 +3556,13 @@ const ADMIN_PAGES = {
       <section class="card"><h2>🏕️ 各分團權責交接表</h2>
         <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>分團</th><th>在團人數</th><th>正／副團長</th><th>服務員</th></tr></thead><tbody>${secRows}</tbody></table></div>
       </section>
-      ${d.isOwner ? `<section class="card"><h2>🔑 移交最高管理權限</h2>
-        <p class="muted small">移交後，接任者將成為新的最高管理員並自動加入「總團」；系統會自動記錄於操作日誌，原管理員可選擇保留「總團」身分陪同過渡。</p>
-        ${d.candidates.length ? `<form id="fHandover">
-          <label>選擇接任帳號（限啟用中的總團或分團團長）</label>
-          <select name="targetAccountId">${d.candidates.map((c) => `<option value="${esc(c.accountId)}">${esc(c.name)}（${esc(c.username)}｜${esc(c.roleLabel)}）</option>`).join('')}</select>
-          <label>請輸入接任者的「帳號名稱」以二次確認</label><input name="confirmUsername" type="text" autocomplete="off" required placeholder="例如：leader_wang">
+      ${d.isOwner ? `<section class="card"><h2>👑 我要卸任最高管理員</h2>
+        ${d.canResign ? `<p class="muted small">卸任後你就不是最高管理員（其他最高管理員照舊）；可以選擇保留「總團」身分陪同交接。卸任後要再回來，需由能編輯試算表的人用選單新增。</p>
+        <form id="fResign">
           <label>請輸入你目前的密碼</label><input name="password" type="password" autocomplete="current-password" required>
-          <label class="check"><input type="checkbox" name="keepAsCentral" checked> 移交後保留我的「總團」身分（方便陪同新任交接）</label>
-          <button class="btn danger" type="submit">確認移交最高管理權</button><div class="out"></div>
-        </form>` : '<p class="muted">目前沒有其他可接任的「總團」或「分團團長」帳號，請先到「帳號與權限 → 分團身分」指派下一任負責人。</p>'}
+          <label class="check"><input type="checkbox" name="keepAsCentral" checked> 卸任後保留我的「總團」身分</label>
+          <button class="btn danger" type="submit">確認卸任</button><div class="out"></div>
+        </form>` : '<p class="muted">系統至少要有一位最高管理員。要交接時，請先在試算表選單「👑 新增最高管理員」加入接任者，確認對方能登入後，再回來卸任。</p>'}
       </section>` : ''}`;
     wireBack();
     $('#exportHandover').onclick = () => {
@@ -3571,15 +3579,10 @@ const ADMIN_PAGES = {
       a.download = '22團_交接清冊_' + new Date().toISOString().slice(0, 10) + '.csv';
       a.click();
     };
-    if ($('#fHandover')) bindForm($('#fHandover'), async (fd, out) => {
-      if (!confirm('確定要將系統「最高管理員」權限移交給所選帳號嗎？移交後立即生效。')) return;
-      const r = await api('handoverTransfer', {
-        targetAccountId: fd.get('targetAccountId'),
-        confirmUsername: fd.get('confirmUsername'),
-        password: fd.get('password'),
-        keepAsCentral: !!fd.get('keepAsCentral')
-      });
-      msg(out, `已完成移交！新任最高管理員為：${r.newOwnerName}（${r.newOwnerUsername}）。`, 'ok');
+    if ($('#fResign')) bindForm($('#fResign'), async (fd, out) => {
+      if (!confirm('確定要卸任最高管理員嗎？卸任後立即生效。')) return;
+      await api('ownerResign', { password: fd.get('password'), keepAsCentral: !!fd.get('keepAsCentral') });
+      msg(out, '已卸任最高管理員。', 'ok');
       try { state.me = await api('me'); } catch (e) {}
       setTimeout(() => renderAdmin(), 1200);
     });

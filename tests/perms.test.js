@@ -119,25 +119,18 @@ test('權限設定：只有 admin、總團能改；改了立刻影響後端權�
   assert.equal(call(S, 'settingsSave', { changes: { '密碼最短長度': '10' } }).code, 'FORBIDDEN');
 });
 
-test('移交中心：admin 用密碼二次確認把最高管理權移交給別人，接任者成為總團與最高管理員', () => {
-  const { env, call, L, O, S, adminPassword } = world();
+test('移交中心：只有最高管理員與總團看得到；網站上不能移交，最高管理員要在試算表選單新增（附錄第 79 點）', () => {
+  const { env, call, O, S } = world();
   assert.equal(call(S, 'handoverSummary').code, 'FORBIDDEN', '分團團長看不到移交中心');
   const sum = call(O, 'handoverSummary');
   assert.equal(sum.isOwner, true);
-  assert.ok(sum.candidates.some((c) => c.username === 'scoutlead'));
-  const target = acc(env, 'scoutlead');
-  assert.match(call(O, 'handoverTransfer', { targetAccountId: target, confirmUsername: 'scoutlead', password: 'wrongpass' }).message, /密碼不正確/);
-  assert.match(call(O, 'handoverTransfer', { targetAccountId: target, confirmUsername: 'leader01', password: adminPassword }).message, /帳號名稱/);
-  assert.equal(call(L, 'handoverTransfer', { targetAccountId: target, confirmUsername: 'scoutlead', password: 'leaderpass1' }).code, 'FORBIDDEN');
-  const r = call(O, 'handoverTransfer', { targetAccountId: target, confirmUsername: 'scoutlead', password: adminPassword });
-  assert.equal(r.newOwnerUsername, 'scoutlead');
-  assert.equal(env.rows('設定').find((x) => x[0] === '最高管理員帳號ID')[1], target);
-  assert.equal(call(S, 'me').isOwner, true, '接任者是新的最高管理員');
+  assert.deepEqual(sum.owners.map((o) => o.username), ['admin']);
+  assert.equal(call(O, 'handoverTransfer', { targetAccountId: acc(env, 'scoutlead'), confirmUsername: 'scoutlead', password: 'x' }).ok, false, '網站移交已拿掉');
+  assert.equal(env.ctx.addOwnerByUsername_('scoutlead').ok, true);
+  assert.equal(call(S, 'me').isOwner, true, '新增後是最高管理員');
   assert.equal(call(S, 'me').isCentral, true);
-  assert.equal(call(O, 'me').isOwner, false, '原本的 admin 不再是最高管理員');
-  assert.equal(call(O, 'me').isCentral, true, '原管理員保留總團（交接顧問）');
+  assert.equal(call(O, 'me').isOwner, true, 'admin 仍是最高管理員');
   assert.equal(call(S, 'permSettingsGet').ok, true);
-  assert.ok(env.rows('操作日誌').some((x) => x[2] === '移交最高管理權'));
   assert.equal(call(S, 'settingsGet').settings.some((x) => x.key === '最高管理員帳號ID'), false, '設定頁不能直接改最高管理員');
 });
 

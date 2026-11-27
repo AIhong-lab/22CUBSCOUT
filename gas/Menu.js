@@ -14,6 +14,9 @@ function onOpen() {
     .addItem('🔑 團長預設帳號（admin）', 'menuDefaultAdmin')
     .addItem('把帳號設為團長', 'menuSetLeader')
     .addSeparator()
+    .addItem('👑 新增最高管理員', 'menuAddOwner')
+    .addItem('👑 卸下最高管理員', 'menuRemoveOwner')
+    .addSeparator()
     .addItem('📱 安裝 LINE 圖文選單', 'menuInstallRichMenu')
     .addSeparator()
     .addItem('顯示全部分頁（查紀錄用）', 'menuShowAllSheets')
@@ -111,3 +114,53 @@ function setLeaderByUsername_(username) {
 /** 分頁顯示切換：只改顯示狀態，不動資料（SPEC 附錄第 30 點） */
 function menuShowAllSheets() { var ui0 = SpreadsheetApp.getUi(); organizeSheets_(false); ui0.alert('已顯示全部分頁。查完後可以用「只顯示需要編輯的分頁」再收起來。\n\n⚠️ 系統分頁請不要手動修改。'); }
 function menuHideSystemSheets() { var ui0 = SpreadsheetApp.getUi(); var n = organizeSheets_(true); ui0.alert('已收起 ' + n + ' 個系統分頁（資料都還在）。'); }
+
+// ───────────── 最高管理員（SPEC 附錄第 79 點） ─────────────
+// 最多 Logic.MAX_OWNERS 位、權限一樣。只能在這裡（能編輯試算表的人）新增或卸下；網站上只能自己卸任。
+
+function menuAddOwner() {
+  var ui = SpreadsheetApp.getUi();
+  var ans = ui.prompt('👑 新增最高管理員', '請輸入要成為最高管理員的「帳號」（要先在網站註冊好）。\n最高管理員可以指定團長與總團、完全刪除資料、調整權限，最多 ' + Logic.MAX_OWNERS + ' 位：', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  ui.alert(addOwnerByUsername_(ans.getResponseText()).message);
+}
+
+function menuRemoveOwner() {
+  var ui = SpreadsheetApp.getUi();
+  var ans = ui.prompt('👑 卸下最高管理員', '目前的最高管理員：' + ownerIds_().map(function (id) { return (findAccountById_(id) || {}).username; }).join('、') + '\n請輸入要卸下的「帳號」（至少要留一位；他的總團與分團身分不會被移除）：', ui.ButtonSet.OK_CANCEL);
+  if (ans.getSelectedButton() !== ui.Button.OK) return;
+  ui.alert(removeOwnerByUsername_(ans.getResponseText()).message);
+}
+
+function addOwnerByUsername_(username) {
+  return withLock_(function () {
+    var acc = findAccountByName_(username);
+    if (!acc) return { ok: false, message: '找不到帳號「' + Logic.clean(username) + '」。請先在網站註冊，再回來設定。' };
+    if (acc.status !== '啟用') return { ok: false, message: '這個帳號已停用，請先啟用。' };
+    var owners = ownerIds_();
+    if (owners.indexOf(acc.accountId) >= 0) return { ok: false, message: '「' + acc.username + '」已經是最高管理員了。' };
+    if (owners.length >= Logic.MAX_OWNERS) return { ok: false, message: '最高管理員最多 ' + Logic.MAX_OWNERS + ' 位，請先卸下一位。' };
+    // 最高管理員也加為總團（看得到全團、收全團的 LINE 通知）
+    var rows = loadAdminRows_();
+    if (!rows.some(function (r) { return r.accountId === acc.accountId && r.role === Logic.CENTRAL; })) {
+      var name = (rows.filter(function (r) { return r.accountId === acc.accountId; })[0] || {}).name || acc.nickname || acc.username;
+      appendRows_(SHEET.ADMINS, [[acc.accountId, name, Logic.CENTRAL, new Date(), '試算表選單', '', '', '', '總團']]);
+    }
+    writeOwners_(owners.concat([acc.accountId]));
+    logOp_('試算表選單', '新增最高管理員', acc.username, '', '');
+    return { ok: true, message: '已把「' + acc.username + '」設為最高管理員（目前共 ' + (owners.length + 1) + ' 位）。請他重新登入網站。' };
+  });
+}
+
+function removeOwnerByUsername_(username) {
+  return withLock_(function () {
+    var acc = findAccountByName_(username);
+    var owners = ownerIds_();
+    if (!acc || owners.indexOf(acc.accountId) < 0) return { ok: false, message: '「' + Logic.clean(username) + '」不是最高管理員。' };
+    var rest = owners.filter(function (id) { return id !== acc.accountId; });
+    if (!rest.length) return { ok: false, message: '系統至少要有一位最高管理員，請先新增另一位再卸下。' };
+    writeOwners_(rest);
+    logOp_('試算表選單', '卸下最高管理員', acc.username, '', '');
+    return { ok: true, message: '已卸下「' + acc.username + '」的最高管理員（他的總團與分團身分不變）。' };
+  });
+}

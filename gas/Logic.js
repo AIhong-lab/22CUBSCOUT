@@ -182,9 +182,18 @@ var Logic = (function () {
 
   /**
    * 分團身分異動（由管理員或總團在後台設定，SPEC 附錄第 68 點）。
-   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：admin 帳號ID（沒有則空）
+   * rows：管理員分頁全部列；actor {accountId, isOwner, isCentral}；ownerId：最高管理員帳號ID，或多位的陣列（附錄第 79 點；沒有則空）
    * change {type: 'add'|'update'|'remove', targetId, section, role, title}
    */
+  /** 最高管理員：單一帳號ID、陣列或「、」分隔的字串 → 陣列（附錄第 79 點最多 MAX_OWNERS 位） */
+  var MAX_OWNERS = 3;
+  function ownerList(v) {
+    var list = Array.isArray(v) ? v : String(v == null ? '' : v).split(/[、,，\s]+/);
+    var out = [];
+    list.forEach(function (x) { x = clean(x); if (x && out.indexOf(x) < 0) out.push(x); });
+    return out;
+  }
+
   function validateStaffChange(rows, actor, change, ownerId) {
     rows = rows || []; actor = actor || {}; change = change || {};
     if (!actor.isOwner && !actor.isCentral) return { ok: false, error: '只有管理員或總團可以設定分團身分' };
@@ -195,7 +204,9 @@ var Logic = (function () {
       if (role !== CENTRAL && SECTIONS.indexOf(section) < 0) return { ok: false, error: '請選擇分團' };
       if (clean(change.title).length > 20) return { ok: false, error: '職稱最多 20 個字' };
     }
-    if (ownerId && change.targetId === ownerId && actor.accountId !== ownerId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var owners = ownerList(ownerId);
+    // 最高管理員的身分只有他自己能動（另一位最高管理員也不行；附錄第 79 點）
+    if (owners.indexOf(change.targetId) >= 0 && actor.accountId !== change.targetId) return { ok: false, error: OWNER_LOCKED_MESSAGE };
     var key = function (r) { return r.role === CENTRAL ? CENTRAL : sectionOf(r.section); };
     var wantKey = role === CENTRAL ? CENTRAL : section;
     var mine = rows.filter(function (r) { return r.accountId === change.targetId; });
@@ -206,7 +217,7 @@ var Logic = (function () {
     // 總團、團長只有管理員（admin）能指定或取消；沒有 admin 帳號時總團也可以
     var high = function (r) { return r && (r.role === CENTRAL || r.role === ROLE.LEADER); };
     if ((high({ role: role }) && change.type !== 'remove') || high(target)) {
-      if (ownerId ? actor.accountId !== ownerId : !actor.isCentral) return { ok: false, error: '只有管理員（admin）可以指定或取消總團、團長' };
+      if (owners.length ? owners.indexOf(actor.accountId) < 0 : !actor.isCentral) return { ok: false, error: '只有最高管理員可以指定或取消總團、團長' };
     }
     // 小狼至少保留一位團長（總團也算）
     var after = rows.filter(function (r) { return r !== target; });
@@ -1033,6 +1044,26 @@ var Logic = (function () {
     };
   }
 
+  /**
+   * 把字串裡的 name 換成 rep，但落在 longer（包含 name 的其他姓名）裡面的那幾段不換。
+   * 例如 name＝陳宇、longer＝[陳宇軒]：「陳宇、陳宇軒」→「rep、陳宇軒」。
+   */
+  function replaceNameOnly(str, name, rep, longer) {
+    var protect = [];
+    (longer || []).forEach(function (n) {
+      for (var i = str.indexOf(n); i >= 0; i = str.indexOf(n, i + 1)) protect.push([i, i + n.length]);
+    });
+    var out = '', pos = 0;
+    for (var j = str.indexOf(name); j >= 0; j = str.indexOf(name, j + 1)) {
+      if (j < pos) continue;
+      var inside = protect.some(function (p) { return j >= p[0] && j + name.length <= p[1]; });
+      if (inside) continue;
+      out += str.slice(pos, j) + rep;
+      pos = j + name.length;
+    }
+    return out + str.slice(pos);
+  }
+
   /** 撤銷進程頒章後，目前級別退回「剩下已頒發中最高的一級」 */
   function levelAfterRevoke(awardsOfCub, revokedUnit, section) {
     var lv = null;
@@ -1408,8 +1439,8 @@ var Logic = (function () {
    * @return {{ok: boolean, error?: string}}
    */
   /** ownerId：最高權限帳號（admin）的帳號ID；有的話只有它能指定或取消團長，且它本身不能被更動（SPEC 附錄第 46 點）。沒有就照舊 */
-  var OWNER_ONLY_MESSAGE = '只有最高權限帳號（admin）可以指定或取消團長。';
-  var OWNER_LOCKED_MESSAGE = 'admin 是最高權限帳號，不能更動。';
+  var OWNER_ONLY_MESSAGE = '只有最高管理員可以指定或取消團長。';
+  var OWNER_LOCKED_MESSAGE = '這是最高管理員的帳號，只有他自己能更動。';
   function validateAdminChange(admins, actorId, change, ownerId) {
     var actor = (admins || []).filter(function (a) { return a.accountId === actorId; })[0];
     if (!actor || actor.role !== ROLE.LEADER) return { ok: false, error: '只有團長可以管理管理員' };
@@ -1417,10 +1448,11 @@ var Logic = (function () {
     // 總團身分不在這裡改（SPEC 附錄第 68 點：在「分團身分」設定）
     if (target && target.scope === CENTRAL && change.type !== 'add') return { ok: false, error: '這位是總團，請到「分團身分」調整' };
     var leaders = admins.filter(function (a) { return a.role === ROLE.LEADER; }).length;
-    if (ownerId) {
-      if (change.targetId === ownerId && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
+    var owners = ownerList(ownerId);
+    if (owners.length) {
+      if (owners.indexOf(change.targetId) >= 0 && change.type !== 'add') return { ok: false, error: OWNER_LOCKED_MESSAGE };
       var touchesLeader = change.role === ROLE.LEADER || (target && target.role === ROLE.LEADER && change.type !== 'add');
-      if (touchesLeader && actorId !== ownerId) return { ok: false, error: OWNER_ONLY_MESSAGE };
+      if (touchesLeader && owners.indexOf(actorId) < 0) return { ok: false, error: OWNER_ONLY_MESSAGE };
     }
     if (change.type === 'add') {
       if (target) return { ok: false, error: '這個帳號已經是管理員' };
@@ -1505,15 +1537,21 @@ var Logic = (function () {
       counts['綁定紀錄'] = del['綁定紀錄'].length;
     } else return { ok: false, error: '不支援的處理方式' };
 
-    // 操作日誌中出現該小狼姓名的地方一律替換（對象、修改前、修改後三欄）
+    // 操作日誌中出現該小狼姓名的地方一律替換（對象、修改前、修改後三欄）。
+    // 其他團員的姓名包含這個名字時（例如「陳宇」與「陳宇軒」）那一段不動（附錄第 78 點）
     var logUpd = [];
+    var longer = cubRows.slice(1).map(function (r, i) { return i + 1 === cubRowIdx ? '' : clean(r[1]); })
+      .filter(function (n) { return n && n !== cubName && n.indexOf(cubName) >= 0; });
     if (cubName) {
       (data['操作日誌'] || []).forEach(function (r, idx) {
         if (idx === 0) return;
         var changed = false, v = r.slice();
         [3, 4, 5].forEach(function (c) {
           var s = v[c] === null || v[c] === undefined ? '' : String(v[c]);
-          if (s.indexOf(cubName) >= 0) { v[c] = s.split(cubName).join(replacement); changed = true; }
+          if (s.indexOf(cubName) >= 0) {
+            var out = replaceNameOnly(s, cubName, replacement, longer);
+            if (out !== s) { v[c] = out; changed = true; }
+          }
         });
         if (changed) logUpd.push({ row: idx + 1, values: v });
       });
@@ -1592,7 +1630,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, ownerList: ownerList, MAX_OWNERS: MAX_OWNERS, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,

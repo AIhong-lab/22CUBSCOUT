@@ -111,6 +111,17 @@ const PAGE = 'https://pages.test/web/';
   await page.getByText('稚齡-P-地球-1').waitFor();
   assert.doesNotMatch(await page.locator('#units').innerText(), /羚羊/);
 
+  // ═════ LINE「前往頒章」連結帶分團（附錄第 78 點）：admin 預設在小狼，點稚齡的通知會切到稚齡 ═════
+  call(B, 'signoff', { cubIds: [kid.cubId], itemIds: env.rows('項目總表').filter((x) => x[7] === '稚齡' && x[2] === '種植').map((x) => x[0]), date: '2026-11-02' });
+  await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+  await page.goto('about:blank');
+  await page.goto(PAGE + '#award=' + encodeURIComponent(kid.cubId + ',種植,稚齡'));
+  await page.fill('input[name=username]', made.username); await page.fill('input[name=password]', made.password);
+  await page.click('button[type=submit]');
+  await page.locator('#title', { hasText: '稚齡童軍後台' }).waitFor();
+  await page.getByText('🏅 頒章').first().waitFor();
+  assert.match(await text(), /測試稚齡甲/);
+
   assert.deepEqual(errors, [], '網頁沒有錯誤');
   await browser.close();
   console.log('稚齡網頁測試通過（公開查詢、家長闖關不顯示期限、後台期限提醒、簽核、總覽、項目管理）');
