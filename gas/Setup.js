@@ -42,7 +42,12 @@ function setupCore_() {
       var details = Logic.buildDetailSeed(SEED.detailsCsv);
       if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
     }
-    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_(), '']]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    // 羅浮本人（成年人版，附錄第 73 點⑲）：還沒有這一份就新增第 1 版，不動家長版
+    if (SEED.roverConsentText && !loadConsents_().some(function (c) { return c.audience === Logic.ROVER_AUDIENCE; })) {
+      appendRows_(SHEET.CONSENT, [[1, SEED.roverConsentText, today_(), Logic.ROVER_AUDIENCE]]);
+      report.seeded.push(SHEET.CONSENT + ' 羅浮本人版第 1 版');
+    }
 
     // 權限設定：只在分頁沒有資料列時匯入預設權限表
     if (dataRowCount_(SHEET.PERMS) === 0) {
@@ -162,7 +167,7 @@ function ensureSectionSeeds_() {
     if (!Logic.progressModule(sec)) return;
     var seed = Logic.buildSeed(sections[sec].itemsCsv, sections[sec].progressRules, sec);
     // 格式錯誤的列也算（看原始的分團欄），避免重複匯入
-    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.sectionOf(r[7]) === sec; });
+    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.progressSec(r[7]) === sec; });
     if (!hasAny) {
       var taken = {};
       readRows_(SHEET.ITEMS).forEach(function (r) { taken[Logic.clean(r[0])] = true; });

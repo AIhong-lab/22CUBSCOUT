@@ -11,9 +11,14 @@ const root = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 // GAS 載入順序（Logic 最先，Setup 最後）
-// 要匯入的其他分團進程（data/sections/<分團>.csv；稚齡 2026-11-23 團長確認已核對）
-const SEED_SECTIONS = ['稚齡'];
-const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'TeamApi.js', 'EventApi.js', 'ItemsAdmin.js', 'StaffApi.js', 'Notify.js', 'Backup.js', 'Webhook.js', 'RichMenu.js', 'Setup.js'];
+// 要匯入的其他分團進程（附錄第 77、80 點）：sec＝資料記在哪個分團、file＝data/sections/<檔名>.csv、unitKey＝級別與章說明.csv 第一欄
+// 稚齡 2026-11-23 團長確認已核對；童軍行義、羅浮 2026-11-27 團長決定先匯入、上線後由各分團團長在項目管理核對修改
+const SEED_SECTIONS = [
+  { sec: '稚齡', file: '稚齡', unitKey: '稚齡' },
+  { sec: '童軍', file: '童軍行義', unitKey: '童軍、行義' },
+  { sec: '羅浮', file: '羅浮', unitKey: '羅浮' }
+];
+const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'TeamApi.js', 'EventApi.js', 'ItemsAdmin.js', 'StaffApi.js', 'RegisApi.js', 'Notify.js', 'Backup.js', 'Webhook.js', 'RichMenu.js', 'Setup.js'];
 
 function buildSeedData() {
   const itemsCsv = read('data/items.csv');
@@ -33,17 +38,21 @@ function buildSeedData() {
   const b = priv.indexOf('<!-- 告知同意文字結束 -->');
   if (a < 0 || b < 0) throw new Error('PRIVACY.md 缺少告知同意文字標記');
   const consentText = priv.slice(a + '<!-- 告知同意文字開始 -->'.length, b).trim();
+  // 羅浮本人（成年人版）告知文字（附錄第 73 點⑲）
+  const ra = priv.indexOf('<!-- 羅浮本人告知文字開始 -->'), rb = priv.indexOf('<!-- 羅浮本人告知文字結束 -->');
+  if (ra < 0 || rb < 0) throw new Error('PRIVACY.md 缺少羅浮本人告知文字標記');
+  const roverConsentText = priv.slice(ra + '<!-- 羅浮本人告知文字開始 -->'.length, rb).trim();
   // 其他分團的進程與章（附錄第 77 點）：已由該分團團長核對、要匯入的分團才放進來
   const sections = {};
   const unitCsv = read('data/sections/級別與章說明.csv').trim().split('\n').slice(1).map((l) => l.split(','));
-  for (const sec of SEED_SECTIONS) {
+  for (const { sec, file, unitKey } of SEED_SECTIONS) {
     const progressRules = {};
-    for (const r of unitCsv) if (r[0] === sec && r[2] === '進程') progressRules[r[1]] = r.slice(4).join(',').replace(/進程內容：\s*$/, '').trim();
-    sections[sec] = { itemsCsv: read('data/sections/' + sec + '.csv'), progressRules };
+    for (const r of unitCsv) if (r[0] === unitKey && r[2] === '進程') progressRules[r[1]] = r.slice(4).join(',').replace(/進程內容：\s*$/, '').trim();
+    sections[sec] = { itemsCsv: read('data/sections/' + file + '.csv'), progressRules };
   }
   return '/**\n * 種子資料（自動產生，請勿手動修改；改 data/items.csv、data/details.csv、docs/SPEC.md、docs/PRIVACY.md 後執行 npm run build）\n' +
     ' * 只供 setup() 第一次匯入；匯入後試算表才是唯一來源。\n */\n' +
-    'var SEED = ' + JSON.stringify({ itemsCsv, detailsCsv, progressRules: rules, consentText, sections }, null, 1) + ';\n';
+    'var SEED = ' + JSON.stringify({ itemsCsv, detailsCsv, progressRules: rules, consentText, roverConsentText, sections }, null, 1) + ';\n';
 }
 
 function main() {

@@ -73,7 +73,7 @@ const PAGE = 'https://pages.test/web/';
   await login('scout01', 'scoutpass1');
   await page.locator('#adminQuick').waitFor();
   assert.match(await page.locator('#title').innerText(), /22團 童軍後台/);
-  assert.equal(await page.locator('nav.tabs button[data-v=sign]').count(), 0, '童軍沒有簽核（進程第 2 期）');
+  assert.equal(await page.locator('nav.tabs button[data-v=sign]').count(), 1, '童軍也有簽核（附錄第 80 點）');
   assert.equal(await page.locator('#secSel').count(), 0, '只有一個分團時沒有分團切換');
   await page.locator('#hdrLogout').click();
   await page.getByText('已登出').waitFor();

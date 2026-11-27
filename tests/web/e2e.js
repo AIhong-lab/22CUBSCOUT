@@ -131,9 +131,17 @@ function seed(env) {
   assert.match(hp, /家長、團長、服務員都從這裡登入[\s\S]*直接進入管理員後台/);
   assert.equal(new URL(page.url()).hash, '#cub');
   await shot('00c-cub'); await noHScroll('小狼頁');
-  // 還沒有進程的分團：網址 #scout/progress 顯示準備中
+  // 童軍、行義共用一套進程（附錄第 80 點）：#venture/progress 顯示同一套六級；羅浮沒有章
+  await page.goto('about:blank'); await page.goto(PAGE + '#venture/progress');
+  await page.getByText('🗺️ 童軍、行義童軍進程').waitFor();
+  assert.equal(await page.locator('.map .stage').count(), 6);
+  await page.goto('about:blank'); await page.goto(PAGE + '#rover/badges');
+  await page.getByText('羅浮童軍沒有技能章').waitFor();
+  await page.goto('about:blank'); await page.goto(PAGE + '#scout/badges');
+  await page.getByText('🎖️ 童軍、行義童軍專科章').waitFor();
+  assert.match(await text(), /共 95 個專科章/);
   await page.goto('about:blank'); await page.goto(PAGE + '#scout/progress');
-  await page.getByText('童軍的進程查詢準備中').waitFor();
+  await page.locator('.stage').first().waitFor();
   await page.locator('#secTabs [data-ps=小狼]').click();
   await page.locator('.stage').first().waitFor();
   assert.equal(new URL(page.url()).hash, '#progress');
@@ -352,7 +360,7 @@ function seed(env) {
   env.advance(-31 * 24 * 3600000); // 時鐘撥回「今天」，後面的點名才會預設今天的集會
 
   // 告知內容改版 → 要求重新同意
-  env.sheet('告知同意內容').getRange(3, 1, 1, 3).setValues([[2, '第二版測試內容', '2026-12-14']]);
+  env.sheet('告知同意內容').getRange(4, 1, 1, 4).setValues([[2, '第二版測試內容', '2026-12-14', '']]); // 第 3 列是羅浮本人版
   await page.reload();
   await page.getByText('個資說明已更新').waitFor();
   await page.check('input[name=agree]');
@@ -713,15 +721,15 @@ function seed(env) {
   await shot('42-cub-role'); await noHScroll('小狼頁職務');
   assert.equal(env.rows('小狼名單').find((r) => r[0] === 'C1')[10], '小隊長');
 
-  // 升團：職務自動卸任，狀態「升團」
+  // 升團（附錄第 80 點）：同一筆資料改到童軍，職務自動卸任
   await sideTab('cubs');
   await page.locator('#list .list-row', { hasText: '測試小狼己' }).click();
   await page.locator('#moreBtn').click();
-  await page.locator('#leave').click();
-  await shot('43-leave-form');
-  await page.click('form#flv button[type=submit]');
-  await page.getByText('已標記升團').waitFor();
-  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試小狼己')[7], '升團');
+  await page.locator('#promote').click();
+  await shot('43-promote-form');
+  await page.click('form#fpm button[type=submit]');
+  await page.getByText('已升團到童軍').waitFor();
+  assert.deepEqual(env.rows('小狼名單').find((r) => r[1] === '測試小狼己').slice(7, 8).concat(env.rows('小狼名單').find((r) => r[1] === '測試小狼己')[11]), ['在團', '童軍']);
 
   // 匯出 CSV
   await sideTab('overview');

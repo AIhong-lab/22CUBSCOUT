@@ -41,13 +41,12 @@ test('各分團名單與小隊分開：同名小隊可以並存、團員寫入�
   assert.equal(call(L, 'cubAdminDetail', { cubId: scout.cubId }).code, 'NOT_FOUND');
   // 童軍的團員頁：沒有進程（第 2 期），但可以看基本資料
   const d = call(S, 'cubAdminDetail', { cubId: scout.cubId });
-  assert.equal(d.hasProgress, false);
-  assert.deepEqual(d.units, []);
+  assert.equal(d.hasProgress, true, '童軍也有進程（附錄第 80 點）');
   // 童軍沒有級別限制，可以直接當小隊長
   assert.equal(call(S, 'cubRoleSave', { cubId: scout.cubId, role: '小隊長' }).ok, true);
-  // 進程功能在童軍準備中
-  assert.match(call(S, 'signoffData').message, /童軍的進程功能準備中/);
-  assert.match(call(S, 'itemsTree').message, /準備中/);
+  // 童軍也有進程（附錄第 80 點，和行義共用一套）
+  assert.equal(call(S, 'signoffData').ok, true);
+  assert.deepEqual(call(S, 'itemsTree').levels, ['初級', '中級', '高級', '獅級', '長城', '國花']);
   // 批次匯入寫到目前分團
   assert.equal(call(S, 'cubImport', { lines: '測試童軍乙 一小隊 2025-02-01' }).added, 1);
   assert.equal(env.rows('小狼名單').find((x) => x[1] === '測試童軍乙')[11], '童軍');
@@ -119,8 +118,7 @@ test('帳號申請帶分團：家長替每個孩子選分團或「不確定」�
   const pm = call(mom.token, 'me');
   assert.deepEqual(pm.cubs.map((c) => [c.name, c.section]), [['測試哥哥', '童軍']]);
   const d = call(mom.token, 'cubDetail', { cubId: pm.cubs[0].cubId });
-  assert.equal(d.hasProgress, false);
-  assert.deepEqual(d.units, []);
+  assert.equal(d.hasProgress, true, '童軍也有進程（附錄第 80 點）');
   assert.equal(d.cub.section, '童軍');
   // 已登入再加孩子也可以選分團
   assert.equal(call(mom.token, 'requestChildren', { childNames: ['測試小妹'], childSections: ['羅浮'], consentVersion: v(env) }).added, 1);
@@ -133,7 +131,7 @@ test('帳號申請帶分團：家長替每個孩子選分團或「不確定」�
   const all = call(O, 'adminHome').allSections;
   assert.equal(all.sections.find((x) => x.section === '童軍').active, 1);
   assert.equal(call(S, 'adminHome').allSections, null, '分團團長看不到全團總覽');
-  assert.equal(call(S, 'adminHome').hasProgress, false);
+  assert.equal(call(S, 'adminHome').hasProgress, true);
 });
 
 test('管理員（admin）與總團在每個分團都是團長，可以切換分團；分團團長管理自己分團的服務員', () => {
@@ -246,7 +244,7 @@ test('LINE（附錄第 73 點⑳）：達標通知只推給小狼已連結 LINE 
   link(L, 'Uwolf'); link(S, 'Uscout');
   assert.equal(env.rows('管理員').filter((r) => r[5]).length, 2, '童軍團長也能連結 LINE');
   const cub = call(L, 'cubSave', { name: '測試小狼甲', squad: '一小隊', joinDate: '2025-01-01' }).cubId;
-  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導').map((r) => r[0]);
+  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導' && !r[7]).map((r) => r[0]);
   call(L, 'signoff', { cubIds: [cub], itemIds: guide, date: '2026-10-01' });
   const pushes = env.sent.filter((x) => /multicast/.test(x.url));
   assert.equal(pushes.length, 1);

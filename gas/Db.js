@@ -173,7 +173,7 @@ function loadCubs_() {
     return {
       cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: validDateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), leaveReason: Logic.clean(r[12]), _row: r._row, _raw: r
     };
   });
 }
@@ -263,7 +263,7 @@ function detailsView_(byItem, itemId) {
 /** 級別與章說明，全部分團（容錯：略過空白列與名稱空白列）；sec 是分團（空白＝小狼） */
 function loadAllUnits_() {
   return readRows_(SHEET.UNITS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.sectionOf(r[6]), _row: r._row };
+    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.progressSec(r[6]), _row: r._row };
   });
 }
 
@@ -272,7 +272,7 @@ function loadAllUnits_() {
  * @param section 分團；沒給時用目前分團（後台請求），再沒有就是小狼
  */
 function loadUnits_(section) {
-  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
+  var sec = Logic.progressSec(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
   var map = {};
   loadAllUnits_().forEach(function (u) { if (u.sec === sec) map[u.category + '|' + u.name] = u; });
   return map;
@@ -281,15 +281,15 @@ function loadUnits_(section) {
 /** 公開進程查詢的快取（每個有進程的分團一份） */
 function removeCatalogCache_() {
   var c = CacheService.getScriptCache();
-  Logic.PROGRESS_SECTIONS.forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
+  Object.keys(Logic.PROGRESS_MODULES).forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
 }
 
 /** 分團欄要寫的值：小狼留空（和舊資料一樣），其他寫分團名稱 */
-function secCell_(section) { var s = Logic.sectionOf(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
+function secCell_(section) { var s = Logic.progressSec(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
 
 /** 某分團的項目（含停用）；item.sec 是分團 */
 function sectionItems_(section) {
-  var sec = Logic.sectionOf(section);
+  var sec = Logic.progressSec(section);
   return loadItems_().items.filter(function (it) { return it.sec === sec; });
 }
 
@@ -304,7 +304,7 @@ function loadCompletions_() {
 
 function loadAwards_() {
   return readRows_(SHEET.AWARDS).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.sectionOf(r[7]), _row: r._row };
+    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.progressSec(r[7]), _row: r._row };
   });
 }
 
@@ -344,15 +344,26 @@ function loadExtra_() {
 
 function loadConsents_() {
   return readRows_(SHEET.CONSENT).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]) };
+    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]), audience: Logic.clean(r[3]) };
   });
 }
 
-function latestConsent_() {
-  var list = loadConsents_();
+/** 個資告知分兩份（附錄第 73 點⑲）：對象空白＝家長版（含童軍本人），「羅浮本人」＝成年人版；版本各自計算 */
+function consentAudience_(v) { return Logic.clean(v) === Logic.ROVER_AUDIENCE ? Logic.ROVER_AUDIENCE : ''; }
+function latestConsent_(audience) {
+  var aud = consentAudience_(audience);
+  var list = loadConsents_().filter(function (c) { return c.audience === aud; });
   var v = Logic.latestConsentVersion(list);
   return list.filter(function (c) { return c.version === v; })[0] || null;
 }
+function latestConsentVersionFor_(audience) { var c = latestConsent_(audience); return c ? c.version : 0; }
+
+/** 本人綁定且屬於成年的分團（羅浮）＝成年本人：用成年人版告知、權限和家長一樣 */
+function isAdultSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && Logic.ADULT_SELF_SECTIONS.indexOf(Logic.sectionOf(section)) >= 0; }
+/** 未成年的本人帳號（童軍、行義本人）：權限另外限制 */
+function isMinorSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && !isAdultSelf_(binding, section); }
+function bindingAudience_(binding, section) { return isAdultSelf_(binding, section) ? Logic.ROVER_AUDIENCE : ''; }
+function bindingNeedsConsent_(binding, section) { return Logic.needsReconsent(binding, latestConsentVersionFor_(bindingAudience_(binding, section))); }
 
 function loadSettings_() { return Logic.parseSettings(readAll_(SHEET.SETTINGS)); }
 
@@ -365,4 +376,25 @@ function loadPermRules_() {
 /** 寫操作日誌（不得寫入密碼、臨時碼、登入憑證） */
 function logOp_(actor, action, target, before, after) {
   appendRows_(SHEET.LOG, [[new Date(), actor || '', action, target || '', before || '', after || '']]);
+}
+
+/** 升團紀錄（附錄第 69、80 點） */
+function loadPromotions_() {
+  if (!ss_().getSheetByName(SHEET.PROMOTIONS)) return [];
+  return readRows_(SHEET.PROMOTIONS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return { cubId: Logic.clean(r[0]), from: Logic.sectionOf(r[1]), to: Logic.sectionOf(r[2]), date: dateStr_(r[3]), joinDate: dateStr_(r[4]), squad: Logic.clean(r[5]), role: Logic.clean(r[6]) };
+  });
+}
+
+/**
+ * 紀錄跟著人走（附錄第 69 點）：這位團員在「其他分團」拿到的章與升團經過，新分團的團長與家長都看得到。
+ * 白名單：分團、名稱、類別、頒發日期；升團的原分團、新分團、日期。
+ */
+function cubHistory_(cub) {
+  var mine = Logic.progressSec(cub.section);
+  var awards = loadAwards_().filter(function (a) { return a.cubId === cub.cubId && a.sec !== mine; }).map(function (a) {
+    return { section: a.sec, unit: a.unit, category: Logic.isLevelOf(a.sec, a.unit) ? Logic.CATEGORY.PROGRESS : Logic.CATEGORY.BADGE, date: a.date };
+  }).sort(function (a, b) { return Logic.SECTIONS.indexOf(a.section) - Logic.SECTIONS.indexOf(b.section) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
+  var promotions = loadPromotions_().filter(function (p) { return p.cubId === cub.cubId; }).map(function (p) { return { from: p.from, to: p.to, date: p.date }; });
+  return { awards: awards, promotions: promotions };
 }

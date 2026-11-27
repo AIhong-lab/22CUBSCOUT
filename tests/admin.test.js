@@ -178,7 +178,7 @@ test('多分團：恢復邀請碼（指定分團、身分、職稱）、其他�
   assert.deepEqual(call(S, 'cubList').cubs, [], '童軍的名單裡沒有小狼');
   assert.equal(call(S, 'cubList', { _sec: '小狼' }).cubs.length, 0, '送 _sec=小狼 也沒用，後端只認自己有身分的分團');
   assert.equal(call(S, 'cubAdminDetail', { cubId: env.rows('小狼名單')[0][0] }).code, 'NOT_FOUND', '別的分團的團員找不到');
-  for (const x of ['signoffData', 'overview']) assert.equal(call(S, x).code, 'FORBIDDEN', '童軍進程準備中：' + x);
+  for (const x of ['signoffData', 'overview']) assert.equal(call(S, x).ok, true, '童軍也有進程（附錄第 80 點）：' + x);
   assert.equal(call(S, 'adminList').code, 'FORBIDDEN', '服務員不能管理管理員');
   assert.ok(!call(L, 'adminList').admins.some((a) => a.name === '王童軍'), '小狼管理員名單不列其他分團');
   // 小狼服務員另外加一個童軍團長身分：小狼權限不變
@@ -548,7 +548,7 @@ test('設定頁：讀取、修改（檢查範圍、寫操作日誌）、服務�
   assert.match(call(L, 'consentSave', { content: '太短' }).message, /太短/);
   const c = call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' });
   assert.equal(c.version, 2);
-  assert.equal(env.rows('告知同意內容').length, 2, '舊版保留');
+  assert.equal(env.rows('告知同意內容').length, 3, '舊版保留（另有羅浮本人版一列）');
   assert.equal(call(P, 'me').needsConsent, true);
   assert.match(call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' }).message, /沒有變更/);
 });
@@ -567,12 +567,12 @@ test('項目管理：樹狀資料、改文字（ID 不變）、新增（自動 I
   assert.equal(row[4], '能說出升降旗的禮節（團改寫）');
   assert.ok(env.rows('操作日誌').some((r) => r[2] === '修改項目' && /參與升降旗/.test(r[4])), '記錄修改前');
   // 讓小狼的嚮導全部完成 → 已完成待頒發；新增嚮導項目要先看到影響預覽
-  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導').map((r) => r[0]);
+  const guide = env.rows('項目總表').filter((r) => r[2] === '嚮導' && !r[7]).map((r) => r[0]);
   call(L, 'signoff', { cubIds: [cubId], itemIds: guide, date: '2026-10-01' });
   const add = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線' });
   assert.equal(add.needConfirm, true);
   assert.match(add.warnings[0], /1 位團員的「嚮導」從「已完成待頒發」變成「進行中」：測試小狼甲/);
-  assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導').length, 2, '未確認前不寫入');
+  assert.equal(env.rows('項目總表').filter((r) => r[2] === '嚮導' && !r[7]).length, 2, '未確認前不寫入');
   const ok = call(L, 'itemSave', { category: '技能章', unit: '嚮導', text: '能帶家人走一次自己規劃的路線', confirm: true });
   assert.equal(ok.id, 'B-嚮導-3', '序號取最大 + 1');
   // 停用剛新增的 → 又回到已完成待頒發（預覽提示）
@@ -1381,9 +1381,10 @@ test('LINE 關鍵字「點名」（附錄第 63 點）：只回已連結的管�
 test('後台首頁提醒：個資說明與「了解幼童軍」還有【請填寫】範本文字（附錄第 65 點）', () => {
   const { call, L, A } = world();
   let al = call(L, 'adminHome').alerts;
-  assert.deepEqual(al.placeholders, ['個資告知內容', '認識 22 團'], '預設文字還沒改');
+  assert.deepEqual(al.placeholders, ['個資告知內容', '個資告知內容（羅浮本人版）', '認識 22 團'], '預設文字還沒改');
   assert.deepEqual(call(A, 'adminHome').alerts.placeholders, [], '服務員不顯示（改不了）');
   call(L, 'consentSave', { content: '親愛的家長您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡團長：LINE 官方帳號。' });
+  call(L, 'consentSave', { audience: '羅浮本人', content: '您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡群長：LINE 官方帳號。' });
   call(L, 'siteContentSave', { about: '我們是 22 團，歡迎來體驗。', activity: '', fb: '' });
   al = call(L, 'adminHome').alerts;
   assert.deepEqual(al.placeholders, []);

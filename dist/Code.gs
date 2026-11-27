@@ -89,12 +89,34 @@ var Logic = (function () {
     '稚齡': {
       levels: ['地球', '星星', '月亮', '太陽'], intervalLevels: [], badgeGroups: ['服務類', '運動類', '技巧類'], idPrefix: '稚齡-',
       levelAttendDef: 0, deadlines: { '地球': 6, '星星': 6, '月亮': 12, '太陽': 12 }
+    },
+    // 童軍與行義共用一套（附錄第 80 點）：童軍從初級開始、行義從高級接著往上；資料與頒章都記在「童軍」
+    // minMonths：「經 N 個月以上」的最少月數（第一級從入團日起算，其餘從上一級頒發日起算），未滿只提醒、頒章時再確認
+    '童軍': {
+      levels: ['初級', '中級', '高級', '獅級', '長城', '國花'], intervalLevels: [], badgeGroups: ['服務類', '技能類', '健身類', '興趣類'], idPrefix: '童軍-',
+      shareWith: ['行義'], badgeLabel: '專科章', levelAttendDef: 0,
+      minMonths: { '初級': 2, '中級': 4, '高級': 5, '獅級': 6, '長城': 8, '國花': 8 }
+    },
+    // 羅浮：見習羅浮的「途徑1」「途徑2」完成其中一條；服務羅浮的「主題活動」任選一項，其他（基本要求）全部完成
+    '羅浮': {
+      levels: ['見習羅浮', '授銜羅浮', '服務羅浮'], intervalLevels: [], badgeGroups: [], idPrefix: '羅浮-', levelAttendDef: 0,
+      minMonths: { '授銜羅浮': 6, '服務羅浮': 12 },
+      levelRules: { '見習羅浮': { anyGroup: true }, '服務羅浮': { pickOne: ['主題活動'] } }
     }
   };
-  /** 目前有進程模組的分團（簽核、頒章、項目管理只在這些分團開放） */
-  var PROGRESS_SECTIONS = Object.keys(PROGRESS_MODULES).sort(function (a, b) { return SECTIONS.indexOf(a) - SECTIONS.indexOf(b); });
+  /** 目前有進程模組的分團（簽核、頒章、項目管理只在這些分團開放）；共用別人模組的分團（行義）也算 */
+  var PROGRESS_SECTIONS = SECTIONS.filter(function (sec) {
+    return PROGRESS_MODULES[sec] || Object.keys(PROGRESS_MODULES).some(function (k) { return (PROGRESS_MODULES[k].shareWith || []).indexOf(sec) >= 0; });
+  });
+  /** 進程資料記在哪個分團（行義→童軍；其他就是自己）。項目、級別與章說明、頒章、章圖、進程設定都用這個 */
+  function progressSec(section) {
+    var sec = sectionOf(section);
+    if (PROGRESS_MODULES[sec]) return sec;
+    var k = Object.keys(PROGRESS_MODULES).filter(function (x) { return (PROGRESS_MODULES[x].shareWith || []).indexOf(sec) >= 0; })[0];
+    return k || sec;
+  }
   /** 某分團的進程模組；沒有進程的分團回 null */
-  function progressModule(section) { return PROGRESS_MODULES[sectionOf(section)] || null; }
+  function progressModule(section) { return PROGRESS_MODULES[progressSec(section)] || null; }
   /** 這個名稱是不是某分團的進程級別 */
   function isLevelOf(section, unit) { var m = progressModule(section); return !!m && m.levels.indexOf(unit) >= 0; }
   /** 項目ID 前綴：小狼沒有前綴（P-狼-國旗-1），其他分團加分團名（稚齡-P-地球-1） */
@@ -103,8 +125,8 @@ var Logic = (function () {
   function levelsOf(section) { var m = progressModule(section); return m ? m.levels.slice() : []; }
   /** 依頒章紀錄算出某分團目前的級別（頒章、撤銷、補登後寫回名單「目前級別」） */
   function currentLevelOf(awardsOfCub, section) {
-    var sec = sectionOf(section), have = {}, lv = '';
-    (awardsOfCub || []).forEach(function (a) { if (sectionOf(a.sec) === sec) have[a.unit] = true; });
+    var sec = progressSec(section), have = {}, lv = '';
+    (awardsOfCub || []).forEach(function (a) { if (progressSec(a.sec) === sec) have[a.unit] = true; });
     levelsOf(sec).forEach(function (l) { if (have[l]) lv = l; });
     return lv;
   }
@@ -366,6 +388,12 @@ var Logic = (function () {
       });
       add('期限前幾天提醒', 30, { min: 0, max: 180, desc: sec + '：離完成期限剩幾天時列入「快到期」（後台首頁與團員頁）' });
     }
+    if (m.minMonths) {
+      m.levels.forEach(function (lv, i) {
+        if (!(lv in m.minMonths)) return;
+        add('晉級間隔月數：' + lv, m.minMonths[lv], { min: 0, max: 36, desc: sec + '：' + (i === 0 ? '入團日' : '獲頒' + m.levels[i - 1] + '章') + '後需滿幾個月才達標（未滿時頒章會再確認）；填 0 表示不要求' });
+      });
+    }
   });
   // 全團共用功能由誰使用（只有管理員 admin 可以改）
   SHARED_FUNCS.forEach(function (f) {
@@ -386,7 +414,7 @@ var Logic = (function () {
    * 只取這個分團模組用得到的設定：小狼才有剛入團與出席自動完成，稚齡才有完成期限。
    */
   function progressParams(values, section) {
-    var sec = sectionOf(section), m = progressModule(sec);
+    var sec = progressSec(section), m = progressModule(sec);
     if (!m) return null;
     var g = function (k) { return sectionSetting(values, k, sec); };
     var p = { section: sec, levelAttendCount: g('晉級所需出席次數') || 0, intervalMonths: m.intervalLevels.length ? (g('晉級間隔月數') || 0) : 0 };
@@ -396,6 +424,10 @@ var Logic = (function () {
       p.deadlines = {};
       m.levels.forEach(function (lv) { p.deadlines[lv] = g('完成期限月數：' + lv) || 0; });
       p.deadlineWarnDays = g('期限前幾天提醒') || 0;
+    }
+    if (m.minMonths) {
+      p.minMonths = {};
+      Object.keys(m.minMonths).forEach(function (lv) { p.minMonths[lv] = g('晉級間隔月數：' + lv) || 0; });
     }
     return p;
   }
@@ -529,7 +561,7 @@ var Logic = (function () {
       var cells = [0, 1, 2, 3, 4, 5, 6, 7].map(function (j) { return clean(r[j]); });
       if (cells.every(function (c) { return c === ''; })) return;
       var id = cells[0], cat = cells[1], unit = cells[2], section = cells[3] || NO_SECTION, text = cells[4];
-      var order = Number(cells[5]), enabled = cells[6], sec = sectionOf(cells[7]), mod = progressModule(sec);
+      var order = Number(cells[5]), enabled = cells[6], sec = progressSec(cells[7]), mod = progressModule(sec);
       var reason = null;
       if (!id) reason = '缺少項目ID';
       else if (seen[id]) reason = '項目ID 重複（與第 ' + seen[id] + ' 列相同）';
@@ -580,11 +612,12 @@ var Logic = (function () {
    * @return {{itemRows: Array, unitRows: Array}} 均不含標題列
    */
   function buildSeed(csvText, progressRules, sec) {
-    var secCell = sectionOf(sec) === DEFAULT_SECTION ? '' : sectionOf(sec);
+    var secCell = progressSec(sec) === DEFAULT_SECTION ? '' : progressSec(sec);
     var rows = parseCsv(csvText).slice(1);
     var ids = [], itemRows = [], units = {}, unitOrder = [];
     rows.forEach(function (r, i) {
       var cat = clean(r[0]), unit = clean(r[1]), third = clean(r[2]), text = clean(r[3]);
+      if (cat === '專科章') cat = CATEGORY.BADGE; // 童軍行義的「專科章」在系統裡和技能章同一類，畫面上依分團改稱專科章
       var section = cat === CATEGORY.PROGRESS ? (third || NO_SECTION) : NO_SECTION;
       var id = nextItemId(ids, cat, unit, section, sec);
       ids.push(id);
@@ -649,6 +682,8 @@ var Logic = (function () {
   var TRIAL = '體驗';
   /** 升上童軍團（畢業）：和中途離團分開記（SPEC 附錄第 45 點） */
   var GRADUATED = '升團';
+  /** 離團的原因（附錄第 69 點）：狀態維持「離團」，原因另外記 */
+  var LEAVE_REASONS = ['不續團', '退團', '其他'];
   /** 正副小隊長：狼級以上才能擔任 */
   var CUB_ROLES = ['小隊長', '副小隊長'];
   var ROLE_LEVELS = ['狼', '鹿', '豹'];
@@ -741,7 +776,10 @@ var Logic = (function () {
 
   // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
 
-  var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
+  var IDENTITY = { PARENT: '家長', STAFF: '服務員', ROVER_SELF: '羅浮本人' };
+  /** 成年的本人帳號（附錄第 73 點⑱⑲）：羅浮本人自己註冊、用成年人版個資告知，權限和家長一樣 */
+  var ADULT_SELF_SECTIONS = ['羅浮'];
+  var ROVER_AUDIENCE = '羅浮本人';
   var MAX_CHILDREN_PER_REQUEST = 5;
 
   /**
@@ -788,7 +826,7 @@ var Logic = (function () {
    */
   function computeCubProgress(p) {
     var cubId = p.cubId;
-    var sec = sectionOf(p.section), M = progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION], LV = M.levels;
+    var sec = progressSec(p.section), M = progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION], LV = M.levels;
     var done = {};
     (p.completions || []).forEach(function (c) {
       if (c.cubId !== cubId || !isCountedCompletion(c)) return;
@@ -800,7 +838,7 @@ var Logic = (function () {
       .map(function (a) { return a.date; }).sort();
     var awarded = {};
     // 頒章紀錄依分團分開（稚齡和小狼都有「種植」章；升團後舊分團的章不會算到新分團）
-    (p.awards || []).forEach(function (a) { if (a.cubId === cubId && sectionOf(a.sec) === sec) awarded[a.unit] = a; });
+    (p.awards || []).forEach(function (a) { if (a.cubId === cubId && progressSec(a.sec) === sec) awarded[a.unit] = a; });
     // 「剛入團」是後來加的一級：已經拿到羚羊以上的小狼，視為已通過剛入團（不寫入頒章紀錄）。
     // 舊生用補登剛入團，不設「啟用基準日」（SPEC 附錄第 64、65 點）
     if (M.newbie && !awarded[NEWBIE] && LEVELS.slice(1).some(function (lv) { return awarded[lv]; })) {
@@ -831,7 +869,7 @@ var Logic = (function () {
     // 依類別與名稱分組（只算這個分團的啟用項目）
     var groups = {}, order = [];
     (p.items || []).forEach(function (it) {
-      if (!it.enabled || sectionOf(it.sec) !== sec) return;
+      if (!it.enabled || progressSec(it.sec) !== sec) return;
       var k = it.category + '|' + it.unit;
       if (!groups[k]) { groups[k] = { category: it.category, unit: it.unit, items: [] }; order.push(k); }
       groups[k].items.push(it);
@@ -850,7 +888,13 @@ var Logic = (function () {
         if (c) { doneCount++; dates.push(c.date); }
         return { id: it.id, section: it.section, text: it.text, done: !!c, date: c ? c.date : null, signer: c ? c.signer : null, auto: !!(c && c.auto) };
       });
-      var allDone = total > 0 && doneCount === total;
+      // 擇一規則（羅浮）：完成度改用「要完成的項目」計算
+      var rule = g.category === CATEGORY.PROGRESS && M.levelRules ? M.levelRules[g.unit] : null;
+      if (rule && total) {
+        var lr = levelRuleProgress(itemStates, rule);
+        total = lr.total; doneCount = lr.done; dates = lr.dates;
+      }
+      var allDone = total > 0 && doneCount >= total;
       var award = awarded[g.unit] && (g.category === CATEGORY.PROGRESS ? LV.indexOf(g.unit) >= 0 : true) ? awarded[g.unit] : null;
       var status;
       if (award) status = STATUS.AWARDED;
@@ -869,7 +913,7 @@ var Logic = (function () {
         var isNb = M.newbie && g.unit === NEWBIE;
         var e = eligibility(g.category, g.unit, allDone, u.lastCompletionDate, awarded, p.intervalMonths, p.today,
           isNb && p.newbieAfter ? attended.filter(function (d) { return d > p.newbieAfter; }) : attended,
-          isNb ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0), M);
+          isNb ? (p.newbieAttendCount || 0) : (p.levelAttendCount || 0), M, p.minMonths, p.joinDate);
         u.eligible = e.eligible; u.eligibleDate = e.date; u.waitingUntil = e.waitingUntil || null;
         if (e.attendRequired) { u.attendRequired = e.attendRequired; u.attendSinceLast = e.attendSinceLast; }
         // 完成期限（稚齡；附錄第 73 點⑨：只提醒、不擋頒章）：只看正在挑戰的那一級
@@ -884,6 +928,35 @@ var Logic = (function () {
       return u;
     });
     return { units: units, currentLevel: currentLevel, nextLevel: nextLevel, section: sec };
+  }
+
+  /**
+   * 擇一規則的完成度（附錄第 80 點，羅浮）：
+   *  - anyGroup：任一個大項的項目全部完成即可（見習羅浮途徑1／途徑2）；顯示最接近完成的那一組
+   *  - pickOne：列出的大項裡任選一項完成即可，其他大項全部要完成（服務羅浮的主題活動）
+   */
+  function levelRuleProgress(items, rule) {
+    var bySec = {}, order = [];
+    items.forEach(function (it) { if (!bySec[it.section]) { bySec[it.section] = []; order.push(it.section); } bySec[it.section].push(it); });
+    var datesOf = function (list) { return list.filter(function (i) { return i.done; }).map(function (i) { return i.date; }); };
+    if (rule.anyGroup) {
+      var best = null;
+      order.forEach(function (k) {
+        var list = bySec[k], d = list.filter(function (i) { return i.done; }).length;
+        var score = d / list.length;
+        if (!best || score > best.score || (score === best.score && list.length < best.list.length)) best = { score: score, list: list, done: d };
+      });
+      return { total: best.list.length, done: best.done, dates: datesOf(best.list) };
+    }
+    var pick = rule.pickOne || [], req = [], opt = [];
+    items.forEach(function (it) { (pick.indexOf(it.section) >= 0 ? opt : req).push(it); });
+    var optDone = opt.filter(function (i) { return i.done; });
+    var firstOpt = optDone.map(function (i) { return i.date; }).sort()[0];
+    return {
+      total: req.length + (opt.length ? 1 : 0),
+      done: req.filter(function (i) { return i.done; }).length + (optDone.length ? 1 : 0),
+      dates: datesOf(req).concat(firstOpt ? [firstOpt] : [])
+    };
   }
 
   /** 完成期限：第一級從入團日起算、其餘從上一級頒發日起算 + 月數；沒有起算日或月數為 0 時回 null */
@@ -909,7 +982,7 @@ var Logic = (function () {
    *    （0 表示不要求；請假不算）；狼、鹿、豹另需今天 ≥ 上一級頒發日期 + 間隔月數。
    * 回傳的 date 是「達標日期」= 以上各條件都滿足的最早日期。
    */
-  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed, mod) {
+  function eligibility(category, unit, allDone, lastDate, awarded, intervalMonths, today, attended, attendNeed, mod, minMonths, joinDate) {
     if (!allDone) return { eligible: false, date: null };
     if (category === CATEGORY.BADGE) return { eligible: true, date: lastDate };
     var M = mod || PROGRESS_MODULES[DEFAULT_SECTION], LV = M.levels;
@@ -919,10 +992,18 @@ var Logic = (function () {
       if (!awarded[prev]) return { eligible: false, date: null, reason: '上一級尚未頒發' };
       prevDate = awarded[prev].date || '';
       // [修補] 確保 prevDate 為合法日期字串再計算 addMonths，避免產生 NaN-NaN-NaN
+      if (minMonths && minMonths[unit] > 0 && isDateStr(prevDate)) {
+        var readyM = addMonths(prevDate, minMonths[unit]);
+        if (readyM > date) date = readyM;
+      }
       if (M.intervalLevels.indexOf(unit) >= 0 && isDateStr(prevDate)) {
         var ready = addMonths(prevDate, intervalMonths || 0);
         if (ready > date) date = ready;
       }
+    } else if (minMonths && minMonths[unit] > 0 && isDateStr(joinDate)) {
+      // 第一級（童軍初級）：入團日後需滿 N 個月
+      var readyJ = addMonths(joinDate, minMonths[unit]);
+      if (readyJ > date) date = readyJ;
     }
     var out = {};
     if (attendNeed > 0) {
@@ -1029,22 +1110,22 @@ var Logic = (function () {
    * 補登進程級別時，列出較低級別中沒有頒章紀錄者，供前端提示是否一併補登。
    */
   function planBackfill(p) {
-    var items = (p.items || []).filter(function (it) { return it.enabled && it.unit === p.unit && it.category === p.category && sectionOf(it.sec) === sectionOf(p.section); });
+    var items = (p.items || []).filter(function (it) { return it.enabled && it.unit === p.unit && it.category === p.category && progressSec(it.sec) === progressSec(p.section); });
     var doneIds = {};
     (p.completions || []).forEach(function (c) { if (c.cubId === p.cubId && isCountedCompletion(c)) doneIds[c.itemId] = true; });
     var newCompletions = items.filter(function (it) { return !doneIds[it.id]; }).map(function (it) {
       return { cubId: p.cubId, itemId: it.id, date: p.date, signer: p.signer, note: '上線補登', reporter: '', reportStatus: '' };
     });
-    var sec = sectionOf(p.section), LV = (progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION]).levels;
+    var sec = progressSec(p.section), LV = (progressModule(sec) || PROGRESS_MODULES[DEFAULT_SECTION]).levels;
     var awardedUnits = {};
-    (p.awards || []).forEach(function (a) { if (a.cubId === p.cubId && sectionOf(a.sec) === sec) awardedUnits[a.unit] = true; });
+    (p.awards || []).forEach(function (a) { if (a.cubId === p.cubId && progressSec(a.sec) === sec) awardedUnits[a.unit] = true; });
     var missingLower = [];
     if (p.category === CATEGORY.PROGRESS) {
       LV.slice(0, LV.indexOf(p.unit)).forEach(function (lv) { if (!awardedUnits[lv]) missingLower.push(lv); });
     }
     return {
       alreadyAwarded: !!awardedUnits[p.unit],
-      award: { cubId: p.cubId, unit: p.unit, date: p.date, occasion: p.occasion || '', note: '上線補登', signer: p.signer, sec: sectionOf(p.section) },
+      award: { cubId: p.cubId, unit: p.unit, date: p.date, occasion: p.occasion || '', note: '上線補登', signer: p.signer, sec: progressSec(p.section) },
       newCompletions: newCompletions,
       missingLowerLevels: missingLower,
       notify: false // 補登不觸發任何推播
@@ -1075,7 +1156,7 @@ var Logic = (function () {
   function levelAfterRevoke(awardsOfCub, revokedUnit, section) {
     var lv = null;
     levelsOf(section).forEach(function (l) {
-      if (l !== revokedUnit && awardsOfCub.some(function (a) { return a.unit === l && sectionOf(a.sec) === sectionOf(section); })) lv = l;
+      if (l !== revokedUnit && awardsOfCub.some(function (a) { return a.unit === l && progressSec(a.sec) === progressSec(section); })) lv = l;
     });
     return lv;
   }
@@ -1503,7 +1584,9 @@ var Logic = (function () {
     '出席紀錄': 1,
     '額外出席': 1,
     '註冊申請': 8,
-    '職務紀錄': 0
+    '職務紀錄': 0,
+    '升團紀錄': 0, // 附錄第 80 點
+    '年度登記': 2 //  附錄第 80 點：對象ID（童軍登記的那一列）
   };
 
   /**
@@ -1637,7 +1720,7 @@ var Logic = (function () {
   }
 
   return {
-    LEVELS: LEVELS, NEWBIE: NEWBIE, ownerList: ownerList, MAX_OWNERS: MAX_OWNERS, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
+    LEVELS: LEVELS, NEWBIE: NEWBIE, ownerList: ownerList, MAX_OWNERS: MAX_OWNERS, SCOUT_SELF: SCOUT_SELF, SELF_ELIGIBLE_SECTIONS: SELF_ELIGIBLE_SECTIONS, PROGRESS_MODULES: PROGRESS_MODULES, progressModule: progressModule, progressSec: progressSec, levelRuleProgress: levelRuleProgress, isLevelOf: isLevelOf, idPrefixOf: idPrefixOf, levelsOf: levelsOf, currentLevelOf: currentLevelOf, progressParams: progressParams, levelDeadline: levelDeadline, addDays: addDays, NEWBIE_SEED: NEWBIE_SEED, INTERVAL_LEVELS: INTERVAL_LEVELS, CATEGORY: CATEGORY, BADGE_GROUPS: BADGE_GROUPS, NO_SECTION: NO_SECTION, STATUS: STATUS, ROLE: ROLE, SECTIONS: SECTIONS, DEFAULT_SECTION: DEFAULT_SECTION, CENTRAL: CENTRAL, STAFF_ROLES: STAFF_ROLES, RELATION: RELATION, sectionOf: sectionOf, effectiveAdmins: effectiveAdmins, ALL: ALL, UNASSIGNED: UNASSIGNED, SECTION_SLUG: SECTION_SLUG, SECTION_FULL: SECTION_FULL, PROGRESS_SECTIONS: PROGRESS_SECTIONS, isSection: isSection, targetOf: targetOf, targetIncludes: targetIncludes, parseTargets: parseTargets, targetsInclude: targetsInclude, leaderTitle: leaderTitle, requestSectionOf: requestSectionOf, staffSections: staffSections, pickSection: pickSection, SHARED_FUNCS: SHARED_FUNCS, SHARED_LEVELS: SHARED_LEVELS, canShared: canShared, sectionSetting: sectionSetting, sectionSettingKey: sectionSettingKey, validateStaffChange: validateStaffChange,
     PENDING_TEXT_FOR_PARENTS: PENDING_TEXT_FOR_PARENTS, CODE_CHARSET: CODE_CHARSET, CODE_ERROR_MESSAGE: CODE_ERROR_MESSAGE,
     SETTINGS: SETTINGS, PERMISSIONS: PERMISSIONS, CUB_ID_COLUMNS: CUB_ID_COLUMNS,
     isDateStr: isDateStr, cmpDate: cmpDate, addMonths: addMonths, tenure: tenure,
@@ -1653,7 +1736,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, LEAVE_REASONS: LEAVE_REASONS, ADULT_SELF_SECTIONS: ADULT_SELF_SECTIONS, ROVER_AUDIENCE: ROVER_AUDIENCE, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
@@ -1709,6 +1792,9 @@ var SHEET = {
   UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
   PERMS: '權限設定',
+  PROMOTIONS: '升團紀錄',
+  REGIS: '年度登記',
+  REGIS_FEES: '登記費用',
   LOG: '操作日誌'
 };
 
@@ -1720,7 +1806,7 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團', '離開原因'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
 HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本', '關係'];
@@ -1745,9 +1831,14 @@ HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身�
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間', '分團'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
-HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
+HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日', '對象'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.PERMS] = ['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間'];
+// 升團（附錄第 69、80 點）：同一筆團員改到下一個分團，原本的入團日、小隊、職務記在這裡
+HEADERS[SHEET.PROMOTIONS] = ['小狼ID', '原分團', '新分團', '升團日', '原入團日', '原小隊', '原職務', '設定人', '設定時間'];
+// 續團確認與三項登記（附錄第 70、80 點）：每年度每人一列；類型 童軍／服務員／團（團登記一個分團一列）
+HEADERS[SHEET.REGIS] = ['年度', '類型', '對象ID', '分團', '續團', '已登記', '應繳金額', '已繳', '備註', '更新人', '更新時間'];
+HEADERS[SHEET.REGIS_FEES] = ['年度', '童軍登記費', '服務員登記費', '團登記費', '備註', '更新人', '更新時間'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
 
 /**
@@ -1773,6 +1864,8 @@ TEXT_COLUMNS[SHEET.CONSENT] = [3];
 TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 4, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.PROMOTIONS] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.REGIS] = [1, 3];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
@@ -1784,7 +1877,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-25b';
+var APP_VERSION = '2026-11-27b';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -1822,6 +1915,7 @@ var SEED = {
   "豹": "參與鹿級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成豹級進程，經公開晉級儀式頒授佩戴豹章。"
  },
  "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在 22 團的紀錄，本團使用「22團網站」（涵蓋稚齡童軍、幼童軍、童軍、行義童軍、羅浮童軍五個分團）。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、所屬分團、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章（各分團的進程功能陸續上線）。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，由團長負責保管。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計、活動報名，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 孩子所屬分團的團長與服務員看得到該分團的資料，用來點名、簽核與頒章；其他分團的團長、服務員看不到。\n3. 總團與系統管理員看得到全團資料，用來協助各分團與處理帳號問題。\n4. 孩子升上其他分團時，新分團的團長可以看到孩子之前的紀錄，讓進程接續。\n\n四、資料放在哪裡\n存放在本團管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡孩子所屬分團的團長，或：【請填寫：聯絡方式，例如 LINE 官方帳號「22團」】。",
+ "roverConsentText": "您好：\n\n為了讓您隨時查看自己在 22 團羅浮群的紀錄，本團使用「22團網站」（涵蓋稚齡童軍、幼童軍、童軍、行義童軍、羅浮童軍五個分團）。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 您的姓名、所屬分團、群（小隊）、入團日期，以及擔任的職務與任期。\n2. 您的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章。\n3. 您的出席紀錄：每次集會出席或請假（包含您在網站上自己請的假）。\n4. 您的帳號名稱與稱呼。您的密碼會經過加密，任何人（包括群長、團長）都看不到。\n5. 活動報名：您報名活動時填的姓名、身分別、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，由團長負責保管。\n6. 年度登記：您這一年是否續團、是否已向童軍會登記、應繳與已繳的登記費。\n我們不會在網站上蒐集您的生日、身分證字號、電話、地址或照片（向童軍會登記所需的資料仍依總會規定另外處理）。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計、活動報名與年度登記，以及讓您查看自己的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己的資料。\n2. 羅浮群的群長與服務員看得到羅浮群的資料，用來點名、簽核與頒章；其他分團的團長、服務員看不到。\n3. 總團與系統管理員看得到全團資料，用來協助各分團與處理帳號問題。\n4. 您之前在其他分團的紀錄（例如童軍、行義時期）會跟著您，讓進程與服務紀錄接續。\n\n四、資料放在哪裡\n存放在本團管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n您在團期間會一直保存。您離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 要求停用或刪除您的帳號，或刪除您的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響您參加羅浮群的活動。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡羅浮群的群長，或：【請填寫：聯絡方式，例如 LINE 官方帳號「22團」】。",
  "sections": {
   "稚齡": {
    "itemsCsv": "類別,級別或章名,大項或分類,項目內容\r\n進程,地球,－,能背誦稚齡童軍諾言及規律，並能說出其意義。\r\n進程,地球,－,能完成稚齡童軍的吼聲與敬禮。\r\n進程,地球,－,能說出小隊服務員之稱呼。\r\n進程,地球,－,認識並能說出自己小隊伙伴的姓名。\r\n進程,地球,－,會唱狼寶寶歌、稚齡童軍歌。\r\n進程,地球,－,能說出 3 種以上自我保護的方法。\r\n進程,星星,－,獲得地球章後，至少參加 4 次以上之團集會。\r\n進程,星星,－,能介紹自己家中親人予伙伴認識。\r\n進程,星星,－,會協助整理小隊器材，並完成小隊交付任務。\r\n進程,星星,－,會做好自己日常生活起居及留意服裝儀容整潔。\r\n進程,星星,－,能說出重要的電話號碼，以及打電話的禮節。\r\n進程,星星,－,能與伙伴共同創作一件物品。\r\n進程,月亮,－,獲得星星章後，至少參加 6 次以上之團集會。\r\n進程,月亮,－,能介紹同學予伙伴認識。\r\n進程,月亮,－,能參與自己的團部及班級的服務工作。\r\n進程,月亮,－,會協助整理家中物件，並能關心家人。\r\n進程,月亮,－,會用正確的方法使用各項遊戲器材。\r\n進程,月亮,－,能分辨各種交通工具。\r\n進程,月亮,－,能自行整理書包，完成上學前的準備。\r\n進程,月亮,－,能以正確姿勢握筆寫字。\r\n進程,月亮,－,能每天與師長及別人打招呼。\r\n進程,太陽,－,獲得月亮章後，至少參加 6 次以上之團集會。\r\n進程,太陽,－,能邀請伙伴至家中聚會。\r\n進程,太陽,－,能參與自己團部及學校的服務工作。\r\n進程,太陽,－,能簡述住家附近之社區環境。\r\n進程,太陽,－,能遵守步行的交通規則。\r\n進程,太陽,－,會與同學或伙伴共同遊戲。\r\n進程,太陽,－,能注意站立、坐下與行走的正確姿勢。\r\n進程,太陽,－,能閱讀兒童課外讀物，至少 3 本。\r\n技能章,種植,服務類,能使用棉花種植豆類至發芽，並觀察、記錄。\r\n技能章,種植,服務類,會利用瓶、罐，種植花本。\r\n技能章,種植,服務類,會整理學校或家庭的花圃、盆栽。\r\n技能章,生活,服務類,能早睡、早起。\r\n技能章,生活,服務類,不挑食、不偏食。\r\n技能章,生活,服務類,能隨時注意保持服裝儀容整潔。\r\n技能章,保健,服務類,能說出自己身體主要部位的名稱及功能.\r\n技能章,保健,服務類,會維護自己牙齒和視力的健康。\r\n技能章,環保,服務類,\"會做到垃圾分類,以及資源回收。\"\r\n技能章,環保,服務類,能協助整理住家環境。\r\n技能章,環保,服務類,能隨時保持教室個人桌椅周遭整潔。\r\n技能章,交通,服務類,認識紅綠燈，會過馬路，並注意安全。\r\n技能章,交通,服務類,注意乘車安全與禮貌。\r\n技能章,球類,運動類,拍球：能在原地拍球 20 下。\r\n技能章,球類,運動類,傳球：能與同伴互相連續傳球 20 下。\r\n技能章,球類,運動類,踢球：能對準相距 3 公尺之前方，連續 3 次踢中直徑 1 公尺之目標。\r\n技能章,騎車,運動類,會騎乘三輪車、扭扭車或滑板車、腳踏車等，均能連續騎乘 50 公尺以上。\r\n技能章,體能,運動類,能在 20 秒以內，跑走 60 公尺。\r\n技能章,體能,運動類,立定跳遠：能跳過 50 公分以上。\r\n技能章,體能,運動類,能連續側滾 3 次。\r\n技能章,民俗,運動類,跳繩 5 下、踩奶粉罐走 3 公尺或其他經團長認可的民俗活動。\r\n技能章,律動,運動類,會做健康操或律動唱跳。\r\n技能章,益智,技巧類,完成 20 片以上的拼圖或積木。\r\n技能章,益智,技巧類,會玩一種棋藝。\r\n技能章,表演,技巧類,能隨音樂的節奏做動作。\r\n技能章,表演,技巧類,能模仿兩種以上動物的聲音或動作。\r\n技能章,歌唱,技巧類,能唱 3 首兒歌及 2 首童軍歌曲。\r\n技能章,語文,技巧類,能說故事及唸童謠。\r\n技能章,美勞,技巧類,完成繪畫 1 張、勞作 1 件及摺紙 1 項。\r\n",
@@ -1830,6 +1924,25 @@ var SEED = {
     "星星": "獲頒地球章後，6個月內完成星星級各項進程，即可頒授星星章。",
     "月亮": "獲頒星星章後繼續參加活動，在1年內完成月亮級各項進程，即可頒授月亮章。",
     "太陽": "獲頒月亮章後繼續參加活動，在1年內完成太陽級各項進程，即可頒授太陽章，並鼓勵邁向幼童軍之門，參與幼童軍團集會活動，學習幼童軍羚羊級進程。"
+   }
+  },
+  "童軍": {
+   "itemsCsv": "類別,級別或章名,大項或分類,項目內容\r\n進程,初級,童軍精神方面,能背誦並實踐童軍諾言、規律、銘言，並能說出宣誓的意義。\r\n進程,初級,童軍精神方面,知道童軍的起源和中華民國童軍的歷史。\r\n進程,初級,童軍精神方面,知道中華民國童軍徽的意義和佩戴法，以及童軍制服的榮譽表徵和穿著法。\r\n進程,初級,童軍精神方面,知道童軍三指符號及左握的含意，並能行各種敬禮的方法。\r\n進程,初級,童軍精神方面,知道國家元首的姓名。\r\n進程,初級,群體生活方面,能說出本小隊隊名，並能做隊呼、隊聲、小隊歌和繪製隊徽。實踐在小隊分工的任務及團內應盡的職責。\r\n進程,初級,群體生活方面,能說出住所及團部鄰近的警察、醫院、消防隊、郵局、大眾交通等公共設施所在地。\r\n進程,初級,群體生活方面,能繪製國旗，並愛護國旗。能說出國旗的歷史和意義及升降懸掛的正確方法。\r\n進程,初級,群體生活方面,熟悉徒手及持棍操法的基本動作及小隊操法。\r\n進程,初級,記號,能在日常生活及活動中，應用下列各種記號：前進記號、止步記號、藏信記號、我已回記號、危險記號。\r\n進程,初級,記號,能辨認常用的手勢訊號、警笛訊號及營地訊號。\r\n進程,初級,結繩,能打繩頭結：單結、8 字結、簡易繩頭結。\r\n進程,初級,結繩,能打下列各繩結，並能說出它的用途：平結、接繩結、雙套結、稱人結、雙半結、縮短結、活索結、雀頭結。\r\n進程,初級,衛生,明瞭什麼是事故傷害，並能意識、辨別童軍戶外活動環境中可能出現的危險因子，並能夠採取適當作為事前予以防範。\r\n進程,初級,衛生,能明瞭生病的原因，懂得如何維持良好的衛生與保健習慣。\r\n進程,初級,衛生,能以正確的方式撥打 119 呼叫救援。\r\n進程,初級,衛生,能夠處理創傷出血，並了解如何清潔傷口、控制感染，並以滅菌紗布與繃帶等進行簡易包紮。\r\n進程,初級,衛生,了解關節扭傷造成的原因與處理。\r\n進程,初級,衛生,明瞭從事戶外活動時急救包應準備之物品，並能夠正確使用。\r\n進程,初級,衛生,明瞭吸菸、飲酒、嚼食檳榔、藥物成癮會如何緩慢且持續的損害健康。\r\n進程,初級,資訊處理,能運用資訊設備建立小隊通訊聯絡方式或管道。\r\n進程,初級,資訊處理,能運用資訊設備發布小隊活動通知。\r\n進程,中級,童軍精神方面,能講解並實踐童軍諾言、規律及銘言。\r\n進程,中級,童軍精神方面,有節約與儲蓄的習慣，且能正當的使用金錢。\r\n進程,中級,童軍精神方面,能說出本縣（市）童軍會的所在地。\r\n進程,中級,群體生活方面,能經常自動自發參加小隊集會、團集會、野外活動及各種童軍作業。\r\n進程,中級,群體生活方面,能在家庭、學校、社區鄰里從事服務，而有良好的成績。\r\n進程,中級,群體生活方面,能切實實踐國民生活須知，熟知禮儀。\r\n進程,中級,群體生活方面,能遵守交通規則。\r\n進程,中級,群體生活方面,能落實垃圾分類及住家環保。\r\n進程,中級,觀察,能在 1 分鐘內觀察不同的 24 件細小雜物，而能記憶 12 件以上。\r\n進程,中級,觀察,能在 30 分鐘內依據蹤跡到達 1 公里間的目的地。\r\n進程,中級,觀察,能根據樹葉的型態辨認至少 5 種樹木。\r\n進程,中級,觀察,能辨認昆蟲 5 種以上，並知道它與人類的關係。\r\n進程,中級,觀察,能認識至少 2 種不同的雲層組織，並了解其與氣象的關係。\r\n進程,中級,訊號,運用通訊設備收發簡訊。\r\n進程,中級,訊號,能運用雙旗或單旗收發中文數碼旗語（含電碼翻譯）2 分鐘 4 個字。\r\n進程,中級,訊號,能正確使用對講機通訊設備及注意通訊禮節。\r\n進程,中級,急救,了解何為生命徵象，並知道生命徵象在評估傷患時的重要。\r\n進程,中級,急救,瞭解緊急事故處理原則。\r\n進程,中級,急救,能正確操作基本的止血法：直接加壓止血法、抬高止血法、冰敷止血法、止血點指壓法等，並了解使用時機與原則。\r\n進程,中級,急救,能正確的施行 CPR（不施作暢通呼吸道及吹氣）。\r\n進程,中級,急救,能操作仰臥（頭部朝上與朝下）、仰臥屈膝、半坐臥及復甦姿勢等休息姿勢，並能了解其使用時機。\r\n進程,中級,急救,了解不當搬運對傷患造成的傷害。\r\n進程,中級,急救,能應用繃帶或三角巾進行身體部位（如頭部、手掌、膝部及足踝等）的包紮。\r\n進程,中級,童軍技能方面,結繩能打下列各繩結，並能說出它的用途：牧童結、瓶口結、袋口結、營繩結、繫木結、方回結、十字結、吊桶結、剪立結。\r\n進程,中級,方位,能正確使用及應用指北針，測量方位的度數，並知道十六方位的名稱。\r\n進程,中級,方位,能利用太陽和時錶推測正確的方位。\r\n進程,中級,方位,能藉植物或地上物推測正確的方位。\r\n進程,中級,生火與野炊,知道刀、斧及鋸子的保護法及使用法。\r\n進程,中級,生火與野炊,能削火媒棒及正確架柴法，並能以不超過 2 根火柴在戶外生火。\r\n進程,中級,生火與野炊,能使用其他能源之正確方法與安全（如瓦斯、汽化爐、無煙煤……等）。\r\n進程,中級,生火與野炊,能規劃及烹煮個人野外餐飲。\r\n進程,中級,旅行,能說出徒步旅行的方法。\r\n進程,中級,旅行,能使用簡略地圖在野外進行旅行活動。\r\n進程,中級,旅行,能準備從事戶外旅行所需要的裝備、服裝及應注意事項。\r\n進程,中級,旅行,瞭解從事戶外旅行活動應注意的環保事項。\r\n進程,中級,旅行,曾有乾糧旅行或生火旅行，行程 10 公里以上的經驗，並能做書面報告。\r\n進程,中級,露營,能說出童軍露營的意義、事前的準備和事後的復原工作。\r\n進程,中級,露營,能做簡易營地設施。\r\n進程,中級,露營,能規劃小隊的野外炊事，並與小隊合作利用簡易爐灶烹煮小隊野外炊事。\r\n進程,中級,露營,能說出露營時應有的作業和活動。\r\n進程,中級,露營,能說出營地的安全與衛生注意事項及維護戶外生態保育。\r\n進程,中級,露營,具有 5 夜以上童軍露營的野外生活經驗（至少須含 3 天 2 夜露營 1 次），且必須參加所屬童軍團之露營 1 次以上。\r\n進程,中級,資訊處理,能將小隊五股幹事，任一種業務運用電腦完成。\r\n進程,中級,資訊處理,能運用網路搜尋小隊露營資料。\r\n進程,中級,資訊處理,知道使用資訊的安全及倫理，並能確實遵守。\r\n進程,高級,童軍精神方面,能實踐童軍諾言、規律及銘言。\r\n進程,高級,童軍精神方面,能健全自己，並能影響他人。\r\n進程,高級,童軍精神方面,能勤勞節約，刻苦自勵。\r\n進程,高級,童軍精神方面,瞭解童軍虔敬聚會意義。\r\n進程,高級,群體生活方面,能在小隊集會、團集會、野外活動及各種作業中發揮領導才能。\r\n進程,高級,群體生活方面,能主動參加團部各種服務，並曾幫助團長訓練兒童至少 1 人成為初級童軍。\r\n進程,高級,群體生活方面,能說出一般社交活動與國際的禮儀。\r\n進程,高級,群體生活方面,能說出國際童軍的組織概況。\r\n進程,高級,群體生活方面,能帶領小隊參加社區服務。\r\n進程,高級,觀察,能認識野生動物 3 種以上，並能說出牠的習性。\r\n進程,高級,觀察,能認識野生植物 5 種以上，能說出它的用途。\r\n進程,高級,觀察,能觀察四季重要星座及月亮的變化，並能據以推測正確的方位。\r\n進程,高級,觀察,能觀察自然現象和動物狀態 5 種以上，從而能夠預測未來氣象的變化。\r\n進程,高級,童軍技能方面,訊號具有下列任何一項能力： 1.能用聲或光通訊（每分鐘可收發各 4 個字以上）。 2.會用摩斯碼收發訊號。\r\n進程,高級,急救,能了解造成休克及其他一般急症（暈倒、中風、心臟病、食物中毒、癲癇、異物入眼、異物入耳、鼻出血）的原因，並能夠進行處置。\r\n進程,高級,急救,能了解異常環境溫度所造成的傷害，並能夠知道預防與處理的步驟。\r\n進程,高級,急救,能辨識、預防並處理野外惱人與有毒生物（台灣鋏蠓、螞蝗、隱翅蟲、硬蜱、恙蟲、蜂、蛇、蕈菇、咬人貓、菇婆芋等）所造成的傷害。\r\n進程,高級,急救,能應用各種包紮技巧實施骨折固定。\r\n進程,高級,急救,了解痙攣造成的原因並進行處理。\r\n進程,高級,急救,能正確施行各種徒手搬運法與簡易擔架製作，並了解使用時機與原則。\r\n進程,高級,急救,能正確操作 CPR+AED（公眾場所民眾簡易版）。\r\n進程,高級,急救,能實施異物梗塞時的急救法。\r\n進程,高級,急救,能準備戶外活動時，應備之急救物品，並能夠正確使用。\r\n進程,高級,童軍技能方面,結繩能打下列各繩結，並能說出它的用途：鞦韆結、漁人結、三套結、椅結、貓爪結、花聯結、槓桿結。\r\n進程,高級,露營,能參與設計 2 天 1 夜小隊露營（包括小隊及個人的裝備，並附器材單、菜單、活動日程表、營地配置圖）。並協助該露營之工作人員（具有書面資料）。\r\n進程,高級,露營,能利用自然物製作營地實用設備。\r\n進程,高級,露營,能作無具炊事至少 3 種以上。\r\n進程,高級,露營,累積有 6 夜以上童軍露營的野外生活經驗（需在 2 個以上之營地露營），並參加所屬童軍團或縣（市）以上童軍會主辦之露營 1 次以上，且有紀錄可查。\r\n進程,高級,露營,必須小隊合作完成 24 小時野外露營旅行及熟練快速的滅跡。\r\n進程,高級,露營,能做至少 2 種野外炊事爐灶。\r\n進程,高級,露營,能了解童軍野外露營活動之有關戶外活動倫理。\r\n進程,高級,工藝,能做簡易縫補的技巧。\r\n進程,高級,工藝,能使用簡單工具製作實用物品或手工藝品各 2 種以上。\r\n進程,高級,工藝,能裝置或修理家用電器。\r\n進程,高級,估測,能估測出一個不能走過的寬度（如河面、池塘寬度）。\r\n進程,高級,估測,能估測高度（如樹木、電桿、房屋）。\r\n進程,高級,估測,能測出營地、田園或廣場的面積。\r\n進程,高級,估測,能估測物品重量及其實體體積。（以上 4 種估測誤差不得超過 10%）\r\n進程,高級,估測,能測出以童軍步（跑、走相間），完成 2 公里所需時間。\r\n進程,高級,估測,能步測 100 公尺之短距離，其誤差不得超過 5%。\r\n進程,高級,製圖,瞭解指北針與地圖的整合應用。\r\n進程,高級,製圖,能應用符號繪製營地簡圖。\r\n進程,高級,工程,能完成一項小隊簡易斥堠工程計畫（最低限度能用 2 種不同的工程繩結和滑車）。\r\n進程,高級,工程,能製作簡易斥堠工程模型。\r\n進程,高級,運動技能,能游泳 25 公尺的距離，並能說出關於游泳安全的常識和救人的方法。\r\n進程,高級,運動技能,能划船 100 公尺（需有救生員在場）。\r\n進程,高級,運動技能,能騎自行車通過 2 公里路程。\r\n進程,高級,運動技能,會 2 種以上不同的溜冰姿勢。（以上 4 項得任選一項參加考驗）\r\n進程,高級,運動技能,伏地挺身 10 次或跪膝伏地挺身 20 次。\r\n進程,高級,運動技能,仰臥起坐 10 次。\r\n進程,高級,運動技能,引體向上 3 次或 2 分鐘內跳繩 120 下。\r\n進程,高級,運動技能,4 分 30 秒內耐力跑 800 公尺。（女生標準為：5 分 30 秒）\r\n進程,高級,資訊處理,能運用電腦製作團活動報告或投稿童軍相關刊物。\r\n進程,高級,資訊處理,能運用電腦編修照片或圖畫，並置於網頁供公眾瀏覽。\r\n進程,高級,童軍技能方面,休閒活動能規劃自己的休閒活動，並就下列各項選擇 2 項展現： 1.樂器。 2.舞蹈。 3.歌唱。 4.棋藝。 5.球類。 6.其他休閒活動。\r\n進程,獅級,－,實踐童軍諾言、規律、銘言，並有良好成績表現。（團長評定）\r\n進程,獅級,－,熱心擔任童軍團內工作：如正（副）小隊長、正（副）聯隊長、或其他團幹部等職務，並累積達 4 個月以上。（團長評定）\r\n進程,獅級,－,曾介紹 2 人入團，並指導童軍 1 人晉升中級童軍。（團長評定）\r\n進程,獅級,－,能說出童軍團的組織及成立程序。（團長評定）\r\n進程,獅級,－,累積 10 夜以上的露營經驗（須在 3 個不同營地露營，至少參加 1 次縣（市）以上或經所屬縣（市）童軍會核可 3 團以上聯團之露營活動）且有紀錄可查。（團長評定，資料送縣（市）童軍會核定）\r\n進程,獅級,－,曾參加團或社區服務 16 小時以上，有良好成績表現。（有紀錄可查）（團長評定，資料送縣（市）童軍會核定）\r\n進程,獅級,－,取得專科章 5 種以上，其中必須具有下列 3 項： 社區公民專科章。 旅行專科章。 露營專科章。\r\n進程,長城,－,實踐並闡述童軍諾言、規律、銘言，有良好成績表現。（團長評定）\r\n進程,長城,－,曾在童軍團內擔任下列工作達 4 個月以上，並有良好績效。（團長評定） 正（副）小隊長。 正（副）聯隊長。 團幹部。 在幼童軍團服務。\r\n進程,長城,－,曾協助團長指導 2 人晉升高級童軍。（團長評定）\r\n進程,長城,－,能說出各級童軍會的組織。（團長評定）\r\n進程,長城,－,曾協助團長領導小隊完成 2 次 8 小時以上或 1 次 24 小時以上之長途旅行，並提出完整書面記錄。（團長評定，資料送縣（市）童軍會核定）\r\n進程,長城,－,能規劃及執行社區服務 2 次以上，並有完整書面紀錄。（團長評定，資料送縣（市）童軍會核定）\r\n進程,長城,－,取得專科章 11 種以上，其中必須具有下列 3 項： 國家公民專科章。 急救專科章。 游泳專科章或自行車專科章或越野專科章 3 項擇 1 項。\r\n進程,國花,－,實踐並能對外簡要說明童軍諾言、規律、銘言，有良好成績表現。（團長評定）\r\n進程,國花,－,曾在縣（市）或地區以上所舉辦的童軍活動中擔任服務工作累計 40 小時以上，有良好成績表現，持有主辦單位簽字之服務紀錄卡或服務證明者。（團長評定，資料送總會核定）\r\n進程,國花,－,負責訓練童軍取得專科章 3 種以上。（團長評定，資料送總會核定）\r\n進程,國花,－,能說出世界童軍組織及近期重大活動（會議）訊息。（團長評定）\r\n進程,國花,－,曾在童軍團，教授 3 種以上課程。（團長評定，資料送總會核定)\r\n進程,國花,－,曾規劃及帶領小隊做童軍露營活動 2 次以上（須有 1 次 3 天 2 夜），並提出完整書面紀錄。（團長評定，資料送總會核定)\r\n進程,國花,－,能規劃並研擬社會服務計畫，經家長、團長、受服務團體同意，並領導童軍實施服務計畫，且經相關人員協助及輔導，活動執行完畢後有良好績效，並有完整紀錄。（受服務團體評定，資料送總會核定）\r\n進程,國花,－,國花級童軍必須在 19 歲之前完成。\r\n進程,國花,－,取得專科章 18 種以上，其中必須具有下列 5 項： 世界公民專科章。 生態保育專科章。 測量專科章。 植物專科章或昆蟲專科章或賞鳥專科章 3 項擇 1 項。 音樂專科章或舞蹈專科章或攝影專科章 3 項擇 1 項。\r\n專科章,社區公民,服務類,能說出「社區」的定義。\r\n專科章,社區公民,服務類,能說出負責推動社區各項建設的是哪一個社區組織體系。\r\n專科章,社區公民,服務類,能說出社區劃定的依據是哪些。\r\n專科章,社區公民,服務類,能說出社區發展的目標是什麼。\r\n專科章,社區公民,服務類,能說出你所居住的社區（或村里）內，有哪些有形及無形的資源，可供利用為社區發展。\r\n專科章,社區公民,服務類,能說出童軍能夠為其所居住之社區（或村里）發展提供哪些服務事項。\r\n專科章,國家公民,服務類,能說出中華民國國籍之取得，有哪些規定。\r\n專科章,國家公民,服務類,能簡述我國國民享有哪些權利，對國家應盡哪些義務。\r\n專科章,國家公民,服務類,能說出何謂「政權」，何謂「治權」。\r\n專科章,國家公民,服務類,能說出我國總統、副總統如何產生，任期幾年。\r\n專科章,國家公民,服務類,能說出五院的性質，地位及組織架構。\r\n專科章,國家公民,服務類,能說出五院院長、副院長是如何產生的。立法委員、監察委員、考試委員又是如何產生的。\r\n專科章,國家公民,服務類,我國負責解釋憲法及法律責任的是哪個單位。\r\n專科章,國家公民,服務類,根據我國憲法規定，各種選舉的方法（選舉原則）有哪些﹖\r\n專科章,國家公民,服務類,能簡述我國的近代歷史概況。\r\n專科章,國家公民,服務類,能簡述我國的地理情勢，如山川、海洋、氣候、交通與重要物產與資源等。\r\n專科章,世界公民,服務類,能說明今日因傳播媒體及通訊器材的發達，對國際間的互動，有什麼影響。\r\n專科章,世界公民,服務類,能說明「地球村」的意義及地球村居民的基本權利與義務。\r\n專科章,世界公民,服務類,能舉例說明當前世界各國的政府組織體制有哪幾種，我國政府組織，屬哪一種體制。\r\n專科章,世界公民,服務類,在聯合國所屬的數十個委員會及組織中，能說明其中3至5 個組織的原則與目標。\r\n專科章,世界公民,服務類,能說明WHO、WTO、UNESCO 及WOSM 各是什麼組織，哪一個組織不屬聯合國管轄。\r\n專科章,世界公民,服務類,能說明聯合國安全理事會及國際法庭的組織任務。\r\n專科章,世界公民,服務類,國際之間的交往，憑藉哪些組織及方法維持國際關係。\r\n專科章,世界公民,服務類,能說明一個國家的資源對其經濟發展的影響及對其他國家的關係。\r\n專科章,世界公民,服務類,能說出我國目前能以獨立國家或獨立實體參加的國際組織有哪些。\r\n專科章,世界公民,服務類,曾經到訪過哪些國家（含地區），能簡述這些國家（地區）的國情、風貌、氣候特徵及重要物產。並說出你結交了多少外國朋友？交往情形如何？\r\n專科章,社區服務,服務類,能說出志工的定義。\r\n專科章,社區服務,服務類,能說出並遵守志工倫理信條。\r\n專科章,社區服務,服務類,曾參與社區服務至少8 小時。\r\n專科章,社區服務,服務類,撰寫社區服務學習心得一篇。\r\n專科章,社區服務,服務類,能說出住家附近的社區服務組織。\r\n專科章,社區服務,服務類,參與志工講習，擁有志工證。\r\n專科章,環境保護,服務類,能說明垃圾分類的目的與方法。\r\n專科章,環境保護,服務類,能舉出3種以上化學物質污染環境的例子及其產生的影響。\r\n專科章,環境保護,服務類,能說出地球溫室效應的原因及維護的方法。\r\n專科章,環境保護,服務類,能說出導致河川污染的各種原因，及維護的方法。\r\n專科章,環境保護,服務類,能說出濫伐森林所造成的災害項目，及維護的方法。\r\n專科章,環境保護,服務類,能說明在工業發展中、工廠應注意哪些環保工作。\r\n專科章,生態保育,服務類,能說出生態保育的目的。\r\n專科章,生態保育,服務類,能說出20 種以上台灣地區保育類生物名稱及其受威脅的程度。\r\n專科章,生態保育,服務類,能說明生物多樣性與人類、地球的關係。\r\n專科章,生態保育,服務類,童軍活動（例：旅行、露營）中要注意哪些事項來避免生態破壞。\r\n專科章,生態保育,服務類,參與生態保育工作兩次以上。\r\n專科章,嚮導,服務類,能繪圖說明團部週圍5 公里內的道路、街衢、捷徑、僻巷及橋樑等地形。\r\n專科章,嚮導,服務類,能在黑夜辨認本地道路及鄰近村鎮的方向。\r\n專科章,嚮導,服務類,能背誦團部附近的醫院、警察局、消防隊、郵局、電信局等地址及其電話號碼。\r\n專科章,嚮導,服務類,能說明所在地之特產、史事、名勝、古跡之名稱及其事蹟。\r\n專科章,嚮導,服務類,有3 次以上的嚮導服務經驗。\r\n專科章,交通,服務類,能說出本地水陸交通幹道。\r\n專科章,交通,服務類,能說出本地各種交通情形。\r\n專科章,交通,服務類,能辨識各種交通訊號與標誌。\r\n專科章,交通,服務類,能說出各種交通規則。\r\n專科章,交通,服務類,能演示各種交通指揮手勢。\r\n專科章,消防,服務類,能說明本地區義消或消防隊的組織，和報告火警的方法。\r\n專科章,消防,服務類,能說明房屋著火逃出法。\r\n專科章,消防,服務類,能說明火焰蔓延的防止法。\r\n專科章,消防,服務類,能說明消防器材的構造，及其使用方法。\r\n專科章,消防,服務類,能於火警時，幫助警察維持秩序，或協助消防隊滅火。\r\n專科章,安全,服務類,能闡述家庭中應如何防止跌傷、熨傷、煤氣或藥品中毒、火燒、電燒傷及電線走火等安全措施。\r\n專科章,安全,服務類,能說明童軍野外生活必備的安全措施，以及其對快樂的野外生活的助益。\r\n專科章,安全,服務類,能在十字路口觀察行人及車輛之通行達3 小時（可分數次完成），列舉所見的違反交通安全規則的情節，並能說出如何才安全。\r\n專科章,安全,服務類,能觀察你的住家或學校的各種安全措施，列舉所有不安全的項目，並能解釋如何處理改善。\r\n專科章,安全,服務類,能在交通號誌故障時指揮交通。\r\n專科章,水上救生,服務類,獲有童軍急救及游泳專科章或通過其合格標準者。\r\n專科章,水上救生,服務類,能說明一般救生常識。\r\n專科章,水上救生,服務類,能在水中解脫衣履，並能在流水中泅泳60 公尺，或靜水中游泳50 公尺。\r\n專科章,水上救生,服務類,能在靜水中潛泳15 公尺或流水中潛泳20 公尺。\r\n專科章,水上救生,服務類,能說明正確接近法3 種及拖帶法3 種（採用陸上表演方式說明）並任選一法入水表演，攜帶溺者（10 磅重人體模型代替）拖帶10 公尺之距離。\r\n專科章,水上救生,服務類,能入水演習手臂受攬握時、受正面扼抱時及受背後扼抱時之解脫法。\r\n專科章,水上救生,服務類,能立游30 秒鐘（雙臂抱胸或露出水面）。\r\n專科章,公共衛生,服務類,能說明猩紅熱、白喉、肺結核、腦膜炎、腦炎、鼠疫、天花、霍亂、瘧疾、狂犬病、破傷風、傷寒和流行性感冒、SARS、腸病毒、登革熱等3種以上傳染病的起因和傳染途徑，及預防方法。\r\n專科章,公共衛生,服務類,能說明如何預防傳染疾病（至少3 種）。\r\n專科章,公共衛生,服務類,能說明蚊蠅的害處和根本驅除法。\r\n專科章,公共衛生,服務類,能列舉兩種因飲食不潔或冰水所致的疾病。能說出露營時如何處理飲用水。\r\n專科章,公共衛生,服務類,能列舉兩種以上常見的寄生蟲病及預防方法。\r\n專科章,公共衛生,服務類,能說明清除垃圾的重要和處理法。\r\n專科章,公共衛生,服務類,能說明店舖中保持飲料、食物生鮮及器皿的清潔。\r\n專科章,個人衛生,服務類,能說明人體解剖學及生理學的大要。\r\n專科章,個人衛生,服務類,能說明循環、呼吸、消化、排泄、生殖、神經等系統及五官、四肢的保健原則。\r\n專科章,個人衛生,服務類,能說明衣、食、住、行的衛生法，並能實踐而有顯著成績。\r\n專科章,個人衛生,服務類,具備正確的性知識和簡單的心理衛生知識，並力戒各種不良嗜好和惡習。\r\n專科章,露營,技能類,能擬訂三日兩夜的小隊露營計畫（包括事前準備、日程、活動內容、經費、菜單、事後整理等事項）。\r\n專科章,露營,技能類,能佈置一個小隊露營的營地（包括應有的建設）。\r\n專科章,露營,技能類,能不用舟、車往返10 公里以上地區領導小隊作3 日露營，並能作500 字以上的露營報告。\r\n專科章,露營,技能類,能說明各種露營用的營幕種類、名稱，並能示範搭架方法。\r\n專科章,露營,技能類,能利用自然物製作營地應用品4 種以上。\r\n專科章,露營,技能類,能在旅行露營中，依地圖、路標、指北針等為引導，不論遇有任何困難（特殊事故除外）不求助於人，而順利完成。\r\n專科章,旅行,技能類,能說出旅行的基本意義與一般常識，並能擬定旅行計畫( 包括事前準備、分工表、旅行路線、日程、活動內容、經費預算、緊急應變計畫)。\r\n專科章,旅行,技能類,能在市鎮或鄉村旅行並作詳細報告和繪製行程略圖。\r\n專科章,旅行,技能類,能在旅程中認識該地區鄉土的自然與人文環境，如地形、水文、植物、經濟（耕地、工廠、住宅、商店等分佈）及土地利用（住宅、商業、工業、農業、遊憩區等分佈）並作成紀錄解說。\r\n專科章,烹飪,技能類,能構築各種炊事灶。\r\n專科章,烹飪,技能類,能做無具炊事3 種。\r\n專科章,烹飪,技能類,能正確安全握刀，並能演示各種常用食材的處理法。\r\n專科章,烹飪,技能類,能設計並烹調小隊一天的飲食（包括：正餐及茶點，並需考量不同宗教的飲食需求）。\r\n專科章,烹飪,技能類,能說出各種常用食材的貯藏法，並能注重衛生、安全及防止食物交叉感染。\r\n專科章,急救,技能類,了解急救的定義、目的、處理原則、基礎生命徵象( 呼吸、脈搏、血壓、體溫等) 的重要性與其涵義。\r\n專科章,急救,技能類,能對傷患進行評估與紀錄，辨識傷病種類與緊急程度，並採取適當對應措施。\r\n專科章,急救,技能類,能正確操作CPR、異物梗塞排除( 哈姆立克法) 與AED。\r\n專科章,急救,技能類,能實施骨折、脫臼等包紮固定。\r\n專科章,急救,技能類,熟悉燒傷與過熱、過冷的影響： 1、清楚燒傷的處理。 2、能分辨中暑、熱衰竭、熱痙攣的差異，並處理之。 3、了解失溫、凍傷的處理。\r\n專科章,急救,技能類,能實施徒手與現有器材製作之擔架進行傷患運送法。附註： 持有紅十字會初級急救員以上證書（有效期限內）或其他團體舉辦之救護員證書( 須附課程表) 送審，據以核發急救專科章。\r\n專科章,斥堠工程,技能類,能正確熟練地作10 個工程繩結（必須包含3 個工程結：十字結、方回結、剪立結，並能應用）。\r\n專科章,斥堠工程,技能類,能利用自然物搭架一座獨腳、三腳或四腳瞭望台。( 以小隊方式完成)。\r\n專科章,斥堠工程,技能類,能就地取材搭架一種簡便橋樑，最少能供3人同時渡過。( 以小隊方式完成)\r\n專科章,斥堠工程,技能類,能利用自然物構築可容兩人露營的營舍。\r\n專科章,星象,技能類,能解說天體之運行概況。\r\n專科章,星象,技能類,能解說月球的運行及日、月蝕、潮、汐的原因。\r\n專科章,星象,技能類,能說出流星的成因。\r\n專科章,星象,技能類,能指出亮的星座至少6 座。\r\n專科章,星象,技能類,能利用3 個以上之星座找尋方位。\r\n專科章,星象,技能類,能指出北極星。\r\n專科章,星象,技能類,參觀天文臺或星象館能記錄其設備及其內容。\r\n專科章,氣象,技能類,能使用5 種氣象觀測儀器。\r\n專科章,氣象,技能類,能根據氣象報告繪出簡略氣象圖。\r\n專科章,氣象,技能類,能解釋氣象局所繪之天氣圖。\r\n專科章,氣象,技能類,能詳述風速、溫度、氣壓、雨量等變化與農作物生長等，及其相互間的關係。\r\n專科章,氣象,技能類,曾實地記錄兩個月以上之氣溫、雨量而有統計表者。\r\n專科章,定向運動,技能類,能說出向運動的意義及內涵。\r\n專科章,定向運動,技能類,能使用指北針判別方位。\r\n專科章,定向運動,技能類,能正確判讀定向運動的地圖。\r\n專科章,定向運動,技能類,能實地完成徒步定向、滑雪定向、單車定向等任一種運動。\r\n專科章,測量,技能類,能描繪地形草圖。\r\n專科章,測量,技能類,能使用比例尺、指北針。\r\n專科章,測量,技能類,能用各種方法測量高度、方位及距離。\r\n專科章,測量,技能類,能目測計算簡單地形的面積。\r\n專科章,測量,技能類,能說出等高線及地形、地貌等符號的意義。\r\n專科章,測量,技能類,能依比例繪製草圖。\r\n專科章,訊號,技能類,能詳述電話發明經過、原理及其構造。\r\n專科章,訊號,技能類,能列舉出15 種以上通訊的方法。\r\n專科章,訊號,技能類,譯電及解碼 1、能在30 分鐘內將50 個中文字翻譯成電碼，並須有40 組以上正確。 2、能在12 分鐘內將50 組電碼翻譯成中文，並須有40字以上正確。\r\n專科章,訊號,技能類,收發：二選一 1、能在每分鐘內，收發中文電碼雙旗語12 字。 2、能在每分鐘內，收發中文電碼單旗語5 字。\r\n專科章,訊號,技能類,能用煙、火、聲、光等，其中兩種方法通訊。\r\n專科章,無線電,技能類,能繪製一簡明收音機線路圖。\r\n專科章,無線電,技能類,能架設天線、地線及說明雷雨預防法。\r\n專科章,無線電,技能類,能正確使用電池和充電法。\r\n專科章,無線電,技能類,能檢查收音機的故障及說明修理法。\r\n專科章,無線電,技能類,能自製晶體收音機並能應用。\r\n專科章,無線電,技能類,能說出電台的工作實務情況。\r\n專科章,電腦維修,技能類,能解釋電腦執行架構的五大單元。\r\n專科章,電腦維修,技能類,能舉出各5 種輸入、輸出設備。\r\n專科章,電腦維修,技能類,能指出電腦主要零件設備。\r\n專科章,電腦維修,技能類,能保養、拆裝、檢測及故障排除（包括：滑鼠、鍵盤、螢幕、網路線。）\r\n專科章,電腦維修,技能類,能組裝電腦設備，並能正常開機、關機。\r\n專科章,電腦維修,技能類,能正確判斷電腦故障的原因，並能排除。\r\n專科章,地球科學,技能類,能簡易地解說與辨別各種岩石。\r\n專科章,地球科學,技能類,能判別天候的變化。\r\n專科章,地球科學,技能類,能說出地形、地物的利用。\r\n專科章,地球科學,技能類,能解說天然災害。\r\n專科章,地球科學,技能類,能說明對自然環境維護的方法及策略。\r\n專科章,家俱維修,技能類,能說出各種粉刷工作的進行程序及應注意事項。\r\n專科章,家俱維修,技能類,能詳述用料的配合法及比量。\r\n專科章,家俱維修,技能類,能用漆刷器具、牆壁與天花板等。\r\n專科章,家俱維修,技能類,能修理門窗及櫥櫃等之鉸鏈。\r\n專科章,家俱維修,技能類,能裝配門、窗、玻璃及糊壁紙。\r\n專科章,家俱維修,技能類,能修理室內用具及裝飾物件。\r\n專科章,家俱維修,技能類,能磨礪刀、剪等物件。\r\n專科章,家俱維修,技能類,能製作簡易實用品數件。\r\n專科章,游泳,健身類,能向初學者說明游泳應注意的事項，及指導準備運動。\r\n專科章,游泳,健身類,能演示救溺法。\r\n專科章,游泳,健身類,能說明游泳時及前、後的注意事項。\r\n專科章,游泳,健身類,能在60 秒內游完50 公尺。\r\n專科章,游泳,健身類,能游200 公尺以上。\r\n專科章,划船,健身類,持有游泳專科章。\r\n專科章,划船,健身類,能以雙手獨划前進、後退、左、右轉，並能急停船。\r\n專科章,划船,健身類,能演示操舵法。\r\n專科章,划船,健身類,能演示上船法、在船中的安全動作，並能前進、靠岸等操作。\r\n專科章,划船,健身類,能說明接近他船或障礙物的操作，和防止互衝處置法。\r\n專科章,划船,健身類,能正確地繫船。\r\n專科章,划船,健身類,能說出乘艇的檢點、整備的要點。\r\n專科章,划船,健身類,有兩次每次兩小時以上的航行經驗，並有航行紀錄。\r\n專科章,划船,健身類,能操作獨木舟划行兩公里（含曲線前進及迴轉）。\r\n專科章,球類,健身類,能說出5 種以上球類之比賽方法。\r\n專科章,球類,健身類,曾參加3 種以上之球類運動。\r\n專科章,球類,健身類,能籃球上籃20 次而投中15 球。\r\n專科章,體適能,健身類,能說出體適能的定義及重要性。\r\n專科章,體適能,健身類,能協助團長施測各項體適能。\r\n專科章,體適能,健身類,仰臥起坐60 秒：依教育部體適能標準常模，能達到百分等級60 以上。\r\n專科章,體適能,健身類,坐姿體前彎：依教育部體適能標準常模，能達到百分等級70 以上。\r\n專科章,體適能,健身類,立定跳遠：依教育部體適能標準常模，能達到百分等級70 以上。\r\n專科章,體適能,健身類,800(1600) 公尺跑走：依教育部體適能標準常模，能達到百分等級60 以上。\r\n專科章,武術,健身類,曾習拳術6 個月以上。\r\n專科章,武術,健身類,能演徒手拳二路。\r\n專科章,武術,健身類,能演示木棍一路。\r\n專科章,武術,健身類,能說出武術的派別和優點。\r\n專科章,越野,健身類,能說出越野訓練的目的。\r\n專科章,越野,健身類,能在平地運用跑走相間方法跑完2000 公尺（自行預估時間誤差值不得超過5 ％）。\r\n專科章,越野,健身類,能以越野的時間，估測兩地的距離（誤差值平地不得超過5 ％，坡地不得超過8 ％）。\r\n專科章,越野,健身類,曾參加越野賽跑兩次以上。（累積達10 公里以上）\r\n專科章,攀登,健身類,能說出從事攀岩的基本裝備及使用方法。\r\n專科章,攀登,健身類,能說出「確保」的要領，並能操作正確而且安全的「確保」動作。\r\n專科章,攀登,健身類,能正確地操作「垂降」姿勢，以及運用「普魯士結」上升。\r\n專科章,攀登,健身類,能概略說出攀岩歷史及種類，人工及天然攀岩場的特性與差異。\r\n專科章,攀登,健身類,能以平衡攀登的基本技巧，與三點不動一點動的動作原則進行攀登。\r\n專科章,攀登,健身類,能在完整確保情況下，徒手完成正確的10 公尺攀登。\r\n專科章,攀登,健身類,能恪守安全規範，攀岩禮儀，及岩場使用規則。\r\n專科章,自行車,健身類,能於平路騎乘自行車1 小時行駛10 公里以上。\r\n專科章,自行車,健身類,能知道自行車主要構造的名稱，並能說出保養的方法。\r\n專科章,自行車,健身類,能說出自行車行駛時的交通規則。\r\n專科章,自行車,健身類,能依照地圖騎乘自行車，並能傳遞口訊和完成所指示的觀察。\r\n專科章,溜冰（可以直排輪代替）,健身類,穿著溜冰鞋能在冰上或地上進、退，快慢自如。\r\n專科章,溜冰（可以直排輪代替）,健身類,能穿著冰鞋走路。\r\n專科章,溜冰（可以直排輪代替）,健身類,能在起伏地形溜冰。\r\n專科章,溜冰（可以直排輪代替）,健身類,能修理溜冰鞋。\r\n專科章,騎術,健身類,能識別馬的品種和優劣。\r\n專科章,騎術,健身類,能說出馬的疾病症狀。\r\n專科章,騎術,健身類,能說出馬的飼養法及衛生。\r\n專科章,騎術,健身類,能說出馬蹄鐵之功用。\r\n專科章,騎術,健身類,能裝配馬鞍。\r\n專科章,騎術,健身類,能說出各種口令及記號。\r\n專科章,騎術,健身類,能說出馬隻牽引及栓馬法。\r\n專科章,騎術,健身類,能在各種速度上、下馬。\r\n專科章,騎術,健身類,能騎行各種步法( 漫步、輕快步、跑步)。\r\n專科章,騎術,健身類,能在馬上體操。\r\n專科章,騎術,健身類,能騎馬跳躍障礙。\r\n專科章,騎術,健身類,能說出溜馬之重要。\r\n專科章,射擊,健身類,能說出步槍、手槍射擊法。\r\n專科章,射擊,健身類,能說出射擊理論，安全常識。\r\n專科章,射擊,健身類,能用步槍在50 公尺處擊靶5 次，平均每次得50 分以上。\r\n專科章,射擊,健身類,能用手槍在10 公尺處擊靶5 次，平均每次得50 分以上。\r\n專科章,射箭,健身類,能說明射箭運動的發展歷史及射箭運動的特色。\r\n專科章,射箭,健身類,能說明射箭運動的禮節及安全守則。\r\n專科章,射箭,健身類,能指出弓、箭器材的各部位名稱。\r\n專科章,射箭,健身類,能說明射箭比賽的規則及計分方式。\r\n專科章,射箭,健身類,能演示射箭的基本動作與實際操作射箭基本動作。\r\n專科章,射箭,健身類,參與兩小時射箭課程講習，經筆試合格，並能達成8 公尺12 箭總分60分以上及格者。\r\n專科章,音樂,興趣類,瞭解基本樂理（五線譜、簡譜、音樂術語、音樂記號、中西樂器的分類）。-- 筆試。\r\n專科章,音樂,興趣類,依照樂譜上的指示，以演唱或演奏（中西樂器皆可）的方式來表演一首歌曲或民謠。-- 現場表演。\r\n專科章,音樂,興趣類,書面報告（2000 字以上）：以下二選一。 1、 聽一場音樂會（中西樂皆可）或於大眾傳播媒體上欣賞類似的節目二至三小時，能介紹作曲家、音樂家、指揮及這個節目或歌劇的故事背景，發表對於這場音樂會的心得感想。 2、概述台灣本土的音樂發展，並介紹5 位台灣知名的作曲家與音樂家，及一種台灣原住民音樂。\r\n專科章,音樂,興趣類,且須具備下列之一者： 1、參與音樂性社團六個月以上，且於公開場合表演五次以上，並請相關單位協助提出公開表演證明（例如節目單、照片⋯）。-- 相關證明 2、在公開場合活動中，教唱3 首歌曲，並配合歌曲設計動作，帶動唱。-- 現場示範 3、能以五線譜創作至少12 小節的樂曲，並演唱或演奏之。-- 現場表演 4、能將自己或家人收藏之影音媒體（CD、TAPE、DVD⋯）編製目錄，並介紹其如何使用與保存。--攜帶目錄，現場口試\r\n專科章,戲劇,興趣類,能編一段短劇，並自任導演。\r\n專科章,戲劇,興趣類,能自行化粧，並處理劇內角色的特性及化裝技巧。\r\n專科章,戲劇,興趣類,能分辨舞台劇與電影的表演技巧。\r\n專科章,戲劇,興趣類,能解說舞台基本設計、燈光處理、佈景及道具的運用。\r\n專科章,戲劇,興趣類,露營時能作各種娛樂之表演。\r\n專科章,舞蹈,興趣類,能演示及應用舞蹈的基本步法。並具有身體韻律節奏的能力。\r\n專科章,舞蹈,興趣類,參與土風舞活動，並能分辨我國與他國土風舞。\r\n專科章,舞蹈,興趣類,能指導土風舞或舞曲的演出。\r\n專科章,舞蹈,興趣類,能創作土風舞或舞曲一種。\r\n專科章,號角,興趣類,能說出號譜及節拍。\r\n專科章,號角,興趣類,能背吹步號進行曲4 首。\r\n專科章,號角,興趣類,能吹童軍應用號譜5 首。\r\n專科章,號角,興趣類,能解說中西樂器各4 種。\r\n專科章,特技,興趣類,能作民俗技藝3 種以上： 1、能放自製風箏。 2、能作8 種以上的花式踢毽子。 3、能跳兩支以上民族舞。 4、能作5 種以上中國結。 5、能作6 種以上扯鈴。 6、能作5 種以上的花式跳繩。\r\n專科章,特技,興趣類,能作特殊技能兩種以上： 1、能放自製的滑翔翼。 2、能作簡易魔術5 種。 3、能跳5 支以上土風舞。 4、能表演6 種以上的口技。\r\n專科章,紙藝,興趣類,能說出造紙原料3 種以上並能製作手工紙。\r\n專科章,紙藝,興趣類,能說出普通常用紙類5 種以上。\r\n專科章,紙藝,興趣類,能作紙藝( 摺紙、剪紙、紙雕) 兩種以上。\r\n專科章,紙藝,興趣類,能辨別紙的絲流方向，並應用絲流的特性於紙藝上。\r\n專科章,紙藝,興趣類,能用廢紙作簡單應用品兩種以上。\r\n專科章,皮雕,興趣類,能分辨人造皮與獸皮。\r\n專科章,皮雕,興趣類,能分辨牛皮、羊皮、鹿皮及豬皮等。\r\n專科章,皮雕,興趣類,能正確使用皮革工具進行剪、切、雕、打孔、縫合、編織、裝訂等技法。\r\n專科章,皮雕,興趣類,能作簡單皮件修補工作。\r\n專科章,皮雕,興趣類,能製作簡易童軍皮雕。\r\n專科章,陶藝,興趣類,能分辨陶、瓷土的性質及其用途。\r\n專科章,陶藝,興趣類,能用練土法拌和陶瓷土。\r\n專科章,陶藝,興趣類,能分辨陶瓷器皿之優劣。\r\n專科章,陶藝,興趣類,能用（手捏、泥條、土板、拉坏）中兩種技法塑造簡單器皿兩種以上。\r\n專科章,陶藝,興趣類,能正確上釉，並完成釉燒作品一件。\r\n專科章,編織,興趣類,能說出編織的歷史。\r\n專科章,編織,興趣類,能說出編織所用的各種材料及其產地。\r\n專科章,編織,興趣類,能說出各種材料的編織方法和應用工具。\r\n專科章,編織,興趣類,能利用籐竹、蘆葦、稻草、麥桿、絲、麻、棉線等材料編織成實用品3件以上。\r\n專科章,編織,興趣類,能整理和保管各項編織用品。\r\n專科章,雕塑,興趣類,能以泥材塑型（立體圓雕作品）。\r\n專科章,雕塑,興趣類,能以石材、木材、泥材3 種材料之一作半立體的浮雕。\r\n專科章,雕塑,興趣類,能以原型作石膏模型。\r\n專科章,雕塑,興趣類,能有熟練翻製蠟、石膏、塑膠等材料之翻模技術。\r\n專科章,繪畫,興趣類,能說出中西繪畫的簡史和特質。\r\n專科章,繪畫,興趣類,能演示國畫或西畫的畫法。\r\n專科章,繪畫,興趣類,能說出色彩學的大意。\r\n專科章,繪畫,興趣類,能繪想像畫、記憶畫、寫生畫、裝飾畫、插畫或漫畫，以上任選一種。\r\n專科章,繪畫,興趣類,能繪國畫或西畫一幅。\r\n專科章,攝影,興趣類,能說出攝影學原理。\r\n專科章,攝影,興趣類,能解說傳統相機與數位相機的構造、原理、操作與保養方法。\r\n專科章,攝影,興趣類,能演示控制景深的方法。\r\n專科章,攝影,興趣類,能說出照片放大法。\r\n專科章,攝影,興趣類,能拍攝六吋風景4 張（內有雨景、夜景），人像一張，靜物一張，室內景一張，動物一張。\r\n專科章,廣告設計,興趣類,能說出廣告設計的意義。\r\n專科章,廣告設計,興趣類,能說出廣告設計的構成要素。\r\n專科章,廣告設計,興趣類,能說出廣告設計編排的意義、注意要項及常用的編排法。\r\n專科章,廣告設計,興趣類,能說出並遵守廣告設計相關法規及智慧財產權保護法。\r\n專科章,廣告設計,興趣類,能用繪圖工具設計活動標章（LOGO）。\r\n專科章,廣告設計,興趣類,能用三階段草圖（創意草圖S：1/4 →發展粗稿S：1/2 →精細色稿S：1/1）將創意視覺化完成活動或公益海報一張（對開）。\r\n專科章,電腦繪圖,興趣類,能說出電腦繪圖的應用範圍，及專用術語。\r\n專科章,電腦繪圖,興趣類,能操作電腦繪圖的軟、硬體及周邊設備。\r\n專科章,電腦繪圖,興趣類,能應用繪圖軟體繪製下列質感： 1、木紋 2、石材 3、塑膠 4、金屬 5、玻璃 6、皮革 7、絲綢 8、粗麻布\r\n專科章,電腦繪圖,興趣類,能將文字或圖案立體化並設定不同光源效果。\r\n專科章,電腦繪圖,興趣類,能應用貝茲曲線（BEZIER CURVES）繪製A4 插畫及連續圖案各一張。\r\n專科章,電腦繪圖,興趣類,能應用影像處理軟體之MASK、修色、反差控制、濾鏡、過網⋯等功能，完成A3 合成影像一幅。\r\n專科章,網頁設計,興趣類,能解說網際網路瀏覽及網路組態設計的知識。\r\n專科章,網頁設計,興趣類,能正確說出網頁設計的組成元素與設計要領。\r\n專科章,網頁設計,興趣類,能正確說出常用之網頁編輯軟體的名稱與特性。\r\n專科章,網頁設計,興趣類,能解說網路資源分享及安全管制的觀念與知識。\r\n專科章,網頁設計,興趣類,能將製作網頁所指定內容材料，依指示正確操作，並利用電腦傳輸檔案至其他伺服器，成功完成各頁面串聯。\r\n專科章,建築,興趣類,能說出建築工程的發展趨勢。\r\n專科章,建築,興趣類,能說出建築物的異同及其優劣。\r\n專科章,建築,興趣類,能說出建築五金土木用料及其品質。\r\n專科章,建築,興趣類,能繪製簡單立體投影畫（三面視圖）及透視圖法。\r\n專科章,建築,興趣類,能做簡單建築圖樣（平面圖、側面圖、基礎圖、屋架圖、水電裝配圖、剖面圖等）。\r\n專科章,辯論,興趣類,能藉簡明的摘要作5 分鐘以上的國語演說。\r\n專科章,辯論,興趣類,能詳述辯論規則和主席的職權。\r\n專科章,辯論,興趣類,曾參加正式辯論兩次以上。\r\n專科章,辯論,興趣類,能說出辯論時的動作態度和其他應注意之點。\r\n專科章,編撰,興趣類,能將本團團部一切情形作一篇系統的文字報導。\r\n專科章,編撰,興趣類,曾在團部內主編刊物。\r\n專科章,編撰,興趣類,能採訪一件有價值的新聞，並加以報導。\r\n專科章,編撰,興趣類,能說出新聞編輯的方法。\r\n專科章,翻譯,興趣類,能直接聽外國語一種。\r\n專科章,翻譯,興趣類,能利用單字或片語，寫成通順之外國語句。\r\n專科章,翻譯,興趣類,能用一種外國語作簡短書信一封。\r\n專科章,翻譯,興趣類,能翻譯外國文章一篇。\r\n專科章,應用化學,興趣類,能說出漿糊、牙膏、粉筆、肥皂、墨汁、紅、藍墨水等的製作法。\r\n專科章,應用化學,興趣類,能自製蒸餾水及配製各種飲料汽水。\r\n專科章,應用化學,興趣類,能說出電鍍的基本原料和方法。\r\n專科章,應用化學,興趣類,能說出織物纖維的種類和漂染方法。\r\n專科章,應用化學,興趣類,能說出炸藥和煙幕的配合和製作方法。\r\n專科章,應用化學,興趣類,能說出滅火器的設備和使用法。\r\n專科章,農藥,興趣類,能說出重要農藥的性質及其方法。\r\n專科章,農藥,興趣類,能說出重要農藥的延毒作用。\r\n專科章,農藥,興趣類,能說出使用農藥應注意事項。\r\n專科章,農藥,興趣類,能說出噴霧、噴粉、塗刷、燻蒸等方法及應注意事項。\r\n專科章,農藥,興趣類,能說出重要農藥對溫血動物的藥害。\r\n專科章,農藝,興趣類,能識別主要農作物10 種以上。\r\n專科章,農藝,興趣類,能識別土壤質地及肥料三要素，並能解說土質與作物生長關係有相當瞭解。\r\n專科章,農藝,興趣類,能識別病害、蟲害各10 種，並能說出其防治方法。\r\n專科章,農藝,興趣類,能使用新式農具，並能說出農具之保養方法。\r\n專科章,農藝,興趣類,對操作各項田間農稼，並能說出其操作時期及方法。\r\n專科章,農藝,興趣類,有實際栽培一種以上作物至收穫之紀錄者。\r\n專科章,農產加工,興趣類,能說出農產加工對人生的重要。\r\n專科章,農產加工,興趣類,能說出農產加工的種類。\r\n專科章,農產加工,興趣類,能說出農產加工原料的特性。\r\n專科章,農產加工,興趣類,能說出一般農產加工的原理及製作方法。\r\n專科章,農產加工,興趣類,能夠鑑別農產加工品之優劣。\r\n專科章,農產加工,興趣類,能製作麵類及果實加工品各5 種。\r\n專科章,園藝,興趣類,能說出種菜和種花的原理及方法。\r\n專科章,園藝,興趣類,能說出蔬菜的簡易分類及食用價值。\r\n專科章,園藝,興趣類,能說出花卉的簡易分類及觀賞價值。\r\n專科章,園藝,興趣類,能夠分辨或介紹重要蔬菜花卉各10 種。\r\n專科章,園藝,興趣類,能說出園藝作物的繁殖方法。\r\n專科章,園藝,興趣類,能說出園藝作物對人類的重要性。\r\n專科章,園藝,興趣類,能說出氮、磷、鉀肥料成分比例，及對於花卉成長之助益。\r\n專科章,植物,興趣類,能說出兩門以上植物的生活史。\r\n專科章,植物,興趣類,能說出植物的形態構造。\r\n專科章,植物,興趣類,能說明植物的分類。\r\n專科章,植物,興趣類,能說出當地植物分佈情形及其利用方法。\r\n專科章,植物,興趣類,能說出當地的食用、藥用、有毒、香料、材用、纖維、染料、指標、觀賞植物等共20 種以上及其習性。\r\n專科章,昆蟲,興趣類,能說出兩目以上昆蟲的生活史。\r\n專科章,昆蟲,興趣類,能說出昆蟲形態及重要習性。\r\n專科章,昆蟲,興趣類,能說出昆蟲之基本分類方法。\r\n專科章,昆蟲,興趣類,能說出當地蝶類、甲蟲、蛾類等各類昆蟲20 種以上，及其習性。\r\n專科章,昆蟲,興趣類,能說出對居家有害的昆蟲防治法及驅趕法。\r\n專科章,養蜂,興趣類,能鑑別蜜蜂的品種及蜂群習性。\r\n專科章,養蜂,興趣類,能使用養蜂各項用具，並能說出飼養之方法。\r\n專科章,養蜂,興趣類,能說出蜂房種類、構造，及分封方法並曾實地操作。\r\n專科章,養蜂,興趣類,有養蜂的實際績效，並有紀錄或報告。\r\n專科章,養蜂,興趣類,能說出選擇蜂房的場所及各項管理要點。\r\n專科章,養蠶,興趣類,能識別蠶的品種，並鑑別其優劣。\r\n專科章,養蠶,興趣類,能說出蠶的製種、孵育、飼養、縲絲及蠶室管理方法，並有實地經驗。\r\n專科章,養蠶,興趣類,能說出蠶病的預防和補救方法。\r\n專科章,養蠶,興趣類,能說出桑樹栽培及桑園管理方法。\r\n專科章,養蠶,興趣類,能自行製作簡單養蠶工具。\r\n專科章,標本製作,興趣類,能說出動物標本剝製、浸製和乾製的方法。\r\n專科章,標本製作,興趣類,能說出植物標本採集和製作方法。\r\n專科章,標本製作,興趣類,能說出昆蟲標本採集、製作和保存方法。\r\n專科章,標本製作,興趣類,能說出標本製作工具和藥品的種類及使用方法。\r\n專科章,標本製作,興趣類,能製作植物及昆蟲標本各兩種以上。\r\n專科章,畜牧,興趣類,能說出我國和各國的畜牧概況。\r\n專科章,畜牧,興趣類,能說出畜牧和人類的關係。\r\n專科章,畜牧,興趣類,能說出主要家畜、家禽的飼養及管理方法。\r\n專科章,畜牧,興趣類,能飼養家畜、家禽各一種，並將飼養經過作成詳細有系統之紀錄。\r\n專科章,畜牧,興趣類,能說出禽、畜防疫及一般傷害疾病急救方法。\r\n專科章,獸醫,興趣類,能說出解剖學的大要。\r\n專科章,獸醫,興趣類,能由家禽的呼吸數、體溫及脈搏診察其健康與否。\r\n專科章,獸醫,興趣類,能說出主要藥劑的特性功能及其使用方法。\r\n專科章,獸醫,興趣類,能說出禽、畜普通病症的治療方法。\r\n專科章,獸醫,興趣類,能說出家畜受傷害後的救護法。\r\n專科章,獸醫,興趣類,能查驗禽、畜的傳染病症，並能說出其預防方法。\r\n專科章,獸類,興趣類,能說出數類哺乳動物的生活史。\r\n專科章,獸類,興趣類,能說出一般獸類的生理及形態名稱。\r\n專科章,獸類,興趣類,能說出獸類的足跡、排遺及食痕的描述記錄法。\r\n專科章,獸類,興趣類,認識獸類20 種以上及其生活習性。\r\n專科章,釣魚,興趣類,能說出釣魚的方法並能使用釣魚用具。\r\n專科章,釣魚,興趣類,能說出5 種以上的淡水魚類之名稱及習性。\r\n專科章,釣魚,興趣類,能說出養魚的方法。\r\n專科章,釣魚,興趣類,能寫出5 種以上本土保育的魚類名稱。\r\n專科章,魚類,興趣類,能說出不同類型魚類的生活史。\r\n專科章,魚類,興趣類,能說出魚類的內外部的形態及名稱。\r\n專科章,魚類,興趣類,能詳述當地常見的有毒魚類（若無則免）。\r\n專科章,魚類,興趣類,能說出5 種以上常見魚類的生活習性。\r\n專科章,賞鳥,興趣類,能正確調整、使用望遠鏡，觀察野外鳥類，且能說出望遠鏡各部位標示的意義。\r\n專科章,賞鳥,興趣類,能在室內、外正確的保養、保護、保存望遠鏡。\r\n專科章,賞鳥,興趣類,能說出鳥類體表的各部位名稱。\r\n專科章,賞鳥,興趣類,能說出各類野生鳥類的作息及最佳的觀察季節與時間。\r\n專科章,賞鳥,興趣類,能正確的記述或簡單繪圖標示鳥類的特徵。\r\n專科章,賞鳥,興趣類,能辨識且解說常見野生陸鳥及水鳥各20 種( 共40 種)。\r\n專科章,賞鳥,興趣類,能正確使用圖鑑辨識鳥類。\r\n專科章,賞鳥,興趣類,會做簡易的鳥類調查紀錄。\r\n專科章,賞鳥,興趣類,規劃執行小區域簡單的鳥類資源調查，並完成報告（20次以上調查紀錄的整理）。\r\n專科章,簿記,興趣類,能說出記帳之意義及其重要。\r\n專科章,簿記,興趣類,要達到迅速、正確、完備明瞭之目的。\r\n專科章,簿記,興趣類,要有熟練之記帳技術。\r\n專科章,簿記,興趣類,要能編製正確之各種報表。\r\n專科章,統計圖表,興趣類,能說出統計的意義及其重要。\r\n專科章,統計圖表,興趣類,能說出一般統計製表的規則及方法。\r\n專科章,統計圖表,興趣類,能說出各種圖表的應用比較。\r\n專科章,統計圖表,興趣類,能繪製線圖、條圖、面積圖、象形圖和統計地圖。\r\n專科章,珠算,興趣類,能說出學習珠算之目的。\r\n專科章,珠算,興趣類,能說出算盤之歷史。\r\n專科章,珠算,興趣類,能熟練地操作運珠法與運指法。\r\n專科章,珠算,興趣類,能熟練各種計算方法。 1、加減算 2、乘算 3、除算 4、傳票算 5、心算 6、乘算定位法 7、除算定位法 8、應用計算 9、開方\r\n專科章,泥工,興趣類,能說出泥工用具的使用方法。\r\n專科章,泥工,興趣類,能說出混凝土的人工拌和與機械拌和法。\r\n專科章,泥工,興趣類,能說出混凝土的配合比例。\r\n專科章,泥工,興趣類,能說出混凝土震動器的使用方法。\r\n專科章,泥工,興趣類,能舖卵石或砌磚牆。\r\n專科章,漆工,興趣類,能說出油漆工作時的健康管理及安全與環境維護。\r\n專科章,漆工,興趣類,能說出油漆的原料及配合法。\r\n專科章,漆工,興趣類,能說出生漆和調和漆的優劣。\r\n專科章,漆工,興趣類,能說出市面上油漆的種類、特性及用途。\r\n專科章,漆工,興趣類,能詳述油漆工具的使用法和保管法。\r\n專科章,漆工,興趣類,能使用油漆法進行下列物品之塗刷：門窗、牆壁、天花板、傢俱、鋼鐵器物。\r\n專科章,漆工,興趣類,能詳述各種油漆的保管法。\r\n專科章,木工,興趣類,能識別針葉與闊葉木各5 種以上。 1、針葉：杉木、松木、檜木、鐵杉等。 2、闊葉：胡桃木、白楊木、樺木、柚木、樟木等。\r\n專科章,木工,興趣類,能說出各種主要木材的特性及其用途。\r\n專科章,木工,興趣類,能熟練的使用一般普通木工器具和磨礪的方法。\r\n專科章,木工,興趣類,能說明各種榫接法，並能製造公母榫接一種以上。\r\n專科章,木工,興趣類,能製作實用木器一具。\r\n專科章,裁縫,興趣類,能說出各種線號。\r\n專科章,裁縫,興趣類,能裁開三角形及長條形布條。\r\n專科章,裁縫,興趣類,能用手縫補破洞。\r\n專科章,裁縫,興趣類,能用尺量身材，並完成活動背心一件。\r\n專科章,裁縫,興趣類,能為縫紉機上油。\r\n專科章,電工,興趣類,能說出各種電工材料及其規格。\r\n專科章,電工,興趣類,能分辨直流電和交流電。\r\n專科章,電工,興趣類,能說出電流、電壓、電阻的意義，及其關係與量度法。\r\n專科章,電工,興趣類,能區分高壓電與低壓電。\r\n專科章,電工,興趣類,能進行各種電線的接合法及絕緣措施與漏電檢查。\r\n專科章,電工,興趣類,能正確使用電路的連接法（串聯與並聯）。\r\n專科章,電工,興趣類,能說出防止觸電及觸電時之急救。\r\n專科章,機械,興趣類,能說出機械作功的意義。\r\n專科章,機械,興趣類,能說出6 種簡單機械作功的基本原理及其運用。\r\n專科章,機械,興趣類,能說出發電機、電動機的功用，及其主要構造與保管維護要領。\r\n專科章,機械,興趣類,能熟練地操作砂輪、鑽床、車床等簡單機械。\r\n專科章,機械,興趣類,能熟練的使用工具，例如：劃線架、螺絲、手鋸、電鑽等。\r\n專科章,機械,興趣類,能解說機械工圖說及插繪簡單工作圖。\r\n專科章,機械,興趣類,能判讀各種尺寸及使用一般測量儀具。\r\n專科章,機械,興趣類,能照圖製作簡單構架與零件。\r\n專科章,板金工,興趣類,能說出各種鐵皮材料的規格及其用途。\r\n專科章,板金工,興趣類,能說出各種鐵皮材料的施工方法。\r\n專科章,板金工,興趣類,能使用一般的板金工具。\r\n專科章,板金工,興趣類,能說出寸法的使用。\r\n專科章,板金工,興趣類,能看圖劃線及估料計料。\r\n專科章,板金工,興趣類,能處理搥擊、修邊、捲邊、和撓扣鑲工作。\r\n專科章,鉗工,興趣類,能說出各種鐵材及其性質。\r\n專科章,鉗工,興趣類,能說出工具的使用方法。\r\n專科章,鉗工,興趣類,能說出寸法的使用。\r\n專科章,鉗工,興趣類,能解說草圖、藍圖的內容。\r\n專科章,鉗工,興趣類,能作正方或三角開孔鐵或直角曲尺實樣一件。\r\n專科章,銲工,興趣類,能判讀藍圖與焊接符號。\r\n專科章,銲工,興趣類,能說出電氣的基本常識。\r\n專科章,銲工,興趣類,熟練地操作「電焊」與「氣焊」設備。\r\n專科章,銲工,興趣類,能詳述「對接法」與「搭接法」工作之執行要領。\r\n專科章,銲工,興趣類,能判別焊接工作之圓滿與否。\r\n專科章,汽車修護,興趣類,能說出汽車的種類和用途。\r\n專科章,汽車修護,興趣類,能說出汽車各主要機件的名稱。\r\n專科章,汽車修護,興趣類,能說出汽車發動前後的檢查要領。\r\n專科章,汽車修護,興趣類,能檢查汽車輪胎氣壓是否正常及換裝輪胎。\r\n專科章,汽車修護,興趣類,能做汽車之清洗、擦拭、打臘及維護。\r\n專科章,汽車修護,興趣類,能做四油、三水的檢查與電路上的故障排除工作。\r\n專科章,機車修護,興趣類,能解說各型車種廠牌及汽缸容量。\r\n專科章,機車修護,興趣類,能說出機車原理及各種構造。\r\n專科章,機車修護,興趣類,可以簡單修護電路及故障。\r\n專科章,機車修護,興趣類,能裝拆輪胎，修補內胎。\r\n專科章,機車修護,興趣類,騎機車能掌握起動要領與駕駛技巧。\r\n專科章,機車修護,興趣類,能做火星塞之檢查及清洗。\r\n專科章,自行車修護,興趣類,能解說各種自行車之車型及其特性。\r\n專科章,自行車修護,興趣類,能知道自行車的全部構造及其功能。\r\n專科章,自行車修護,興趣類,能分解及裝合任何型別之自行車。\r\n專科章,自行車修護,興趣類,能修理自行車機件、車胎及處理一般故障。\r\n專科章,帆船,興趣類,持有游泳專科章。\r\n專科章,帆船,興趣類,能說出帆船船具保養與清潔要領。\r\n專科章,帆船,興趣類,能駕駛與操縱帆船，熟悉操帆法、操舵法、上船法、船中的安全動作，並熟練前進、靠岸等操作。\r\n專科章,帆船,興趣類,能救援落水人員。\r\n專科章,帆船,興趣類,能熟練應用稱人結的繫船法。\r\n專科章,帆船,興趣類,能說出帆船檢點整備的要點。\r\n專科章,機帆船,興趣類,能說出機帆船的構造概略。\r\n專科章,機帆船,興趣類,能說出發動機的保養要領。\r\n專科章,機帆船,興趣類,能駕駛與操縱機帆船。\r\n專科章,機帆船,興趣類,能應用通訊訊號。\r\n專科章,機帆船,興趣類,能說出機帆船各部份的保養及清潔要領。\r\n專科章,機帆船,興趣類,能照料暈船人員。\r\n專科章,飛機,興趣類,能識別飛機、飛船及飛艇。\r\n專科章,飛機,興趣類,能識別飛機種別、型別及標幟。\r\n專科章,飛機,興趣類,能說出飛機、飛船、飛艇的飛行原理。\r\n專科章,飛機,興趣類,能說出飛機進步沿革及製造大概。\r\n專科章,飛機,興趣類,能說出軍機的攻擊方式及防禦方法。\r\n專科章,飛機,興趣類,能製造一種以上的飛機模型。\r\n專科章,國防科技,興趣類,能說出國防科技在國家、人類文明的定位。\r\n專科章,國防科技,興趣類,能說出我國的國防科技成就，並曾參觀過國防科技展或演示。\r\n專科章,國防科技,興趣類,能述說我國陸、海、空主要武器載具的種類、用途與優缺點。\r\n專科章,國防科技,興趣類,能述說非殺傷性武器的種類與其特性。\r\n專科章,國防科技,興趣類,能說出國防科技對未來戰爭的影響。\r\n專科章,化生放,興趣類,能說出化學戰劑（毒氣）的種類和性能。\r\n專科章,化生放,興趣類,能說出生物戰劑（細菌）的種類和性能。\r\n專科章,化生放,興趣類,能說出放射線戰劑（核輻射）的簡單性能。\r\n專科章,化生放,興趣類,能說出躲避毒氣及中毒施救的方法。\r\n專科章,化生放,興趣類,能分辨生化警報種類，並能遵從安全人員之指揮，在聞警報時迅速避向安全地區。\r\n專科章,望遠鏡,興趣類,能說出雙筒望遠鏡的各種配件。\r\n專科章,望遠鏡,興趣類,能說出望遠鏡的成像原理。\r\n專科章,望遠鏡,興趣類,能使用望遠鏡，並能將標的物在地圖上與現地作對照。\r\n專科章,望遠鏡,興趣類,能說出望遠鏡的操作原理。\r\n專科章,望遠鏡,興趣類,能說出不同望遠鏡的保養方法。\r\n",
+   "progressRules": {
+    "初級": "凡年滿11歲之少年，經家長同意，自願申請參加為童軍。經2個月以上，初級童軍合格標準訓練，由小隊長在群體生活中，訓練其童軍技能；童軍精神經團長認可後，由所屬童軍團向縣（市）童軍會辦理登記後，舉辦宣誓入團儀式，背誦童軍諾言，佩戴初級童軍章、團領巾。幼童軍升團後，經2個月以上，初級童軍合格標準訓練，由小隊長在群體生活中，訓練其童軍技能；童軍精神經團長認可後，舉辦宣誓儀式，背誦童軍諾言，佩戴初級童軍",
+    "中級": "晉級初級童軍後，開始4個月以上，中級童軍合格標準訓練，在群體生活中由小隊長考驗其童軍技能，童軍精神經團長認可後，登錄於「童軍、行義童軍晉級手冊」，公開舉辦晉級儀式，頒發中級童軍",
+    "高級": "晉級中級童軍後，開始5個月以上，高級童軍合格標準訓練，其童軍精神、領導能力、群體生活，經團長認可，推薦參加縣（市）童軍會舉辦之考驗（營），童軍技能經考驗委員評定確達高級童軍合格標準，由所屬童軍團向縣（市）童軍會辦理晉級，經縣（市）童軍會核定後，向省（市）童軍會、總會填報晉級名冊，公開舉辦晉級儀式或縣（市）童軍會舉辦慶典活動中，頒授高級童軍合格證書及高級童軍章。新加入行義童軍尚未取得高級童軍章者，得由所屬童軍團進行4個月以上之高級童軍進程訓練。經團長考驗，認其確具高級童軍精神、領導能力、群體生活、技能標準者，由所屬童軍團向縣（市）童軍會辦理高級童軍核備後，佩戴高級童軍",
+    "獅級": "核准高級童軍章之後，開始6個月以上，獅級童軍合格標準訓練，其童軍精神、領導能力、群體生活，經團長認可；專科智能，經考驗委員評定合於專科章標準。各項經團長確達獅級童軍合格標準，由所屬童軍團提報縣（市）童軍會申請晉級，經縣（市）童軍會核定，縣（市）童軍會並向省（市）童軍會、總會填報晉級名冊，公開舉辦晉級儀式，或在省（市）、縣（市）童軍會舉辦之儀典活動，頒授獅級童軍合格證書及獅級童軍",
+    "長城": "核准獅級童軍章之後，開始8個月以上，長城級童軍合格標準訓練，其童軍精神、領導能力、群體生活，經團長認可；專科智能，經考驗委員評定合於專科章標準。各項經團長確達長城童軍合格標準，由所屬童軍團提報縣（市）童軍會申請晉級，經縣（市）童軍會審議確達長城級童軍合格標準，由縣（市）童軍會送省（市）童軍會核定，省（市）童軍會向總會填報晉級名冊，公開舉辦晉級儀式，或在省（市）、縣（市）童軍會舉辦之儀典活動，頒授長城級童軍合格證書及長城級童軍章",
+    "國花": "核准長城級童軍章之後，開始8個月以上，國花級童軍合格標準訓練，其童軍精神、領導能力、群體生活，經團長認可；專科智能，經考驗委員評定合於專科章標準。各項經團長確達國花級童軍合格標準，由所屬童軍團提報縣（市）童軍會申請晉級，經縣（市）童軍會審議確達國花級童軍合格標準，送總會核定，晉級國花級童軍名冊副知省（市）童軍會。在全國性童軍儀典活動中，頒授國花級童軍合格證書及國花級童軍章"
+   }
+  },
+  "羅浮": {
+   "itemsCsv": "類別,級別或章名,大項或分類,項目內容\r\n進程,見習羅浮,途徑1,至少參加二次羅浮群（童軍團）活動，其中一次須為戶外活動。\r\n進程,見習羅浮,途徑1,了解本群（團）的歷史、組織架構、職務與權責。知道羅浮進程的具體內容與羅浮活動。\r\n進程,見習羅浮,途徑1,能以成年人的立場詮釋童軍諾言及規律之意義，並願意具體實踐之。\r\n進程,見習羅浮,途徑2,參加活動：至少參加三次羅浮群（童軍團）活動，其中一次須為戶外活動。\r\n進程,見習羅浮,途徑2,認識童軍： A. 了解本群（團）的歷史、組織架構、職務與權責。 B. 認識我國的童軍運動。 a. 我國童軍運動發展與史略。 b. 我國各階段童軍的進程與活動。 C. 了解世界童軍運動起源及發展概況。\r\n進程,見習羅浮,途徑2,童軍禮節： A. 認識各級童軍的制服樣式，知道羅浮童軍制服及徽章的佩戴法。 B. 認識各級童軍的徽章與標誌。 C. 明瞭並知道使用下列禮節的時機： a. 徒手禮 b. 握手禮 c. 三指禮 D. 明瞭並能使用下列的儀典： a. 升旗、揚旗 b. 降旗\r\n進程,見習羅浮,途徑2,諾言及規律： A. 能背誦童軍諾言。 B. 能以成年人的立場詮釋童軍諾言及規律之意義，並願意具體實踐之。\r\n進程,授銜羅浮,－,童軍知能： A. 認識世界童軍與我國童軍之組織架構。 B. 了解童軍運動的定義、目的、原則及訓練方法。 C. 了解虔敬集會的意義並能運用。 D. 閱讀羅浮童軍相關書籍，書目另定之。\r\n進程,授銜羅浮,－,社區服務：積極參與各類社區服務或其它義務工作，累計達 36 小時。\r\n進程,授銜羅浮,－,戶外活動： A. 積極參與室外環境中的教育與休閒活動，如：野外拓荒、環境保育、自然研究等，至少二類並有書面活動記錄。 B. 熟悉基本露營技巧，曾經在不同營地露營並累積有兩夜以上的經驗。 C. 具備風險意識，能識別、評估及應對各類活動中的潛在風險，並參加急救訓練包含急救概述、創傷止血、包紮、傷患運送、心肺復甦術（CPR）、自動體外電擊器(AED) 操作及異物哽塞等項目，且能操作上述急救方法。\r\n進程,授銜羅浮,－,生活體驗：開啟個人生涯規劃和對社會事務的了解，培養自我覺察之能力，做好個人準備，以融入社會。\r\n進程,授銜羅浮,－,價值理念：省思自我價值，探究自我角色定位，了解並包容他人的觀點，培養個人客觀的態度及宏觀思惟。\r\n進程,授銜羅浮,－,個人興趣：公開展示並介紹有關個人興趣之活動、收集、作品等成果。\r\n進程,授銜羅浮,－,人際關係：曾參加群體研習、訓練等課程、並有與不相熟識的青年一起工作學習的經驗。\r\n進程,授銜羅浮,－,認識世界：認識至少三個國家或地區的文化、歷史、風俗。\r\n進程,服務羅浮,基本要求,心靈發展：探索生命的意義、生活的目的，發展自我價值體系、個人人生哲學與宗教觀。\r\n進程,服務羅浮,基本要求,運動與健康：從事一項或多項運動，持續至少六個月以上。\r\n進程,服務羅浮,基本要求,.野外活動： a. 曾在三個以上不同營地露營並累積有六夜以上的經驗，能享受野外生活樂趣，並展現良好的露營技巧。 b. 邀集伙伴組成團隊，經由共同計畫，進行至少三天兩夜的野外探涉旅行。 c. 知道野外急救的目的，並能於野外操作以下急救方法：傷口清創與止血、包紮、骨折固定(四肢) 、失溫與熱疾病、傷患搬運。\r\n進程,服務羅浮,基本要求,社會服務與學習： a. 參與服務學習達 96 小時以上，並獲有簽證者。 b. 參加童軍組織所辦理之志工、服務學習等研習活動 c. 結合志同道合的伙伴或其他人士共同參與社會服務工作並有具體貢獻。\r\n進程,服務羅浮,主題活動,活動企劃與領導： a. 參加國內外相關「活動企劃與領導」之訓練。 b. 結合跨群團夥伴，主辦累計三天以上的聯團童軍活動。\r\n進程,服務羅浮,主題活動,自然探索與保育： a. 能夠了解台灣之自然生態及當今所面臨之問題，提出相關因應之道。 b. 能實踐「無痕山林」(Leave No Trace)。\r\n進程,服務羅浮,主題活動,專業職能與認證： a. 取得國內外相關「專業團體」之認證證書。 b. 以專業職能策劃辦理二次童軍活動者。參與以上各項主題活動者需逐項提出個人或小組完成該項的具體計畫（含計劃、預期成果、執行、評量或相關具體內容），有關進程之施行辦法內容另訂之。\r\n",
+   "progressRules": {
+    "見習羅浮": "【途徑1】年滿17歲，曾為高級童軍者得加入羅浮群，於完成下列各項要求，經該羅浮群會議議決後，由群長（團長）頒發見習章成為見習羅浮。【途徑2】符合參加資格之青年得自願申請加入羅浮群，於完成下列各項要求，經羅浮群會議議決後，由群長（團長）頒發見習章成為見習羅浮。",
+    "授銜羅浮": "成為見習羅浮滿六個月以上，持續參與羅浮童軍活動，並在八項主題活動中，有顯著之成就。由群長初審及推薦，認為在生活言行及服務態度確具童軍精神，經羅浮群會議及團長複審，參加自省守靜後，在授銜儀式中由團長（或羅浮顧問）頒發授銜羅浮章。",
+    "服務羅浮": "成為授銜羅浮滿十二個月以上，曾參與籌畫並執行至少兩次由兩個以上的羅浮群共同籌辦或參與之活動。且積極參與各級羅浮組織之活動具有成效者。完成進程內容基本要求，並在下列主題活動中自選一項完成，經羅浮群會議及團長初審及薦，認為在生活言行、專業能力及服務態度確具童軍精神，獲羅浮暨青年委員會委任之單位複審通過後，由童軍總會於公開儀式頒發服務羅浮章。"
    }
   }
  }
@@ -2011,7 +2124,7 @@ function loadCubs_() {
     return {
       cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: validDateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), leaveReason: Logic.clean(r[12]), _row: r._row, _raw: r
     };
   });
 }
@@ -2101,7 +2214,7 @@ function detailsView_(byItem, itemId) {
 /** 級別與章說明，全部分團（容錯：略過空白列與名稱空白列）；sec 是分團（空白＝小狼） */
 function loadAllUnits_() {
   return readRows_(SHEET.UNITS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.sectionOf(r[6]), _row: r._row };
+    return { name: Logic.clean(r[0]), category: Logic.clean(r[1]), group: Logic.clean(r[2]), desc: Logic.clean(r[3]), rule: Logic.clean(r[4]), order: Number(r[5]) || 9999, sec: Logic.progressSec(r[6]), _row: r._row };
   });
 }
 
@@ -2110,7 +2223,7 @@ function loadAllUnits_() {
  * @param section 分團；沒給時用目前分團（後台請求），再沒有就是小狼
  */
 function loadUnits_(section) {
-  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
+  var sec = Logic.progressSec(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || '');
   var map = {};
   loadAllUnits_().forEach(function (u) { if (u.sec === sec) map[u.category + '|' + u.name] = u; });
   return map;
@@ -2119,15 +2232,15 @@ function loadUnits_(section) {
 /** 公開進程查詢的快取（每個有進程的分團一份） */
 function removeCatalogCache_() {
   var c = CacheService.getScriptCache();
-  Logic.PROGRESS_SECTIONS.forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
+  Object.keys(Logic.PROGRESS_MODULES).forEach(function (sec) { c.remove('CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec)); });
 }
 
 /** 分團欄要寫的值：小狼留空（和舊資料一樣），其他寫分團名稱 */
-function secCell_(section) { var s = Logic.sectionOf(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
+function secCell_(section) { var s = Logic.progressSec(section); return s === Logic.DEFAULT_SECTION ? '' : s; }
 
 /** 某分團的項目（含停用）；item.sec 是分團 */
 function sectionItems_(section) {
-  var sec = Logic.sectionOf(section);
+  var sec = Logic.progressSec(section);
   return loadItems_().items.filter(function (it) { return it.sec === sec; });
 }
 
@@ -2142,7 +2255,7 @@ function loadCompletions_() {
 
 function loadAwards_() {
   return readRows_(SHEET.AWARDS).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.sectionOf(r[7]), _row: r._row };
+    return { cubId: Logic.clean(r[0]), unit: Logic.clean(r[1]), date: dateStr_(r[2]), occasion: Logic.clean(r[3]), note: Logic.clean(r[4]), signer: Logic.clean(r[5]), sec: Logic.progressSec(r[7]), _row: r._row };
   });
 }
 
@@ -2182,15 +2295,26 @@ function loadExtra_() {
 
 function loadConsents_() {
   return readRows_(SHEET.CONSENT).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]) };
+    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]), audience: Logic.clean(r[3]) };
   });
 }
 
-function latestConsent_() {
-  var list = loadConsents_();
+/** 個資告知分兩份（附錄第 73 點⑲）：對象空白＝家長版（含童軍本人），「羅浮本人」＝成年人版；版本各自計算 */
+function consentAudience_(v) { return Logic.clean(v) === Logic.ROVER_AUDIENCE ? Logic.ROVER_AUDIENCE : ''; }
+function latestConsent_(audience) {
+  var aud = consentAudience_(audience);
+  var list = loadConsents_().filter(function (c) { return c.audience === aud; });
   var v = Logic.latestConsentVersion(list);
   return list.filter(function (c) { return c.version === v; })[0] || null;
 }
+function latestConsentVersionFor_(audience) { var c = latestConsent_(audience); return c ? c.version : 0; }
+
+/** 本人綁定且屬於成年的分團（羅浮）＝成年本人：用成年人版告知、權限和家長一樣 */
+function isAdultSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && Logic.ADULT_SELF_SECTIONS.indexOf(Logic.sectionOf(section)) >= 0; }
+/** 未成年的本人帳號（童軍、行義本人）：權限另外限制 */
+function isMinorSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && !isAdultSelf_(binding, section); }
+function bindingAudience_(binding, section) { return isAdultSelf_(binding, section) ? Logic.ROVER_AUDIENCE : ''; }
+function bindingNeedsConsent_(binding, section) { return Logic.needsReconsent(binding, latestConsentVersionFor_(bindingAudience_(binding, section))); }
 
 function loadSettings_() { return Logic.parseSettings(readAll_(SHEET.SETTINGS)); }
 
@@ -2203,6 +2327,27 @@ function loadPermRules_() {
 /** 寫操作日誌（不得寫入密碼、臨時碼、登入憑證） */
 function logOp_(actor, action, target, before, after) {
   appendRows_(SHEET.LOG, [[new Date(), actor || '', action, target || '', before || '', after || '']]);
+}
+
+/** 升團紀錄（附錄第 69、80 點） */
+function loadPromotions_() {
+  if (!ss_().getSheetByName(SHEET.PROMOTIONS)) return [];
+  return readRows_(SHEET.PROMOTIONS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return { cubId: Logic.clean(r[0]), from: Logic.sectionOf(r[1]), to: Logic.sectionOf(r[2]), date: dateStr_(r[3]), joinDate: dateStr_(r[4]), squad: Logic.clean(r[5]), role: Logic.clean(r[6]) };
+  });
+}
+
+/**
+ * 紀錄跟著人走（附錄第 69 點）：這位團員在「其他分團」拿到的章與升團經過，新分團的團長與家長都看得到。
+ * 白名單：分團、名稱、類別、頒發日期；升團的原分團、新分團、日期。
+ */
+function cubHistory_(cub) {
+  var mine = Logic.progressSec(cub.section);
+  var awards = loadAwards_().filter(function (a) { return a.cubId === cub.cubId && a.sec !== mine; }).map(function (a) {
+    return { section: a.sec, unit: a.unit, category: Logic.isLevelOf(a.sec, a.unit) ? Logic.CATEGORY.PROGRESS : Logic.CATEGORY.BADGE, date: a.date };
+  }).sort(function (a, b) { return Logic.SECTIONS.indexOf(a.section) - Logic.SECTIONS.indexOf(b.section) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
+  var promotions = loadPromotions_().filter(function (p) { return p.cubId === cub.cubId; }).map(function (p) { return { from: p.from, to: p.to, date: p.date }; });
+  return { awards: awards, promotions: promotions };
 }
 
 // ════════════════ Auth.js ════════════════
@@ -2512,7 +2657,8 @@ function dispatch_(req) {
  */
 function apiCatalog_(req) {
   // 分團（附錄第 77 點）：沒帶或不是有進程的分團時是小狼（舊網址 #progress、#badges）
-  var sec = Logic.sectionOf(req && req.section);
+  // 行義和童軍共用一套（附錄第 80 點）：回傳童軍的資料
+  var sec = Logic.progressSec(req && req.section);
   if (!Logic.progressModule(sec)) return { units: [], section: sec, levels: [] };
   var cache = CacheService.getScriptCache(), ckey = 'CATALOG2' + (sec === Logic.DEFAULT_SECTION ? '' : '_' + sec);
   var hit = cache.get(ckey);
@@ -2530,15 +2676,15 @@ function apiCatalog_(req) {
     }
     groups[k].items.push({ section: it.section, text: it.text, details: detailsView_(byItem, it.id) });
   });
-  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }), section: sec, levels: Logic.levelsOf(sec), badgeGroups: Logic.progressModule(sec).badgeGroups };
+  var out = { units: order.map(function (k) { return groups[k]; }).sort(function (a, b) { return a.order - b.order; }), section: sec, levels: Logic.levelsOf(sec), badgeGroups: Logic.progressModule(sec).badgeGroups, badgeLabel: Logic.progressModule(sec).badgeLabel || '技能章' };
   try { cache.put(ckey, JSON.stringify(out), 300); } catch (e) { /* 超過快取大小時不快取 */ }
   return out;
 }
 
-function apiConsentText_() {
-  var c = latestConsent_();
+function apiConsentText_(req) {
+  var c = latestConsent_(req && req.audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
-  return { version: c.version, content: c.content, effective: c.effective };
+  return { version: c.version, content: c.content, effective: c.effective, audience: c.audience };
 }
 
 // ───────────── 綁定碼／邀請碼 ─────────────
@@ -2623,8 +2769,8 @@ function redeemInvite_(accountId, invite, nickname) {
   updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
 }
 
-function requireConsentVersion_(agreedVersion) {
-  var c = latestConsent_();
+function requireConsentVersion_(agreedVersion, audience) {
+  var c = latestConsent_(audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
   if (Number(agreedVersion) !== c.version) throw new ApiError(ERR.NEED_CONSENT, '請先閱讀並勾選同意個資告知內容。');
   return c.version;
@@ -2761,7 +2907,9 @@ function apiUpdateNickname_(req, who) {
 function isScoutSelfAccount_(who) {
   if (who.admin) return false;
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  return mine.length > 0 && mine.every(function (b) { return b.relation === Logic.RELATION.SELF; });
+  var secOf = {};
+  loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+  return mine.length > 0 && mine.every(function (b) { return isMinorSelf_(b, secOf[b.cubId]); });
 }
 function assertNotScoutSelf_(who) {
   if (isScoutSelfAccount_(who)) throw new ApiError(ERR.FORBIDDEN, '童軍本人帳號不能做這個操作，請家長處理。');
@@ -2787,9 +2935,13 @@ function apiBind_(req, who) {
 /** 告知內容改版後重新同意：更新此帳號所有綁定的同意時間與版本 */
 function apiReconsent_(req, who) {
   return withLock_(function () {
-    var version = requireConsentVersion_(req.consentVersion);
-    var now = new Date();
-    var ups = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; }).map(function (b) {
+    var now = new Date(), secOf = {};
+    loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+    var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+    // 帳號只有成年本人綁定時同意的是成年人版，否則是家長版；只更新同一份的綁定
+    var aud = mine.length && mine.every(function (b) { return isAdultSelf_(b, secOf[b.cubId]); }) ? Logic.ROVER_AUDIENCE : '';
+    var version = requireConsentVersion_(req.consentVersion, aud);
+    var ups = mine.filter(function (b) { return bindingAudience_(b, secOf[b.cubId]) === aud; }).map(function (b) {
       var row = b._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
       row[3] = now; row[4] = version;
       return { row: b._row, values: row };
@@ -2821,6 +2973,7 @@ function registerByRequest_(req) {
   return withLock_(function () {
     var settings = loadSettings_().values;
     var identity = Logic.clean(req.identity);
+    if (identity === Logic.IDENTITY.ROVER_SELF) return registerRoverSelf_(req, settings);
     if (identity !== Logic.IDENTITY.PARENT && identity !== Logic.IDENTITY.STAFF) throw new ApiError(ERR.BAD_INPUT, '請選擇身分（家長或服務員）。');
     var v = Logic.validateChildNames(req.childNames, identity === Logic.IDENTITY.PARENT);
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
@@ -2845,6 +2998,30 @@ function registerByRequest_(req) {
     var s = createSession_(accountId, !!req.remember, settings);
     return { token: s.token, expiresAt: s.expiresAt };
   });
+}
+
+/**
+ * 羅浮本人自己註冊（附錄第 73 點⑱）：不需要家長；同意成年人版個資告知，送出「本人」申請到羅浮，群長核准後綁定為本人。
+ * 在 registerByRequest_ 的鎖裡面呼叫。
+ */
+function registerRoverSelf_(req, settings) {
+  var v = Logic.validateChildNames([req.selfName], true);
+  if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error.replace('孩子', '你'));
+  checkAccountInput_(req.username, req.password, req.nickname || v.names[0], settings);
+  var version = requireConsentVersion_(req.consentVersion, Logic.ROVER_AUDIENCE);
+  var requests = loadRequests_();
+  if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
+    throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
+  }
+  if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+  var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
+  var salt = randomHex_(32), now = new Date();
+  var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+  appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), Logic.clean(req.nickname) || v.names[0], hash, salt, '啟用', now, now, '', '']]);
+  appendRows_(SHEET.REQUESTS, [requestRow_(accountId, '本人', v.names[0], version, requests, now, '羅浮')]);
+  logOp_(accountId, '註冊申請', Logic.clean(req.username), '', '羅浮本人');
+  var s = createSession_(accountId, !!req.remember, settings);
+  return { token: s.token, expiresAt: s.expiresAt };
 }
 
 /** 已登入的家長再申請新增孩子（例如第二個孩子） */
@@ -2910,7 +3087,6 @@ function apiStartup_(req, who) {
 }
 
 function apiMe_(req, who) {
-  var latest = Logic.latestConsentVersion(loadConsents_());
   var cubs = loadCubs_();
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
   var list = [];
@@ -2919,7 +3095,9 @@ function apiMe_(req, who) {
     if (!c) return;
     list.push({ cubId: c.cubId, name: c.name, section: c.section, relation: b.relation || Logic.RELATION.PARENT, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
   });
-  var hasParentBinding = list.some(function (x) { return x.relation !== Logic.RELATION.SELF; });
+  // 成年的羅浮本人和家長一樣（附錄第 80 點）；未成年的本人帳號另外限制
+  var hasParentBinding = list.some(function (x) { return !isMinorSelf_(x, x.section); });
+  var myAudience = list.length && list.every(function (x) { return isAdultSelf_(x, x.section); }) ? Logic.ROVER_AUDIENCE : '';
   var isScoutSelf = !who.admin && list.length > 0 && !hasParentBinding;
   var mySec = who.section || (list[0] ? list[0].section : '');
   var permView = resolveWhoPerms_(who, hasParentBinding, isScoutSelf, mySec);
@@ -2963,8 +3141,10 @@ function apiMe_(req, who) {
       var rej = mineReq.filter(function (r) { return r.status === '已退回'; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 5);
       return pend.concat(rej).map(function (r) { return { type: r.type, name: r.name, status: r.status, at: r.at ? new Date(r.at).toISOString() : '', note: r.note }; });
     })(),
-    latestConsentVersion: latest,
-    needsConsent: mine.some(function (b) { return Logic.needsReconsent(b, latest); })
+    latestConsentVersion: latestConsentVersionFor_(myAudience),
+    needsConsent: mine.some(function (b) { var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0]; return bindingNeedsConsent_(b, c ? c.section : ''); }),
+    // 帳號只有成年本人綁定時看成年人版告知（附錄第 73 點⑲）
+    consentAudience: myAudience
   };
 }
 
@@ -2977,12 +3157,12 @@ function apiCubDetail_(req, who) {
   var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
   // 沒有綁定與小狼不存在回同一句話，不透露小狼是否存在
   if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) {
-    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
-  }
   var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
   if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  var isSelf = binding.relation === Logic.RELATION.SELF;
+  if (bindingNeedsConsent_(binding, cub.section)) {
+    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+  }
+  var isSelf = isMinorSelf_(binding, cub.section);
   var pv = resolveWhoPerms_(who, !isSelf, isSelf, cub.section);
   var view = buildCubView_(cub, today_());
   view.relation = binding.relation || Logic.RELATION.PARENT;
@@ -3055,7 +3235,7 @@ function buildCubView_(cub, today) {
       tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart,
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
-    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位
@@ -3435,6 +3615,8 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
       pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核' && requestVisible_(r); }).length : 0,
       notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0),
+      // LINE 推播額度（附錄第 73 點㉑）：只給總團與最高管理員（沒有最高管理員時團長）
+      lineQuota: canManageAll_(who) ? lineQuota_() : null,
       placeholders: canShared_(who, '個資告知') || canShared_(who, '網站內容') ? placeholderPlaces_() : []
     }
   };
@@ -3460,6 +3642,7 @@ function allSectionsSummary_() {
 function placeholderPlaces_() {
   var out = [], has = function (t) { return /【請填寫/.test(String(t || '')); };
   if (has((latestConsent_() || {}).content)) out.push('個資告知內容');
+  if (has((latestConsent_(Logic.ROVER_AUDIENCE) || {}).content)) out.push('個資告知內容（羅浮本人版）');
   if (has(siteValues_().about)) out.push('認識 22 團');
   return out;
 }
@@ -3603,11 +3786,14 @@ registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
     if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '這位小狼目前不是在團狀態。');
     // reason='升團'：升上童軍團（畢業），和中途離團分開統計
     var status = Logic.clean(req.reason) === Logic.GRADUATED && cub.status === '在團' ? Logic.GRADUATED : '離團';
+    var reason = Logic.clean(req.leaveReason);
+    if (reason && Logic.LEAVE_REASONS.indexOf(reason) < 0) throw new ApiError(ERR.BAD_INPUT, '離開原因只能是' + Logic.LEAVE_REASONS.join('、') + '。');
     var row = cubRow_(cub);
+    row[12] = status === '離團' ? reason : '';
     endRoleInRow_(cub, row, d);
     row[5] = ''; row[6] = 0; row[7] = status; row[8] = d; // 綁定碼立即失效
     updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-    logOp_(who.account.accountId, status === Logic.GRADUATED ? '標記升團' : '標記離團', cub.cubId, cub.status, status + ' ' + d);
+    logOp_(who.account.accountId, status === Logic.GRADUATED ? '標記升團' : '標記離團', cub.cubId, cub.status, status + ' ' + d + (row[12] ? '（' + row[12] + '）' : ''));
     return { status: status };
   });
 });
@@ -3736,8 +3922,8 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
     rate.period = period.name;
   }
   return {
-    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section },
-    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
+    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section, leaveReason: cub.leaveReason },
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
     roles: roleHistory_(cub.cubId),
     trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, sectionSettingOf_('體驗所需出席次數', cub.section)) : null,
     units: p.units.map(function (u) {
@@ -3831,7 +4017,7 @@ registerAdmin_('award', 'award', function (req, who) {
 function findAward_(cubId, unit) {
   // [修補] 驗證目標團員屬於目前分團，防止跨分團修改或撤銷頒章；頒章紀錄依分團對應（附錄第 77 點）
   var cub = findCub_(cubId);
-  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit) && x.sec === cub.section; })[0];
+  var a = loadAwards_().filter(function (x) { return x.cubId === cub.cubId && x.unit === Logic.clean(unit) && x.sec === Logic.progressSec(cub.section); })[0];
   if (!a) throw new ApiError(ERR.NOT_FOUND, '找不到這筆頒章紀錄。');
   return a;
 }
@@ -4174,7 +4360,7 @@ function settingGroupFor_(def, who) {
   if (!def || def.type === 'list') return null;
   if (def.scope === 'shared') return who.isOwner || (!ownerId_() && who.isCentral) ? '權限' : null;
   if (def.scope === 'cub') return curSec_() === Logic.DEFAULT_SECTION ? '分團' : null;
-  if (def.scope === 'progress') return def.section === curSec_() ? '分團' : null;
+  if (def.scope === 'progress') return def.section === Logic.progressSec(curSec_()) ? '分團' : null;
   if (def.scope === 'section') return def.key === Logic.sectionSettingKey(def.base || def.key, curSec_()) ? '分團' : null;
   return canShared_(who, '系統設定') ? '全團' : null;
 }
@@ -4196,7 +4382,9 @@ registerAdmin_('settingsGet', 'manageSettings', function (req, who) {
         value: s.type === 'bool' ? (v ? '是' : '否') : String(v), sheetValue: raw[s.key] === undefined ? '' : raw[s.key], error: errs[s.key] || ''
       };
     }),
-    consent: c && canShared_(who, '個資告知') ? { version: c.version, content: c.content, effective: c.effective } : null
+    consent: c && canShared_(who, '個資告知') ? { version: c.version, content: c.content, effective: c.effective } : null,
+    // 羅浮本人（成年人版）告知（附錄第 73 點⑲）
+    roverConsent: (function () { var rc = latestConsent_(Logic.ROVER_AUDIENCE); return rc && canShared_(who, '個資告知') ? { version: rc.version, content: rc.content, effective: rc.effective } : null; })()
   };
 });
 
@@ -4257,13 +4445,15 @@ registerAdmin_('consentSave', 'manageSettings', function (req, who) {
   var content = String(req.content || '').replace(/\r\n/g, '\n').trim();
   if (content.length < 20) throw new ApiError(ERR.BAD_INPUT, '個資說明內容太短了。');
   if (content.length > 10000) throw new ApiError(ERR.BAD_INPUT, '個資說明最多 10000 字。');
+  // audience：空白＝家長版；「羅浮本人」＝成年人版（附錄第 73 點⑲），版本各自計算
+  var aud = consentAudience_(req.audience);
   return withLock_(function () {
-    var c = latestConsent_();
+    var c = latestConsent_(aud);
     if (c && c.content.trim() === content) throw new ApiError(ERR.BAD_INPUT, '內容沒有變更。');
     var version = (c ? c.version : 0) + 1;
-    appendRows_(SHEET.CONSENT, [[version, content, today_()]]);
-    logOp_(who.account.accountId, '個資說明改版', '第 ' + version + ' 版', c ? '第 ' + c.version + ' 版' : '', '第 ' + version + ' 版');
-    return { version: version };
+    appendRows_(SHEET.CONSENT, [[version, content, today_(), aud]]);
+    logOp_(who.account.accountId, '個資說明改版', (aud ? aud + '版 ' : '') + '第 ' + version + ' 版', c ? '第 ' + c.version + ' 版' : '', '第 ' + version + ' 版');
+    return { version: version, audience: aud };
   });
 });
 
@@ -4537,7 +4727,9 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
       logOp_(who.account.accountId, '核准服務員申請', p.acc.username, '', '服務員：' + name);
       return { type: '服務員' };
     }
-    var cub;
+    var cub, selfReq = r.type === '本人';
+    // 羅浮本人的申請（附錄第 73 點⑱）只能在羅浮核准，綁定為「本人」
+    if (selfReq && Logic.ADULT_SELF_SECTIONS.indexOf(curSec_()) < 0) throw new ApiError(ERR.BAD_INPUT, '本人申請要切到羅浮後台核准。');
     if (Logic.clean(req.mode) === 'link') {
       cub = findCub_(req.cubId);
       if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '只能連結在團的團員或體驗者。');
@@ -4557,10 +4749,10 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
     }
     // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）
     var exists = loadBindings_().some(function (b) { return b.accountId === r.accountId && b.cubId === cub.cubId; });
-    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion, Logic.RELATION.PARENT]]);
+    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion, selfReq ? Logic.RELATION.SELF : Logic.RELATION.PARENT]]);
     closeRequest_(r, '已核准', who, cub.cubId, '');
-    logOp_(who.account.accountId, '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
-    return { type: '孩子', cubId: cub.cubId };
+    logOp_(who.account.accountId, selfReq ? '核准羅浮本人申請' : '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
+    return { type: selfReq ? '本人' : '孩子', cubId: cub.cubId };
   });
 });
 
@@ -5206,11 +5398,11 @@ function apiParentLeave_(req, who) {
     var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
     if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
     var cubObj = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
-    var isSelf = binding.relation === Logic.RELATION.SELF;
+    var isSelf = isMinorSelf_(binding, cubObj ? cubObj.section : '');
     if (!resolveWhoPerms_(who, !isSelf, isSelf, cubObj ? cubObj.section : '').tabs.parent_leave) {
       throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上請假功能。');
     }
-    if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+    if (bindingNeedsConsent_(binding, cubObj ? cubObj.section : '')) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
@@ -5259,7 +5451,7 @@ function apiParentCreateScoutAccount_(req, who) {
     var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
     var now = new Date();
     appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), nick, hash, salt, '啟用', now, '', '', '']]);
-    bindCub_(accountId, cub, binding.consentVersion || Logic.latestConsentVersion(loadConsents_()), Logic.RELATION.SELF, true);
+    bindCub_(accountId, cub, binding.consentVersion || latestConsentVersionFor_(''), Logic.RELATION.SELF, true);
     logOp_(who.account.accountId, '家長建立童軍本人帳號', cub.cubId, '', Logic.clean(req.username) + '（' + cub.section + '）');
     return { accountId: accountId, username: Logic.clean(req.username), cubName: cub.name, section: cub.section };
   });
@@ -5323,6 +5515,31 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     if (adds.length) appendRows_(SHEET.SITE, adds);
     logOp_(who.account.accountId, '修改網站內容', '認識 22 團／活動時間／FB', '', '');
     return { changed: ups.length + adds.length };
+  });
+});
+
+// ───────────── 升團（SPEC 附錄第 69、80 點） ─────────────
+
+/**
+ * 升團：同一筆團員改到下一個分團（稚齡→小狼→童軍→行義→羅浮），團員ID、家長綁定、舊紀錄都不變。
+ * 由原分團的團長（或 admin、總團切到原分團）操作；升團日由團長指定（每年五月團慶），新分團的入團日＝升團日。
+ * 小隊清空、職務卸任；原本的入團日、小隊、職務寫進「升團紀錄」。新分團的目前級別依新分團的頒章重算（童軍→行義接續）。
+ */
+registerAdmin_('cubPromote', 'manageCubs', function (req, who) {
+  var date = requireDate_(Logic.clean(req.date), '升團日');
+  return withLock_(function () {
+    var cub = findCub_(req.cubId); // 只找得到目前分團（原分團）的團員
+    if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只有在團的團員可以升團。');
+    var to = Logic.SECTIONS[Logic.SECTIONS.indexOf(cub.section) + 1];
+    if (!to) throw new ApiError(ERR.BAD_INPUT, '羅浮是最後一個分團，不能再升團；離開 22 團請用「標記離團」。');
+    var row = cubRow_(cub), oldRole = Logic.clean(row[10]);
+    endRoleInRow_(cub, row, date);
+    row[2] = ''; row[3] = date; row[9] = ''; row[11] = to; row[12] = '';
+    row[4] = Logic.currentLevelOf(loadAwards_().filter(function (a) { return a.cubId === cub.cubId; }), to);
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
+    appendRows_(SHEET.PROMOTIONS, [[cub.cubId, cub.section, to, date, cub.joinDate, cub.squad, oldRole, who.account.accountId, new Date()]]);
+    logOp_(who.account.accountId, '升團', cub.cubId, cub.section, to + ' ' + date);
+    return { toSection: to };
   });
 });
 
@@ -5414,7 +5631,9 @@ function apiEventRegister_(req, who) {
   // 先看是不是 22 團的人（訊息照舊），再看總團有沒有開放這個身分線上報名（權限設定 parent_events）
   if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
   var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
+  var secOfCub = {};
+  loadCubs_().forEach(function (c) { secOfCub[c.cubId] = c.section; });
+  var isPar = myBinds.some(function (b) { return !isMinorSelf_(b, secOfCub[b.cubId]); });
   var isSelf = !who.admin && myBinds.length > 0 && !isPar;
   return afterSync_(withLock_(function () {
     var secs = accountSections_(who);
@@ -5709,7 +5928,7 @@ function deleteRegsOfAccount_(accountId) {
 
 /** 某分團的章圖：{ '類別|名稱': {image, _row} }（第 6 欄分團，空白＝小狼） */
 function loadUnitImages_(section) {
-  var sec = Logic.sectionOf(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || ''), map = {};
+  var sec = Logic.progressSec(section || (typeof CUR_SEC_ !== 'undefined' && CUR_SEC_) || ''), map = {};
   readRows_(SHEET.UNIT_IMAGES).forEach(function (r) {
     if (Logic.sectionOf(r[5]) !== sec) return;
     var k = Logic.clean(r[1]) + '|' + Logic.clean(r[0]);
@@ -5724,7 +5943,7 @@ function loadUnitImages_(section) {
  */
 function apiUnitImages_() {
   var out = {};
-  Logic.PROGRESS_SECTIONS.forEach(function (sec) {
+  Object.keys(Logic.PROGRESS_MODULES).forEach(function (sec) {
     var units = loadUnits_(sec), imgs = loadUnitImages_(sec);
     Object.keys(imgs).forEach(function (k) { if (units[k]) out[(sec === Logic.DEFAULT_SECTION ? '' : sec + '|') + k] = imgs[k].image; });
   });
@@ -5736,7 +5955,7 @@ PUBLIC_ACTIONS.unitImages = apiUnitImages_;
 registerAdmin_('unitImageSave', 'manageItems', function (req, who) {
   var category = Logic.clean(req.category), unit = Logic.clean(req.unit), image = String(req.image || '');
   if (image && !Logic.isUnitImage(image)) throw new ApiError(ERR.BAD_INPUT, '圖片格式不正確或檔案太大，請換一張圖再試。');
-  var sec = curSec_();
+  var sec = Logic.progressSec(curSec_());
   return withLock_(function () {
     var key = category + '|' + unit;
     if (!loadUnits_(sec)[key]) throw new ApiError(ERR.NOT_FOUND, '找不到這個級別或技能章。');
@@ -5767,7 +5986,7 @@ function itemsChanged_() {
 /** 項目總表的原始列；section 有給時只回該分團的列（第 8 欄分團，空白＝小狼） */
 function anyIdsOf_(items) { var m = {}; items.forEach(function (it) { m[it.id] = true; }); return m; }
 function rawItemRows_(section) {
-  return readRows_(SHEET.ITEMS).filter(function (r) { return Logic.clean(r[0]) && (!section || Logic.sectionOf(r[7]) === Logic.sectionOf(section)); });
+  return readRows_(SHEET.ITEMS).filter(function (r) { return Logic.clean(r[0]) && (!section || Logic.progressSec(r[7]) === Logic.progressSec(section)); });
 }
 function itemRowValues_(r) { return HEADERS[SHEET.ITEMS].map(function (h, j) { return r[j] === undefined ? '' : r[j]; }); }
 function findItemRow_(id) {
@@ -5812,7 +6031,7 @@ function itemsWith_(change) {
 }
 
 registerAdmin_('itemsTree', 'manageItems', function () {
-  var sec = curSec_(), mod = Logic.progressModule(sec);
+  var sec = Logic.progressSec(curSec_()), mod = Logic.progressModule(sec);
   var all = loadItems_();
   var parsed = { items: all.items.filter(function (it) { return it.sec === sec; }), errors: all.errors };
   var unitsMap = loadUnits_(sec);
@@ -5958,10 +6177,10 @@ registerAdmin_('sectionRename', 'manageItems', function (req, who) {
 registerAdmin_('unitSave', 'manageItems', function (req, who) {
   var category = Logic.clean(req.category), unit = Logic.clean(req.unit);
   var desc = Logic.clean(req.desc).slice(0, 1000), rule = Logic.clean(req.rule).slice(0, 1000), group = Logic.clean(req.group);
-  var sec = curSec_(), mod = Logic.progressModule(sec);
+  var sec = Logic.progressSec(curSec_()), mod = Logic.progressModule(sec);
   return withLock_(function () {
     var allRows = readRows_(SHEET.UNITS).filter(function (r) { return Logic.clean(r[0]); });
-    var rows = allRows.filter(function (r) { return Logic.sectionOf(r[6]) === sec; });
+    var rows = allRows.filter(function (r) { return Logic.progressSec(r[6]) === sec; });
     var find = function (n) { return rows.filter(function (r) { return Logic.clean(r[0]) === n && Logic.clean(r[1]) === category; })[0]; };
     if (category === Logic.CATEGORY.BADGE && mod.badgeGroups.indexOf(group) < 0) throw new ApiError(ERR.BAD_INPUT, '請選擇技能章分類（' + mod.badgeGroups.join('／') + '）。');
     if (req.isNew) {
@@ -6160,6 +6379,225 @@ AUTHED_ACTIONS.inviteCreate = function (req, who) {
     logOp_(who.account.accountId, '產生邀請碼', name, '', (role === Logic.CENTRAL ? '總團' : section + '／' + role) + (title ? '（' + title + '）' : ''));
     return { code: code, expiresAt: exp.getTime() };
   });
+};
+
+// ════════════════ RegisApi.js ════════════════
+/**
+ * 續團確認與三項登記（SPEC 附錄第 69、70、80 點）
+ * - 三項登記＝團登記、服務員登記、童軍登記，每年向童軍會辦一次，登記年度採曆年制。
+ * - 只記「續團、已登記、應繳、已繳」；身分證字號、生日、電話、地址等仍在總會系統或紙本處理，系統不收集。
+ * - 續團確認：各分團團長年底勾選自己分團的團員與服務員要不要續團（只看目前分團）。
+ * - 三項登記：總團與最高管理員（沒有最高管理員時團長）設定年度登記費、勾選已登記與已繳、匯出名單；其他人看不到。
+ * 每年度每人一列：類型 童軍（對象ID＝團員ID）／服務員（對象ID＝帳號ID）／團（對象ID＝分團名稱）。
+ */
+
+var REGIS_TYPES = { SCOUT: '童軍', STAFF: '服務員', TROOP: '團' };
+
+/** 登記年度：九月以後預設是下一年（年底辦理下一年度的登記） */
+function defaultRegisYear_() {
+  var t = today_();
+  var y = Number(t.slice(0, 4)), m = Number(t.slice(5, 7));
+  return m >= 9 ? y + 1 : y;
+}
+function regisYear_(v) {
+  var y = Number(Logic.clean(v));
+  if (!y) return defaultRegisYear_();
+  if (!/^\d{4}$/.test(String(y)) || y < 2020 || y > 2100) throw new ApiError(ERR.BAD_INPUT, '請填寫正確的年度（西元年，例如 2027）。');
+  return y;
+}
+
+function loadRegis_() {
+  if (!ss_().getSheetByName(SHEET.REGIS)) return [];
+  return readRows_(SHEET.REGIS).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[2]); }).map(function (r) {
+    return {
+      year: Number(r[0]) || 0, type: Logic.clean(r[1]), id: Logic.clean(r[2]), section: Logic.clean(r[3]),
+      renew: Logic.clean(r[4]), registered: Logic.clean(r[5]) === '是', amount: Logic.clean(r[6]) === '' ? null : Number(r[6]) || 0,
+      paid: Logic.clean(r[7]) === '是', note: Logic.clean(r[8]), _row: r._row, _raw: r
+    };
+  });
+}
+function loadFees_(year) {
+  if (!ss_().getSheetByName(SHEET.REGIS_FEES)) return null;
+  var r = readRows_(SHEET.REGIS_FEES).filter(function (x) { return Number(x[0]) === year; })[0];
+  return r ? { scout: Number(r[1]) || 0, staff: Number(r[2]) || 0, troop: Number(r[3]) || 0, note: Logic.clean(r[4]), _row: r._row } : null;
+}
+function feeOf_(fees, type) {
+  if (!fees) return 0;
+  return type === REGIS_TYPES.SCOUT ? fees.scout : type === REGIS_TYPES.STAFF ? fees.staff : fees.troop;
+}
+function regisKey_(type, id) { return type + '|' + id; }
+
+/** 某分團要確認續團的人：在團的團員＋該分團的團長、服務員（總團不在分團名單裡） */
+function renewPeople_(section) {
+  var sec = Logic.sectionOf(section), acc = accountsById_();
+  var cubs = loadCubs_().filter(function (c) { return c.section === sec && c.status === '在團'; }).map(function (c) {
+    return { type: REGIS_TYPES.SCOUT, id: c.cubId, name: c.name, squad: c.squad, section: sec };
+  });
+  var seen = {};
+  var staff = loadAdminRows_().filter(function (r) { return r.role !== Logic.CENTRAL && r.section === sec; }).filter(function (r) {
+    var a = acc[r.accountId];
+    if (!a || a.status !== '啟用' || seen[r.accountId]) return false;
+    seen[r.accountId] = true; return true;
+  }).map(function (r) { return { type: REGIS_TYPES.STAFF, id: r.accountId, name: r.name, title: r.title || r.role, section: sec }; });
+  return cubs.concat(staff);
+}
+
+/** 寫入或更新一列（只改傳進來的欄位） */
+function upsertRegis_(existing, year, type, id, section, fields, who) {
+  var cur = existing[regisKey_(type, id)];
+  var now = new Date();
+  if (cur) {
+    var v = HEADERS[SHEET.REGIS].map(function (h, j) { return cur._raw[j] === undefined ? '' : cur._raw[j]; });
+    if ('renew' in fields) v[4] = fields.renew;
+    if ('registered' in fields) v[5] = fields.registered;
+    if ('amount' in fields) v[6] = fields.amount;
+    if ('paid' in fields) v[7] = fields.paid;
+    if ('note' in fields) v[8] = fields.note;
+    v[3] = section; v[9] = who.account.accountId; v[10] = now;
+    return { update: { row: cur._row, values: v } };
+  }
+  return { append: [year, type, id, section, fields.renew || '', fields.registered || '否', 'amount' in fields ? fields.amount : '', fields.paid || '否', fields.note || '', who.account.accountId, now] };
+}
+
+// ───── 續團確認（各分團團長，只看目前分團） ─────
+
+registerAdmin_('renewList', 'manageCubs', function (req) {
+  var year = regisYear_(req.year), sec = curSec_();
+  var mine = {};
+  loadRegis_().forEach(function (r) { if (r.year === year) mine[regisKey_(r.type, r.id)] = r; });
+  return {
+    year: year, section: sec,
+    people: renewPeople_(sec).map(function (p) {
+      var r = mine[regisKey_(p.type, p.id)];
+      return { type: p.type, id: p.id, name: p.name, squad: p.squad || '', title: p.title || '', renew: r ? r.renew : '', registered: !!(r && r.registered) };
+    })
+  };
+});
+
+/** entries: [{type, id, renew: '是'|'否'|''}]；只能改目前分團的人，已登記的不能改成不續團 */
+registerAdmin_('renewSave', 'manageCubs', function (req, who) {
+  var year = regisYear_(req.year), sec = curSec_();
+  var entries = (req.entries || []).slice(0, 500);
+  return withLock_(function () {
+    var allowed = {};
+    renewPeople_(sec).forEach(function (p) { allowed[regisKey_(p.type, p.id)] = p; });
+    var existing = {};
+    loadRegis_().forEach(function (r) { if (r.year === year) existing[regisKey_(r.type, r.id)] = r; });
+    var ups = [], adds = [];
+    entries.forEach(function (e) {
+      var k = regisKey_(Logic.clean(e.type), Logic.clean(e.id)), p = allowed[k];
+      if (!p) throw new ApiError(ERR.NOT_FOUND, '名單已經變動，請重新整理。');
+      var renew = Logic.clean(e.renew);
+      if (['是', '否', ''].indexOf(renew) < 0) throw new ApiError(ERR.BAD_INPUT, '續團只能選「是」或「否」。');
+      if (renew === '否' && existing[k] && existing[k].registered) throw new ApiError(ERR.BAD_INPUT, p.name + ' 已經登記了，不能改成不續團，請先請總團取消登記。');
+      if (existing[k] && existing[k].renew === renew) return;
+      var w = upsertRegis_(existing, year, p.type, p.id, sec, { renew: renew }, who);
+      if (w.update) ups.push(w.update); else adds.push(w.append);
+    });
+    if (ups.length) updateRows_(SHEET.REGIS, ups);
+    if (adds.length) appendRows_(SHEET.REGIS, adds);
+    if (ups.length + adds.length) logOp_(who.account.accountId, '續團確認', sec, '', year + ' 年度 ' + (ups.length + adds.length) + ' 人');
+    return { changed: ups.length + adds.length };
+  });
+});
+
+// ───── 三項登記（總團、最高管理員） ─────
+
+function requireRegisManager_(who) {
+  if (!canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '三項登記只有總團與最高管理員可以處理。');
+}
+AUTHED_ACTIONS.regisList = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year), fees = loadFees_(year);
+  var rows = {};
+  loadRegis_().forEach(function (r) { if (r.year === year) rows[regisKey_(r.type, r.id)] = r; });
+  var people = [];
+  Logic.SECTIONS.forEach(function (sec) {
+    var list = renewPeople_(sec);
+    // 團登記：這個分團有人要續團（或已登記）就列出來
+    var troopRow = rows[regisKey_(REGIS_TYPES.TROOP, sec)];
+    if (list.length || troopRow) list.unshift({ type: REGIS_TYPES.TROOP, id: sec, name: '22 團' + Logic.SECTION_FULL[sec] + '團', section: sec });
+    list.forEach(function (p) {
+      var r = rows[regisKey_(p.type, p.id)];
+      people.push({
+        type: p.type, id: p.id, name: p.name, section: sec, title: p.title || '',
+        renew: p.type === REGIS_TYPES.TROOP ? '是' : (r ? r.renew : ''),
+        registered: !!(r && r.registered), paid: !!(r && r.paid),
+        amount: r && r.amount !== null ? r.amount : feeOf_(fees, p.type), note: r ? r.note : ''
+      });
+    });
+  });
+  var due = people.filter(function (p) { return p.renew !== '否'; });
+  return {
+    year: year, fees: fees ? { scout: fees.scout, staff: fees.staff, troop: fees.troop, note: fees.note } : null, people: people,
+    summary: {
+      renewYes: people.filter(function (p) { return p.type !== REGIS_TYPES.TROOP && p.renew === '是'; }).length,
+      undecided: people.filter(function (p) { return p.type !== REGIS_TYPES.TROOP && !p.renew; }).length,
+      registered: due.filter(function (p) { return p.registered; }).length, total: due.length,
+      amount: due.reduce(function (s, p) { return s + (p.amount || 0); }, 0),
+      paid: due.filter(function (p) { return p.paid; }).reduce(function (s, p) { return s + (p.amount || 0); }, 0)
+    }
+  };
+};
+
+/** entries: [{type, id, section, registered?, paid?, amount?, note?}] */
+AUTHED_ACTIONS.regisSave = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year);
+  var entries = (req.entries || []).slice(0, 1000);
+  return withLock_(function () {
+    var existing = {};
+    loadRegis_().forEach(function (r) { if (r.year === year) existing[regisKey_(r.type, r.id)] = r; });
+    var ups = [], adds = [];
+    entries.forEach(function (e) {
+      var type = Logic.clean(e.type), id = Logic.clean(e.id), sec = Logic.sectionOf(e.section);
+      if ([REGIS_TYPES.SCOUT, REGIS_TYPES.STAFF, REGIS_TYPES.TROOP].indexOf(type) < 0 || !id) throw new ApiError(ERR.BAD_INPUT, '資料不正確，請重新整理。');
+      var f = {};
+      if ('registered' in e) f.registered = e.registered ? '是' : '否';
+      if ('paid' in e) f.paid = e.paid ? '是' : '否';
+      if ('amount' in e) {
+        var n = Number(e.amount);
+        if (e.amount === '' || e.amount === null) f.amount = '';
+        else if (!isFinite(n) || n < 0 || n > 100000) throw new ApiError(ERR.BAD_INPUT, '應繳金額需為 0～100000。');
+        else f.amount = Math.round(n);
+      }
+      if ('note' in e) f.note = Logic.clean(e.note).slice(0, 100);
+      var w = upsertRegis_(existing, year, type, id, sec, f, who);
+      if (w.update) ups.push(w.update); else adds.push(w.append);
+    });
+    if (ups.length) updateRows_(SHEET.REGIS, ups);
+    if (adds.length) appendRows_(SHEET.REGIS, adds);
+    if (ups.length + adds.length) logOp_(who.account.accountId, '三項登記', String(year), '', (ups.length + adds.length) + ' 筆');
+    return { changed: ups.length + adds.length };
+  });
+};
+
+AUTHED_ACTIONS.regisFeesSave = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year);
+  var num = function (v, label) {
+    var n = Number(v);
+    if (!isFinite(n) || n < 0 || n > 100000) throw new ApiError(ERR.BAD_INPUT, label + '需為 0～100000 的金額。');
+    return Math.round(n);
+  };
+  var vals = [year, num(req.scout, '童軍登記費'), num(req.staff, '服務員登記費'), num(req.troop, '團登記費'), Logic.clean(req.note).slice(0, 100), who.account.accountId, new Date()];
+  return withLock_(function () {
+    var cur = loadFees_(year);
+    if (cur) updateRows_(SHEET.REGIS_FEES, [{ row: cur._row, values: vals }]);
+    else appendRows_(SHEET.REGIS_FEES, [vals]);
+    logOp_(who.account.accountId, '設定登記費', String(year), cur ? [cur.scout, cur.staff, cur.troop].join('／') : '', vals.slice(1, 4).join('／'));
+    return {};
+  });
+};
+
+/** 匯出（附錄第 70 點）：姓名、分團、身分、續團、是否已登記、應繳、已繳；不續團的不列 */
+AUTHED_ACTIONS.regisExport = function (req, who) {
+  var d = AUTHED_ACTIONS.regisList(req, who);
+  var rows = [['姓名', '分團', '身分', '續團', '是否已登記', '應繳', '已繳']];
+  d.people.filter(function (p) { return p.renew !== '否'; }).forEach(function (p) {
+    rows.push([p.name, Logic.SECTION_FULL[p.section] || p.section, p.type, p.renew || '未確認', p.registered ? '是' : '否', p.amount || 0, p.paid ? '是' : '否']);
+  });
+  return { csv: Logic.toCsv(rows.map(function (r) { return r.map(function (v) { return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v; }); })), filename: '三項登記_' + d.year + '.csv' };
 };
 
 // ════════════════ Notify.js ════════════════
@@ -6411,6 +6849,29 @@ function ensureDailyTrigger_() {
   installDailyTrigger_();
   return true;
 }
+
+// ───────────── 推播額度（附錄第 73 點㉑：先維持免費方案，後台顯示本月已推播則數，接近上限提醒） ─────────────
+
+/** 本月已推播／上限（LINE 官方帳號的方案額度）；快取 1 小時。沒有 token 或查詢失敗回 null */
+function lineQuota_() {
+  var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
+  if (!token) return null;
+  var cache = CacheService.getScriptCache(), hit = cache.get('LINE_QUOTA');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* 重查 */ } }
+  try {
+    var get = function (path) {
+      var r = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/' + path, { method: 'get', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+      return r.getResponseCode() === 200 ? JSON.parse(r.getContentText() || '{}') : null;
+    };
+    var q = get('quota'), used = get('quota/consumption');
+    if (!q || !used) return null;
+    var limit = q.type === 'limited' ? Number(q.value) || 0 : 0;
+    var out = { used: Number(used.totalUsage) || 0, limit: limit, near: limit > 0 && Number(used.totalUsage) >= limit * 0.8 };
+    cache.put('LINE_QUOTA', JSON.stringify(out), 3600);
+    return out;
+  } catch (e) { return null; }
+}
+
 
 // ════════════════ Backup.js ════════════════
 /**
@@ -6743,7 +7204,12 @@ function setupCore_() {
       var details = Logic.buildDetailSeed(SEED.detailsCsv);
       if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
     }
-    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_(), '']]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    // 羅浮本人（成年人版，附錄第 73 點⑲）：還沒有這一份就新增第 1 版，不動家長版
+    if (SEED.roverConsentText && !loadConsents_().some(function (c) { return c.audience === Logic.ROVER_AUDIENCE; })) {
+      appendRows_(SHEET.CONSENT, [[1, SEED.roverConsentText, today_(), Logic.ROVER_AUDIENCE]]);
+      report.seeded.push(SHEET.CONSENT + ' 羅浮本人版第 1 版');
+    }
 
     // 權限設定：只在分頁沒有資料列時匯入預設權限表
     if (dataRowCount_(SHEET.PERMS) === 0) {
@@ -6863,7 +7329,7 @@ function ensureSectionSeeds_() {
     if (!Logic.progressModule(sec)) return;
     var seed = Logic.buildSeed(sections[sec].itemsCsv, sections[sec].progressRules, sec);
     // 格式錯誤的列也算（看原始的分團欄），避免重複匯入
-    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.sectionOf(r[7]) === sec; });
+    var hasAny = readRows_(SHEET.ITEMS).some(function (r) { return Logic.clean(r[0]) && Logic.progressSec(r[7]) === sec; });
     if (!hasAny) {
       var taken = {};
       readRows_(SHEET.ITEMS).forEach(function (r) { taken[Logic.clean(r[0])] = true; });

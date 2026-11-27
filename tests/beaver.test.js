@@ -19,10 +19,10 @@ const beaverItems = () => L.parseItems([header,
 const done = (id, date) => ({ cubId: 'K1', itemId: id, date, signer: 'A1' });
 
 test('進程模組：小狼、稚齡各自的級別、ID 前綴與技能章分類', () => {
-  assert.deepEqual(L.PROGRESS_SECTIONS, ['稚齡', '小狼']);
+  assert.deepEqual(L.PROGRESS_SECTIONS, ['稚齡', '小狼', '童軍', '行義', '羅浮'], '附錄第 80 點起五個分團都有進程');
   assert.deepEqual(L.levelsOf('稚齡'), ['地球', '星星', '月亮', '太陽']);
   assert.deepEqual(L.levelsOf(''), L.LEVELS, '空白＝小狼');
-  assert.deepEqual(L.levelsOf('童軍'), [], '童軍還沒有進程模組');
+  assert.deepEqual(L.levelsOf('行義'), L.levelsOf('童軍'), '行義和童軍共用');
   assert.equal(L.progressModule('稚齡').badgeGroups.join(), '服務類,運動類,技巧類');
   assert.equal(L.isLevelOf('稚齡', '地球'), true);
   assert.equal(L.isLevelOf('小狼', '地球'), false);
@@ -36,13 +36,13 @@ test('項目總表：分團欄空白＝小狼；稚齡的級別依稚齡檢查�
     ['稚齡-P-地球-1', '進程', '地球', '－', 'a', 1, '是', '稚齡'],
     ['X-1', '進程', '地球', '－', 'b', 2, '是', ''],
     ['X-2', '進程', '羚羊', '－', 'c', 3, '是', '稚齡'],
-    ['X-3', '技能章', '露營', '－', 'd', 4, '是', '童軍'],
+    ['X-3', '進程', '狼', '－', 'd', 4, '是', '羅浮'],
     ['X-4', '技能章', '露營', '－', 'e', 5, '是', '火星']
   ]);
   assert.deepEqual(r.items.map((i) => [i.id, i.sec]), [['稚齡-P-地球-1', '稚齡']]);
   assert.deepEqual(r.errors.map((e) => e.row), [3, 4, 5, 6]);
   assert.match(r.errors[0].reason, /小狼的進程級別/);
-  assert.match(r.errors[2].reason, /童軍還沒有進程模組/);
+  assert.match(r.errors[2].reason, /羅浮的進程級別/);
   assert.match(r.errors[3].reason, /分團只能是/);
 });
 
@@ -59,7 +59,7 @@ test('稚齡設定：各分團一組，只有稚齡有完成期限；小狼的�
   assert.equal(c.levelAttendCount, 8);
   assert.equal(c.autoItemId, 'P-羚羊-7');
   assert.equal(c.deadlines, undefined);
-  assert.equal(L.progressParams(v, '童軍'), null);
+  assert.equal(L.progressParams(v, '火星'), null, '不是分團就沒有參數');
   assert.equal(L.validateSettingValue('完成期限月數：地球（稚齡）', '61').ok, false);
   assert.equal(L.validateSettingValue('完成期限月數：地球（稚齡）', '0').ok, true, '0＝不提醒');
   // 稚齡的鍵沒填不算錯誤（setup 不會補）
@@ -243,7 +243,8 @@ test('稚齡家長與公開頁：逐項顯示稚齡的進程與章、不顯示�
   assert.equal(c.units.reduce((s, u) => s + u.items.length, 0), 58);
   const wolf = env.api({ action: 'catalog' });
   assert.equal(wolf.units.reduce((s, u) => s + u.items.length, 0), 168, '沒帶分團＝小狼（舊網址）');
-  assert.deepEqual(env.api({ action: 'catalog', section: '童軍' }).units, [], '童軍還沒有進程');
+  assert.ok(env.api({ action: 'catalog', section: '童軍' }).units.length > 0, '童軍也有進程（附錄第 80 點）');
+  assert.deepEqual(env.api({ action: 'catalog', section: '行義' }).levels, ['初級', '中級', '高級', '獅級', '長城', '國花'], '行義和童軍共用');
   // 章圖：稚齡的種植和小狼的種植分開
   const img = 'data:image/png;base64,AAAA';
   assert.equal(call(B, 'unitImageSave', { category: '技能章', unit: '種植', image: img }).ok, true);

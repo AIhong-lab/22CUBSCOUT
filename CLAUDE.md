@@ -73,6 +73,13 @@
 - **外部檢查修正（SPEC 附錄第 78 點，2026-11-25）**：`imgKey(cat, unit, sec)`（前端章圖鍵）；`assertEditorRun_()`（Setup.js，公開函式只限擁有者在編輯器執行；內部呼叫 `installDailyTrigger_`／`installBackupTrigger_`）；`assertNotScoutSelf_`（Api.js）；`Logic.replaceNameOnly`（個資姓名替換保護較長的姓名）；LINE 連結 `#award=團員ID,章名,分團`、`#roll=集會ID,分團`（前端 `linkSec` 先切分團）；`NOTIFY_AFTER` 不含 backfill；測試 mock 有 `Session`（`env.flags.activeUser`）。測試 `tests/review.test.js`。
 
 - **共同最高管理員（SPEC 附錄第 79 點，2026-11-25）**：`ownerIds_()`（設定列「最高管理員帳號ID」用「、」分隔，最多 `Logic.MAX_OWNERS`＝3，沒有就 admin）、`ownerId_()`（只用來判斷有沒有）、`isOwnerId_(id)`、`writeOwners_`；`Logic.ownerList`，`validateStaffChange`／`validateAdminChange` 的 ownerId 參數可給陣列；`guardOwner_(..., {tempCode:true})` 允許最高管理員互相產生臨時碼；試算表選單 `menuAddOwner`／`menuRemoveOwner`（`addOwnerByUsername_`／`removeOwnerByUsername_`）；網站 `ownerResign`（取代 `handoverTransfer`）。**判斷某人是不是最高管理員一律用 `isOwnerId_`，不要寫 `=== ownerId_()`**。測試 `tests/owners.test.js`。
+- **全團其餘功能（SPEC 附錄第 80 點，2026-11-27，模擬測試通過、未在真實環境驗證）**：
+  - 進程：`PROGRESS_MODULES` 加「童軍」（`shareWith: ['行義']`、`badgeLabel: '專科章'`、`minMonths` 各級最少月數，第一級從入團日起算）與「羅浮」（`levelRules`：`anyGroup` 大項擇一、`pickOne` 指定大項任選一項；`Logic.levelRuleProgress`）。**`Logic.progressSec(section)`：行義→童軍，讀寫進程資料（項目、說明、頒章、章圖、進程設定、catalog）一律用它**；`PROGRESS_SECTIONS` 含 shareWith。匯入時「專科章」轉成技能章類別（`buildSeed`）。前端 `PROG_GROUP`／`progGroup`、`BL()`（章的稱呼）、`hasBadges()`。
+  - 升團 `cubPromote`（TeamApi.js，`manageCubs`，同一筆改分團、`SHEET.PROMOTIONS` 升團紀錄）、`cubHistory_(cub)`（其他分團的章與升團經過，後台團員頁與家長 `history`）；離團 `leaveReason`（小狼名單第 13 欄，`Logic.LEAVE_REASONS`）。
+  - `gas/RegisApi.js`：`renewList`／`renewSave`（各分團團長）、`regisList`／`regisSave`／`regisFeesSave`／`regisExport`（`canManageAll_`）；`SHEET.REGIS`（年度登記）、`SHEET.REGIS_FEES`（登記費用）；前端 `ADMIN_PAGES.renew`、`ADMIN_PAGES.regis`。
+  - 羅浮本人：`register` 的 `identity: '羅浮本人'` → `registerRoverSelf_`（申請類型「本人」、分團羅浮）；`requestApprove` 本人申請只能在羅浮核准、綁定 `RELATION.SELF`。個資告知分兩份：告知同意內容第 4 欄「對象」（`Logic.ROVER_AUDIENCE`），`latestConsent_(audience)`、`isAdultSelf_`／`isMinorSelf_`／`bindingNeedsConsent_`；**判斷「家長權限」用 `!isMinorSelf_`（成年羅浮本人＝家長），不要直接看 relation**。`me.consentAudience`；前端 `renderSignupRover`、設定頁 `#fcr`。
+  - LINE 額度 `lineQuota_()`（Notify.js，快取 1 小時）→ `adminHome.alerts.lineQuota`。
+  - 測試 `tests/scouts.test.js`、`promote.test.js`、`regis.test.js`、`rover.test.js`、`tests/web/all.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -110,7 +117,7 @@
 ## 試算表結構（欄位順序固定，只能往右加欄）
 | 分頁 | 欄位 |
 |---|---|
-| 小狼名單 | 小狼ID、姓名、小隊、入團日、目前級別、綁定碼、綁定碼剩餘次數、狀態（在團/體驗/升團/離團/已匿名）、離團日、體驗開始日、職務（小隊長/副小隊長/空白）、分團 |
+| 小狼名單 | 小狼ID、姓名、小隊、入團日、目前級別、綁定碼、綁定碼剩餘次數、狀態（在團/體驗/升團/離團/已匿名）、離團日、體驗開始日、職務（小隊長/副小隊長/空白）、分團、離開原因（不續團/退團/其他） |
 | 帳號 | 帳號ID、帳號名稱、稱呼、密碼雜湊、密碼鹽、狀態（啟用/停用）、建立時間、最後登入時間、臨時碼雜湊、臨時碼到期時間 |
 | 登入工作階段 | 憑證雜湊、帳號ID、建立時間、到期時間 |
 | 綁定紀錄 | 帳號ID、小狼ID、綁定時間、同意時間、同意版本、關係（家長/本人，空白＝家長） |
@@ -127,7 +134,7 @@
 | 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註、分團（全團／分團；空白＝小狼） |
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |
 | 失敗紀錄 | 類型（登入/綁定）、對象（帳號名稱、帳號ID 或「未登入」）、時間 |
-| 告知同意內容 | 版本、內容、生效日 |
+| 告知同意內容 | 版本、內容、生效日、對象（空白＝家長版；羅浮本人＝成年人版） |
 | 註冊申請 | 申請ID、帳號ID、類型（孩子/服務員）、填寫姓名、申請時間、狀態（待審核/已核准/已退回）、處理人、處理時間、小狼ID、同意版本、備註、分團（空白＝小狼；「未指定」＝家長不確定） |
 | 小隊輔 | 小隊、帳號ID、設定人、設定時間、分團（空白＝小狼） |
 | 職務紀錄 | 小狼ID、小隊、職務、開始日、結束日（空白＝現任）、設定人、設定時間 |
@@ -138,6 +145,9 @@
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間、分團（空白＝小狼） |
 | 設定 | 鍵、值、說明（另有「最高管理員帳號ID」一列，只能由移交中心寫入） |
 | 權限設定 | 功能代碼、功能名稱、分類、最低權限、停用分團、更新人、更新時間（系統分頁，由後台權限設定頁維護） |
+| 升團紀錄 | 小狼ID、原分團、新分團、升團日、原入團日、原小隊、原職務、設定人、設定時間 |
+| 年度登記 | 年度、類型（童軍/服務員/團）、對象ID（團員ID/帳號ID/分團名稱）、分團、續團、已登記、應繳金額、已繳、備註、更新人、更新時間 |
+| 登記費用 | 年度、童軍登記費、服務員登記費、團登記費、備註、更新人、更新時間 |
 | 操作日誌 | 時間、操作人、動作、對象、修改前、修改後 |
 
 - 試算表只顯示 `EDITABLE_SHEETS`（Config.js）的 5 個分頁，其他系統分頁由 setup() 隱藏（SPEC 附錄第 30 點）；新增分頁時要決定它屬於哪一種。
