@@ -41,6 +41,9 @@ var SHEET = {
   UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
   PERMS: '權限設定',
+  PROMOTIONS: '升團紀錄',
+  REGIS: '年度登記',
+  REGIS_FEES: '登記費用',
   LOG: '操作日誌'
 };
 
@@ -52,7 +55,7 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團', '離開原因'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
 HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本', '關係'];
@@ -77,9 +80,14 @@ HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身�
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間', '分團'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
-HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
+HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日', '對象'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.PERMS] = ['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間'];
+// 升團（附錄第 69、80 點）：同一筆團員改到下一個分團，原本的入團日、小隊、職務記在這裡
+HEADERS[SHEET.PROMOTIONS] = ['小狼ID', '原分團', '新分團', '升團日', '原入團日', '原小隊', '原職務', '設定人', '設定時間'];
+// 續團確認與三項登記（附錄第 70、80 點）：每年度每人一列；類型 童軍／服務員／團（團登記一個分團一列）
+HEADERS[SHEET.REGIS] = ['年度', '類型', '對象ID', '分團', '續團', '已登記', '應繳金額', '已繳', '備註', '更新人', '更新時間'];
+HEADERS[SHEET.REGIS_FEES] = ['年度', '童軍登記費', '服務員登記費', '團登記費', '備註', '更新人', '更新時間'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
 
 /**
@@ -105,6 +113,8 @@ TEXT_COLUMNS[SHEET.CONSENT] = [3];
 TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 4, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.PROMOTIONS] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.REGIS] = [1, 3];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];

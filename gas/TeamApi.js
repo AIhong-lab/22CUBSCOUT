@@ -254,11 +254,11 @@ function apiParentLeave_(req, who) {
     var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
     if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
     var cubObj = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
-    var isSelf = binding.relation === Logic.RELATION.SELF;
+    var isSelf = isMinorSelf_(binding, cubObj ? cubObj.section : '');
     if (!resolveWhoPerms_(who, !isSelf, isSelf, cubObj ? cubObj.section : '').tabs.parent_leave) {
       throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上請假功能。');
     }
-    if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+    if (bindingNeedsConsent_(binding, cubObj ? cubObj.section : '')) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
@@ -307,7 +307,7 @@ function apiParentCreateScoutAccount_(req, who) {
     var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
     var now = new Date();
     appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), nick, hash, salt, '啟用', now, '', '', '']]);
-    bindCub_(accountId, cub, binding.consentVersion || Logic.latestConsentVersion(loadConsents_()), Logic.RELATION.SELF, true);
+    bindCub_(accountId, cub, binding.consentVersion || latestConsentVersionFor_(''), Logic.RELATION.SELF, true);
     logOp_(who.account.accountId, '家長建立童軍本人帳號', cub.cubId, '', Logic.clean(req.username) + '（' + cub.section + '）');
     return { accountId: accountId, username: Logic.clean(req.username), cubName: cub.name, section: cub.section };
   });
@@ -371,5 +371,30 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     if (adds.length) appendRows_(SHEET.SITE, adds);
     logOp_(who.account.accountId, '修改網站內容', '認識 22 團／活動時間／FB', '', '');
     return { changed: ups.length + adds.length };
+  });
+});
+
+// ───────────── 升團（SPEC 附錄第 69、80 點） ─────────────
+
+/**
+ * 升團：同一筆團員改到下一個分團（稚齡→小狼→童軍→行義→羅浮），團員ID、家長綁定、舊紀錄都不變。
+ * 由原分團的團長（或 admin、總團切到原分團）操作；升團日由團長指定（每年五月團慶），新分團的入團日＝升團日。
+ * 小隊清空、職務卸任；原本的入團日、小隊、職務寫進「升團紀錄」。新分團的目前級別依新分團的頒章重算（童軍→行義接續）。
+ */
+registerAdmin_('cubPromote', 'manageCubs', function (req, who) {
+  var date = requireDate_(Logic.clean(req.date), '升團日');
+  return withLock_(function () {
+    var cub = findCub_(req.cubId); // 只找得到目前分團（原分團）的團員
+    if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只有在團的團員可以升團。');
+    var to = Logic.SECTIONS[Logic.SECTIONS.indexOf(cub.section) + 1];
+    if (!to) throw new ApiError(ERR.BAD_INPUT, '羅浮是最後一個分團，不能再升團；離開 22 團請用「標記離團」。');
+    var row = cubRow_(cub), oldRole = Logic.clean(row[10]);
+    endRoleInRow_(cub, row, date);
+    row[2] = ''; row[3] = date; row[9] = ''; row[11] = to; row[12] = '';
+    row[4] = Logic.currentLevelOf(loadAwards_().filter(function (a) { return a.cubId === cub.cubId; }), to);
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
+    appendRows_(SHEET.PROMOTIONS, [[cub.cubId, cub.section, to, date, cub.joinDate, cub.squad, oldRole, who.account.accountId, new Date()]]);
+    logOp_(who.account.accountId, '升團', cub.cubId, cub.section, to + ' ' + date);
+    return { toSection: to };
   });
 });

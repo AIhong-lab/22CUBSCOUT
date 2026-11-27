@@ -675,6 +675,8 @@ var Logic = (function () {
   var TRIAL = '體驗';
   /** 升上童軍團（畢業）：和中途離團分開記（SPEC 附錄第 45 點） */
   var GRADUATED = '升團';
+  /** 離團的原因（附錄第 69 點）：狀態維持「離團」，原因另外記 */
+  var LEAVE_REASONS = ['不續團', '退團', '其他'];
   /** 正副小隊長：狼級以上才能擔任 */
   var CUB_ROLES = ['小隊長', '副小隊長'];
   var ROLE_LEVELS = ['狼', '鹿', '豹'];
@@ -767,7 +769,10 @@ var Logic = (function () {
 
   // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
 
-  var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
+  var IDENTITY = { PARENT: '家長', STAFF: '服務員', ROVER_SELF: '羅浮本人' };
+  /** 成年的本人帳號（附錄第 73 點⑱⑲）：羅浮本人自己註冊、用成年人版個資告知，權限和家長一樣 */
+  var ADULT_SELF_SECTIONS = ['羅浮'];
+  var ROVER_AUDIENCE = '羅浮本人';
   var MAX_CHILDREN_PER_REQUEST = 5;
 
   /**
@@ -1572,7 +1577,9 @@ var Logic = (function () {
     '出席紀錄': 1,
     '額外出席': 1,
     '註冊申請': 8,
-    '職務紀錄': 0
+    '職務紀錄': 0,
+    '升團紀錄': 0, // 附錄第 80 點
+    '年度登記': 2 //  附錄第 80 點：對象ID（童軍登記的那一列）
   };
 
   /**
@@ -1722,7 +1729,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, LEAVE_REASONS: LEAVE_REASONS, ADULT_SELF_SECTIONS: ADULT_SELF_SECTIONS, ROVER_AUDIENCE: ROVER_AUDIENCE, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,

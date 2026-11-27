@@ -682,6 +682,8 @@ var Logic = (function () {
   var TRIAL = '體驗';
   /** 升上童軍團（畢業）：和中途離團分開記（SPEC 附錄第 45 點） */
   var GRADUATED = '升團';
+  /** 離團的原因（附錄第 69 點）：狀態維持「離團」，原因另外記 */
+  var LEAVE_REASONS = ['不續團', '退團', '其他'];
   /** 正副小隊長：狼級以上才能擔任 */
   var CUB_ROLES = ['小隊長', '副小隊長'];
   var ROLE_LEVELS = ['狼', '鹿', '豹'];
@@ -774,7 +776,10 @@ var Logic = (function () {
 
   // ───────────── 註冊申請（SPEC 附錄第 31 點） ─────────────
 
-  var IDENTITY = { PARENT: '家長', STAFF: '服務員' };
+  var IDENTITY = { PARENT: '家長', STAFF: '服務員', ROVER_SELF: '羅浮本人' };
+  /** 成年的本人帳號（附錄第 73 點⑱⑲）：羅浮本人自己註冊、用成年人版個資告知，權限和家長一樣 */
+  var ADULT_SELF_SECTIONS = ['羅浮'];
+  var ROVER_AUDIENCE = '羅浮本人';
   var MAX_CHILDREN_PER_REQUEST = 5;
 
   /**
@@ -1579,7 +1584,9 @@ var Logic = (function () {
     '出席紀錄': 1,
     '額外出席': 1,
     '註冊申請': 8,
-    '職務紀錄': 0
+    '職務紀錄': 0,
+    '升團紀錄': 0, // 附錄第 80 點
+    '年度登記': 2 //  附錄第 80 點：對象ID（童軍登記的那一列）
   };
 
   /**
@@ -1729,7 +1736,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, LEAVE_REASONS: LEAVE_REASONS, ADULT_SELF_SECTIONS: ADULT_SELF_SECTIONS, ROVER_AUDIENCE: ROVER_AUDIENCE, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,
@@ -1785,6 +1792,9 @@ var SHEET = {
   UNIT_IMAGES: '章圖',
   SETTINGS: '設定',
   PERMS: '權限設定',
+  PROMOTIONS: '升團紀錄',
+  REGIS: '年度登記',
+  REGIS_FEES: '登記費用',
   LOG: '操作日誌'
 };
 
@@ -1796,7 +1806,7 @@ var EDITABLE_SHEETS = [SHEET.ITEMS, SHEET.DETAILS, SHEET.UNITS, SHEET.SETTINGS, 
 
 /** 各分頁標題列（順序即欄位順序） */
 var HEADERS = {};
-HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團'];
+HEADERS[SHEET.CUBS] = ['小狼ID', '姓名', '小隊', '入團日', '目前級別', '綁定碼', '綁定碼剩餘次數', '狀態', '離團日', '體驗開始日', '職務', '分團', '離開原因'];
 HEADERS[SHEET.ACCOUNTS] = ['帳號ID', '帳號名稱', '稱呼', '密碼雜湊', '密碼鹽', '狀態', '建立時間', '最後登入時間', '臨時碼雜湊', '臨時碼到期時間'];
 HEADERS[SHEET.SESSIONS] = ['憑證雜湊', '帳號ID', '建立時間', '到期時間'];
 HEADERS[SHEET.BINDINGS] = ['帳號ID', '小狼ID', '綁定時間', '同意時間', '同意版本', '關係'];
@@ -1821,9 +1831,14 @@ HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身�
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間', '分團'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
-HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日'];
+HEADERS[SHEET.CONSENT] = ['版本', '內容', '生效日', '對象'];
 HEADERS[SHEET.SETTINGS] = ['鍵', '值', '說明'];
 HEADERS[SHEET.PERMS] = ['功能代碼', '功能名稱', '分類', '最低權限', '停用分團', '更新人', '更新時間'];
+// 升團（附錄第 69、80 點）：同一筆團員改到下一個分團，原本的入團日、小隊、職務記在這裡
+HEADERS[SHEET.PROMOTIONS] = ['小狼ID', '原分團', '新分團', '升團日', '原入團日', '原小隊', '原職務', '設定人', '設定時間'];
+// 續團確認與三項登記（附錄第 70、80 點）：每年度每人一列；類型 童軍／服務員／團（團登記一個分團一列）
+HEADERS[SHEET.REGIS] = ['年度', '類型', '對象ID', '分團', '續團', '已登記', '應繳金額', '已繳', '備註', '更新人', '更新時間'];
+HEADERS[SHEET.REGIS_FEES] = ['年度', '童軍登記費', '服務員登記費', '團登記費', '備註', '更新人', '更新時間'];
 HEADERS[SHEET.LOG] = ['時間', '操作人', '動作', '對象', '修改前', '修改後'];
 
 /**
@@ -1849,6 +1864,8 @@ TEXT_COLUMNS[SHEET.CONSENT] = [3];
 TEXT_COLUMNS[SHEET.REQUESTS] = [1, 2, 4, 9];
 TEXT_COLUMNS[SHEET.SQUAD_STAFF] = [2];
 TEXT_COLUMNS[SHEET.ROLES] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.PROMOTIONS] = [1, 4, 5];
+TEXT_COLUMNS[SHEET.REGIS] = [1, 3];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
@@ -1898,6 +1915,7 @@ var SEED = {
   "豹": "參與鹿級幼童軍6個月以上，由團長、副團長及家長依據進程內容予以評核，確認已完成豹級進程，經公開晉級儀式頒授佩戴豹章。"
  },
  "consentText": "親愛的家長您好：\n\n為了讓您隨時查看孩子在 22 團的紀錄，本團使用「22團網站」（涵蓋稚齡童軍、幼童軍、童軍、行義童軍、羅浮童軍五個分團）。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 孩子的姓名、所屬分團、小隊、入團日期，以及是否擔任小隊長、副小隊長與任期。\n2. 孩子的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章與技能章（各分團的進程功能陸續上線）。\n3. 孩子的出席紀錄：每次集會出席或請假（包含您在網站上先幫孩子請的假）。\n4. 您的帳號名稱、您填寫的稱呼（例如「王小明媽媽」）。您的密碼會經過加密，任何人（包括團長）都看不到。\n5. 活動報名：您幫自己或家人報名活動時填的姓名、身分別、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，由團長負責保管。\n我們不會蒐集孩子的生日、身分證字號、電話、地址或照片。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計、活動報名，以及讓您查看孩子的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己孩子的資料。\n2. 孩子所屬分團的團長與服務員看得到該分團的資料，用來點名、簽核與頒章；其他分團的團長、服務員看不到。\n3. 總團與系統管理員看得到全團資料，用來協助各分團與處理帳號問題。\n4. 孩子升上其他分團時，新分團的團長可以看到孩子之前的紀錄，讓進程接續。\n\n四、資料放在哪裡\n存放在本團管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n孩子在團期間會一直保存。孩子離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 在「我的資料」頁自行解除綁定（解除後您就看不到孩子的資料，孩子的紀錄不受影響）。\n4. 要求刪除您的帳號，或刪除孩子的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響孩子參加團集會。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡孩子所屬分團的團長，或：【請填寫：聯絡方式，例如 LINE 官方帳號「22團」】。",
+ "roverConsentText": "您好：\n\n為了讓您隨時查看自己在 22 團羅浮群的紀錄，本團使用「22團網站」（涵蓋稚齡童軍、幼童軍、童軍、行義童軍、羅浮童軍五個分團）。在您建立帳號前，請先閱讀以下說明。\n\n一、我們會記錄哪些資料\n1. 您的姓名、所屬分團、群（小隊）、入團日期，以及擔任的職務與任期。\n2. 您的進程紀錄：完成了哪些項目、哪一天完成、拿到哪些級別章。\n3. 您的出席紀錄：每次集會出席或請假（包含您在網站上自己請的假）。\n4. 您的帳號名稱與稱呼。您的密碼會經過加密，任何人（包括群長、團長）都看不到。\n5. 活動報名：您報名活動時填的姓名、身分別、報名表上的回答，以及應繳金額與是否已繳。我們不經手付款，也不記錄任何付款資料。活動結束後，網站上的報名資料會自動清除；報名名單另存一份在團長的雲端硬碟作為存檔，由團長負責保管。\n6. 年度登記：您這一年是否續團、是否已向童軍會登記、應繳與已繳的登記費。\n我們不會在網站上蒐集您的生日、身分證字號、電話、地址或照片（向童軍會登記所需的資料仍依總會規定另外處理）。\n\n二、為什麼要記錄\n只用於本團的進程管理、出席統計、活動報名與年度登記，以及讓您查看自己的紀錄，不會用在其他地方，也不會提供給團外的人或廠商。\n\n三、誰看得到\n1. 您只看得到自己的資料。\n2. 羅浮群的群長與服務員看得到羅浮群的資料，用來點名、簽核與頒章；其他分團的團長、服務員看不到。\n3. 總團與系統管理員看得到全團資料，用來協助各分團與處理帳號問題。\n4. 您之前在其他分團的紀錄（例如童軍、行義時期）會跟著您，讓進程與服務紀錄接續。\n\n四、資料放在哪裡\n存放在本團管理的 Google 試算表，並每週自動備份到團長的 Google 雲端硬碟。只有團長與必要的管理人員可以開啟。\n\n五、保存多久\n您在團期間會一直保存。您離團後，團長會在【請填寫：例如 180 天】內把資料匿名化（看不出是誰）或完全刪除。備份檔會在【請填寫：例如 8 週】內自動輪替刪除。\n\n六、您的權利\n您可以隨時：\n1. 在「我的資料」頁查看我們記錄了什麼。\n2. 要求更正錯誤的資料。\n3. 要求停用或刪除您的帳號，或刪除您的全部資料。\n不同意本說明，就不會建立帳號，也不會留下任何紀錄；這不影響您參加羅浮群的活動。\n\n七、聯絡誰\n有任何問題、要更正或刪除資料，請聯絡羅浮群的群長，或：【請填寫：聯絡方式，例如 LINE 官方帳號「22團」】。",
  "sections": {
   "稚齡": {
    "itemsCsv": "類別,級別或章名,大項或分類,項目內容\r\n進程,地球,－,能背誦稚齡童軍諾言及規律，並能說出其意義。\r\n進程,地球,－,能完成稚齡童軍的吼聲與敬禮。\r\n進程,地球,－,能說出小隊服務員之稱呼。\r\n進程,地球,－,認識並能說出自己小隊伙伴的姓名。\r\n進程,地球,－,會唱狼寶寶歌、稚齡童軍歌。\r\n進程,地球,－,能說出 3 種以上自我保護的方法。\r\n進程,星星,－,獲得地球章後，至少參加 4 次以上之團集會。\r\n進程,星星,－,能介紹自己家中親人予伙伴認識。\r\n進程,星星,－,會協助整理小隊器材，並完成小隊交付任務。\r\n進程,星星,－,會做好自己日常生活起居及留意服裝儀容整潔。\r\n進程,星星,－,能說出重要的電話號碼，以及打電話的禮節。\r\n進程,星星,－,能與伙伴共同創作一件物品。\r\n進程,月亮,－,獲得星星章後，至少參加 6 次以上之團集會。\r\n進程,月亮,－,能介紹同學予伙伴認識。\r\n進程,月亮,－,能參與自己的團部及班級的服務工作。\r\n進程,月亮,－,會協助整理家中物件，並能關心家人。\r\n進程,月亮,－,會用正確的方法使用各項遊戲器材。\r\n進程,月亮,－,能分辨各種交通工具。\r\n進程,月亮,－,能自行整理書包，完成上學前的準備。\r\n進程,月亮,－,能以正確姿勢握筆寫字。\r\n進程,月亮,－,能每天與師長及別人打招呼。\r\n進程,太陽,－,獲得月亮章後，至少參加 6 次以上之團集會。\r\n進程,太陽,－,能邀請伙伴至家中聚會。\r\n進程,太陽,－,能參與自己團部及學校的服務工作。\r\n進程,太陽,－,能簡述住家附近之社區環境。\r\n進程,太陽,－,能遵守步行的交通規則。\r\n進程,太陽,－,會與同學或伙伴共同遊戲。\r\n進程,太陽,－,能注意站立、坐下與行走的正確姿勢。\r\n進程,太陽,－,能閱讀兒童課外讀物，至少 3 本。\r\n技能章,種植,服務類,能使用棉花種植豆類至發芽，並觀察、記錄。\r\n技能章,種植,服務類,會利用瓶、罐，種植花本。\r\n技能章,種植,服務類,會整理學校或家庭的花圃、盆栽。\r\n技能章,生活,服務類,能早睡、早起。\r\n技能章,生活,服務類,不挑食、不偏食。\r\n技能章,生活,服務類,能隨時注意保持服裝儀容整潔。\r\n技能章,保健,服務類,能說出自己身體主要部位的名稱及功能.\r\n技能章,保健,服務類,會維護自己牙齒和視力的健康。\r\n技能章,環保,服務類,\"會做到垃圾分類,以及資源回收。\"\r\n技能章,環保,服務類,能協助整理住家環境。\r\n技能章,環保,服務類,能隨時保持教室個人桌椅周遭整潔。\r\n技能章,交通,服務類,認識紅綠燈，會過馬路，並注意安全。\r\n技能章,交通,服務類,注意乘車安全與禮貌。\r\n技能章,球類,運動類,拍球：能在原地拍球 20 下。\r\n技能章,球類,運動類,傳球：能與同伴互相連續傳球 20 下。\r\n技能章,球類,運動類,踢球：能對準相距 3 公尺之前方，連續 3 次踢中直徑 1 公尺之目標。\r\n技能章,騎車,運動類,會騎乘三輪車、扭扭車或滑板車、腳踏車等，均能連續騎乘 50 公尺以上。\r\n技能章,體能,運動類,能在 20 秒以內，跑走 60 公尺。\r\n技能章,體能,運動類,立定跳遠：能跳過 50 公分以上。\r\n技能章,體能,運動類,能連續側滾 3 次。\r\n技能章,民俗,運動類,跳繩 5 下、踩奶粉罐走 3 公尺或其他經團長認可的民俗活動。\r\n技能章,律動,運動類,會做健康操或律動唱跳。\r\n技能章,益智,技巧類,完成 20 片以上的拼圖或積木。\r\n技能章,益智,技巧類,會玩一種棋藝。\r\n技能章,表演,技巧類,能隨音樂的節奏做動作。\r\n技能章,表演,技巧類,能模仿兩種以上動物的聲音或動作。\r\n技能章,歌唱,技巧類,能唱 3 首兒歌及 2 首童軍歌曲。\r\n技能章,語文,技巧類,能說故事及唸童謠。\r\n技能章,美勞,技巧類,完成繪畫 1 張、勞作 1 件及摺紙 1 項。\r\n",
@@ -2106,7 +2124,7 @@ function loadCubs_() {
     return {
       cubId: Logic.clean(r[0]), name: Logic.clean(r[1]), squad: Logic.clean(r[2]), joinDate: validDateStr_(r[3]),
       level: Logic.clean(r[4]), code: Logic.normalizeCode(r[5]), codeUsesLeft: Number(r[6]) || 0,
-      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), _row: r._row, _raw: r
+      status: Logic.clean(r[7]), leftDate: validDateStr_(r[8]), trialStart: validDateStr_(r[9]), role: Logic.clean(r[10]), section: Logic.sectionOf(r[11]), leaveReason: Logic.clean(r[12]), _row: r._row, _raw: r
     };
   });
 }
@@ -2277,15 +2295,26 @@ function loadExtra_() {
 
 function loadConsents_() {
   return readRows_(SHEET.CONSENT).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[1]); }).map(function (r) {
-    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]) };
+    return { version: Number(r[0]) || 0, content: String(r[1]), effective: dateStr_(r[2]), audience: Logic.clean(r[3]) };
   });
 }
 
-function latestConsent_() {
-  var list = loadConsents_();
+/** 個資告知分兩份（附錄第 73 點⑲）：對象空白＝家長版（含童軍本人），「羅浮本人」＝成年人版；版本各自計算 */
+function consentAudience_(v) { return Logic.clean(v) === Logic.ROVER_AUDIENCE ? Logic.ROVER_AUDIENCE : ''; }
+function latestConsent_(audience) {
+  var aud = consentAudience_(audience);
+  var list = loadConsents_().filter(function (c) { return c.audience === aud; });
   var v = Logic.latestConsentVersion(list);
   return list.filter(function (c) { return c.version === v; })[0] || null;
 }
+function latestConsentVersionFor_(audience) { var c = latestConsent_(audience); return c ? c.version : 0; }
+
+/** 本人綁定且屬於成年的分團（羅浮）＝成年本人：用成年人版告知、權限和家長一樣 */
+function isAdultSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && Logic.ADULT_SELF_SECTIONS.indexOf(Logic.sectionOf(section)) >= 0; }
+/** 未成年的本人帳號（童軍、行義本人）：權限另外限制 */
+function isMinorSelf_(binding, section) { return binding.relation === Logic.RELATION.SELF && !isAdultSelf_(binding, section); }
+function bindingAudience_(binding, section) { return isAdultSelf_(binding, section) ? Logic.ROVER_AUDIENCE : ''; }
+function bindingNeedsConsent_(binding, section) { return Logic.needsReconsent(binding, latestConsentVersionFor_(bindingAudience_(binding, section))); }
 
 function loadSettings_() { return Logic.parseSettings(readAll_(SHEET.SETTINGS)); }
 
@@ -2298,6 +2327,27 @@ function loadPermRules_() {
 /** 寫操作日誌（不得寫入密碼、臨時碼、登入憑證） */
 function logOp_(actor, action, target, before, after) {
   appendRows_(SHEET.LOG, [[new Date(), actor || '', action, target || '', before || '', after || '']]);
+}
+
+/** 升團紀錄（附錄第 69、80 點） */
+function loadPromotions_() {
+  if (!ss_().getSheetByName(SHEET.PROMOTIONS)) return [];
+  return readRows_(SHEET.PROMOTIONS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
+    return { cubId: Logic.clean(r[0]), from: Logic.sectionOf(r[1]), to: Logic.sectionOf(r[2]), date: dateStr_(r[3]), joinDate: dateStr_(r[4]), squad: Logic.clean(r[5]), role: Logic.clean(r[6]) };
+  });
+}
+
+/**
+ * 紀錄跟著人走（附錄第 69 點）：這位團員在「其他分團」拿到的章與升團經過，新分團的團長與家長都看得到。
+ * 白名單：分團、名稱、類別、頒發日期；升團的原分團、新分團、日期。
+ */
+function cubHistory_(cub) {
+  var mine = Logic.progressSec(cub.section);
+  var awards = loadAwards_().filter(function (a) { return a.cubId === cub.cubId && a.sec !== mine; }).map(function (a) {
+    return { section: a.sec, unit: a.unit, category: Logic.isLevelOf(a.sec, a.unit) ? Logic.CATEGORY.PROGRESS : Logic.CATEGORY.BADGE, date: a.date };
+  }).sort(function (a, b) { return Logic.SECTIONS.indexOf(a.section) - Logic.SECTIONS.indexOf(b.section) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0); });
+  var promotions = loadPromotions_().filter(function (p) { return p.cubId === cub.cubId; }).map(function (p) { return { from: p.from, to: p.to, date: p.date }; });
+  return { awards: awards, promotions: promotions };
 }
 
 // ════════════════ Auth.js ════════════════
@@ -2631,10 +2681,10 @@ function apiCatalog_(req) {
   return out;
 }
 
-function apiConsentText_() {
-  var c = latestConsent_();
+function apiConsentText_(req) {
+  var c = latestConsent_(req && req.audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
-  return { version: c.version, content: c.content, effective: c.effective };
+  return { version: c.version, content: c.content, effective: c.effective, audience: c.audience };
 }
 
 // ───────────── 綁定碼／邀請碼 ─────────────
@@ -2719,8 +2769,8 @@ function redeemInvite_(accountId, invite, nickname) {
   updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
 }
 
-function requireConsentVersion_(agreedVersion) {
-  var c = latestConsent_();
+function requireConsentVersion_(agreedVersion, audience) {
+  var c = latestConsent_(audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
   if (Number(agreedVersion) !== c.version) throw new ApiError(ERR.NEED_CONSENT, '請先閱讀並勾選同意個資告知內容。');
   return c.version;
@@ -2857,7 +2907,9 @@ function apiUpdateNickname_(req, who) {
 function isScoutSelfAccount_(who) {
   if (who.admin) return false;
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  return mine.length > 0 && mine.every(function (b) { return b.relation === Logic.RELATION.SELF; });
+  var secOf = {};
+  loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+  return mine.length > 0 && mine.every(function (b) { return isMinorSelf_(b, secOf[b.cubId]); });
 }
 function assertNotScoutSelf_(who) {
   if (isScoutSelfAccount_(who)) throw new ApiError(ERR.FORBIDDEN, '童軍本人帳號不能做這個操作，請家長處理。');
@@ -2883,9 +2935,13 @@ function apiBind_(req, who) {
 /** 告知內容改版後重新同意：更新此帳號所有綁定的同意時間與版本 */
 function apiReconsent_(req, who) {
   return withLock_(function () {
-    var version = requireConsentVersion_(req.consentVersion);
-    var now = new Date();
-    var ups = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; }).map(function (b) {
+    var now = new Date(), secOf = {};
+    loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+    var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+    // 帳號只有成年本人綁定時同意的是成年人版，否則是家長版；只更新同一份的綁定
+    var aud = mine.length && mine.every(function (b) { return isAdultSelf_(b, secOf[b.cubId]); }) ? Logic.ROVER_AUDIENCE : '';
+    var version = requireConsentVersion_(req.consentVersion, aud);
+    var ups = mine.filter(function (b) { return bindingAudience_(b, secOf[b.cubId]) === aud; }).map(function (b) {
       var row = b._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
       row[3] = now; row[4] = version;
       return { row: b._row, values: row };
@@ -2917,6 +2973,7 @@ function registerByRequest_(req) {
   return withLock_(function () {
     var settings = loadSettings_().values;
     var identity = Logic.clean(req.identity);
+    if (identity === Logic.IDENTITY.ROVER_SELF) return registerRoverSelf_(req, settings);
     if (identity !== Logic.IDENTITY.PARENT && identity !== Logic.IDENTITY.STAFF) throw new ApiError(ERR.BAD_INPUT, '請選擇身分（家長或服務員）。');
     var v = Logic.validateChildNames(req.childNames, identity === Logic.IDENTITY.PARENT);
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
@@ -2941,6 +2998,30 @@ function registerByRequest_(req) {
     var s = createSession_(accountId, !!req.remember, settings);
     return { token: s.token, expiresAt: s.expiresAt };
   });
+}
+
+/**
+ * 羅浮本人自己註冊（附錄第 73 點⑱）：不需要家長；同意成年人版個資告知，送出「本人」申請到羅浮，群長核准後綁定為本人。
+ * 在 registerByRequest_ 的鎖裡面呼叫。
+ */
+function registerRoverSelf_(req, settings) {
+  var v = Logic.validateChildNames([req.selfName], true);
+  if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error.replace('孩子', '你'));
+  checkAccountInput_(req.username, req.password, req.nickname || v.names[0], settings);
+  var version = requireConsentVersion_(req.consentVersion, Logic.ROVER_AUDIENCE);
+  var requests = loadRequests_();
+  if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
+    throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
+  }
+  if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+  var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
+  var salt = randomHex_(32), now = new Date();
+  var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+  appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), Logic.clean(req.nickname) || v.names[0], hash, salt, '啟用', now, now, '', '']]);
+  appendRows_(SHEET.REQUESTS, [requestRow_(accountId, '本人', v.names[0], version, requests, now, '羅浮')]);
+  logOp_(accountId, '註冊申請', Logic.clean(req.username), '', '羅浮本人');
+  var s = createSession_(accountId, !!req.remember, settings);
+  return { token: s.token, expiresAt: s.expiresAt };
 }
 
 /** 已登入的家長再申請新增孩子（例如第二個孩子） */
@@ -3006,7 +3087,6 @@ function apiStartup_(req, who) {
 }
 
 function apiMe_(req, who) {
-  var latest = Logic.latestConsentVersion(loadConsents_());
   var cubs = loadCubs_();
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
   var list = [];
@@ -3015,7 +3095,9 @@ function apiMe_(req, who) {
     if (!c) return;
     list.push({ cubId: c.cubId, name: c.name, section: c.section, relation: b.relation || Logic.RELATION.PARENT, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
   });
-  var hasParentBinding = list.some(function (x) { return x.relation !== Logic.RELATION.SELF; });
+  // 成年的羅浮本人和家長一樣（附錄第 80 點）；未成年的本人帳號另外限制
+  var hasParentBinding = list.some(function (x) { return !isMinorSelf_(x, x.section); });
+  var myAudience = list.length && list.every(function (x) { return isAdultSelf_(x, x.section); }) ? Logic.ROVER_AUDIENCE : '';
   var isScoutSelf = !who.admin && list.length > 0 && !hasParentBinding;
   var mySec = who.section || (list[0] ? list[0].section : '');
   var permView = resolveWhoPerms_(who, hasParentBinding, isScoutSelf, mySec);
@@ -3059,8 +3141,10 @@ function apiMe_(req, who) {
       var rej = mineReq.filter(function (r) { return r.status === '已退回'; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 5);
       return pend.concat(rej).map(function (r) { return { type: r.type, name: r.name, status: r.status, at: r.at ? new Date(r.at).toISOString() : '', note: r.note }; });
     })(),
-    latestConsentVersion: latest,
-    needsConsent: mine.some(function (b) { return Logic.needsReconsent(b, latest); })
+    latestConsentVersion: latestConsentVersionFor_(myAudience),
+    needsConsent: mine.some(function (b) { var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0]; return bindingNeedsConsent_(b, c ? c.section : ''); }),
+    // 帳號只有成年本人綁定時看成年人版告知（附錄第 73 點⑲）
+    consentAudience: myAudience
   };
 }
 
@@ -3073,12 +3157,12 @@ function apiCubDetail_(req, who) {
   var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
   // 沒有綁定與小狼不存在回同一句話，不透露小狼是否存在
   if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) {
-    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
-  }
   var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
   if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  var isSelf = binding.relation === Logic.RELATION.SELF;
+  if (bindingNeedsConsent_(binding, cub.section)) {
+    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+  }
+  var isSelf = isMinorSelf_(binding, cub.section);
   var pv = resolveWhoPerms_(who, !isSelf, isSelf, cub.section);
   var view = buildCubView_(cub, today_());
   view.relation = binding.relation || Logic.RELATION.PARENT;
@@ -3151,7 +3235,7 @@ function buildCubView_(cub, today) {
       tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart,
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
-    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位
@@ -3531,6 +3615,8 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
       pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核' && requestVisible_(r); }).length : 0,
       notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0),
+      // LINE 推播額度（附錄第 73 點㉑）：只給總團與最高管理員（沒有最高管理員時團長）
+      lineQuota: canManageAll_(who) ? lineQuota_() : null,
       placeholders: canShared_(who, '個資告知') || canShared_(who, '網站內容') ? placeholderPlaces_() : []
     }
   };
@@ -3556,6 +3642,7 @@ function allSectionsSummary_() {
 function placeholderPlaces_() {
   var out = [], has = function (t) { return /【請填寫/.test(String(t || '')); };
   if (has((latestConsent_() || {}).content)) out.push('個資告知內容');
+  if (has((latestConsent_(Logic.ROVER_AUDIENCE) || {}).content)) out.push('個資告知內容（羅浮本人版）');
   if (has(siteValues_().about)) out.push('認識 22 團');
   return out;
 }
@@ -3699,11 +3786,14 @@ registerAdmin_('cubLeave', 'manageCubs', function (req, who) {
     if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '這位小狼目前不是在團狀態。');
     // reason='升團'：升上童軍團（畢業），和中途離團分開統計
     var status = Logic.clean(req.reason) === Logic.GRADUATED && cub.status === '在團' ? Logic.GRADUATED : '離團';
+    var reason = Logic.clean(req.leaveReason);
+    if (reason && Logic.LEAVE_REASONS.indexOf(reason) < 0) throw new ApiError(ERR.BAD_INPUT, '離開原因只能是' + Logic.LEAVE_REASONS.join('、') + '。');
     var row = cubRow_(cub);
+    row[12] = status === '離團' ? reason : '';
     endRoleInRow_(cub, row, d);
     row[5] = ''; row[6] = 0; row[7] = status; row[8] = d; // 綁定碼立即失效
     updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
-    logOp_(who.account.accountId, status === Logic.GRADUATED ? '標記升團' : '標記離團', cub.cubId, cub.status, status + ' ' + d);
+    logOp_(who.account.accountId, status === Logic.GRADUATED ? '標記升團' : '標記離團', cub.cubId, cub.status, status + ' ' + d + (row[12] ? '（' + row[12] + '）' : ''));
     return { status: status };
   });
 });
@@ -3832,8 +3922,8 @@ registerAdmin_('cubAdminDetail', 'viewOverview', function (req, who) {
     rate.period = period.name;
   }
   return {
-    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section },
-    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
+    cub: { cubId: cub.cubId, name: cub.name, squad: cub.squad, joinDate: cub.joinDate, status: cub.status, tenure: Logic.tenure(cub.joinDate, ctx.today).text, currentLevel: p.currentLevel || '', trialStart: cub.trialStart, role: cub.role, canLead: cub.status === '在團' && canLeadSquad_(cub).ok, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section, leaveReason: cub.leaveReason },
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
     roles: roleHistory_(cub.cubId),
     trial: cub.status === Logic.TRIAL || cub.trialStart ? Logic.trialProgress(att, sectionSettingOf_('體驗所需出席次數', cub.section)) : null,
     units: p.units.map(function (u) {
@@ -4292,7 +4382,9 @@ registerAdmin_('settingsGet', 'manageSettings', function (req, who) {
         value: s.type === 'bool' ? (v ? '是' : '否') : String(v), sheetValue: raw[s.key] === undefined ? '' : raw[s.key], error: errs[s.key] || ''
       };
     }),
-    consent: c && canShared_(who, '個資告知') ? { version: c.version, content: c.content, effective: c.effective } : null
+    consent: c && canShared_(who, '個資告知') ? { version: c.version, content: c.content, effective: c.effective } : null,
+    // 羅浮本人（成年人版）告知（附錄第 73 點⑲）
+    roverConsent: (function () { var rc = latestConsent_(Logic.ROVER_AUDIENCE); return rc && canShared_(who, '個資告知') ? { version: rc.version, content: rc.content, effective: rc.effective } : null; })()
   };
 });
 
@@ -4353,13 +4445,15 @@ registerAdmin_('consentSave', 'manageSettings', function (req, who) {
   var content = String(req.content || '').replace(/\r\n/g, '\n').trim();
   if (content.length < 20) throw new ApiError(ERR.BAD_INPUT, '個資說明內容太短了。');
   if (content.length > 10000) throw new ApiError(ERR.BAD_INPUT, '個資說明最多 10000 字。');
+  // audience：空白＝家長版；「羅浮本人」＝成年人版（附錄第 73 點⑲），版本各自計算
+  var aud = consentAudience_(req.audience);
   return withLock_(function () {
-    var c = latestConsent_();
+    var c = latestConsent_(aud);
     if (c && c.content.trim() === content) throw new ApiError(ERR.BAD_INPUT, '內容沒有變更。');
     var version = (c ? c.version : 0) + 1;
-    appendRows_(SHEET.CONSENT, [[version, content, today_()]]);
-    logOp_(who.account.accountId, '個資說明改版', '第 ' + version + ' 版', c ? '第 ' + c.version + ' 版' : '', '第 ' + version + ' 版');
-    return { version: version };
+    appendRows_(SHEET.CONSENT, [[version, content, today_(), aud]]);
+    logOp_(who.account.accountId, '個資說明改版', (aud ? aud + '版 ' : '') + '第 ' + version + ' 版', c ? '第 ' + c.version + ' 版' : '', '第 ' + version + ' 版');
+    return { version: version, audience: aud };
   });
 });
 
@@ -4633,7 +4727,9 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
       logOp_(who.account.accountId, '核准服務員申請', p.acc.username, '', '服務員：' + name);
       return { type: '服務員' };
     }
-    var cub;
+    var cub, selfReq = r.type === '本人';
+    // 羅浮本人的申請（附錄第 73 點⑱）只能在羅浮核准，綁定為「本人」
+    if (selfReq && Logic.ADULT_SELF_SECTIONS.indexOf(curSec_()) < 0) throw new ApiError(ERR.BAD_INPUT, '本人申請要切到羅浮後台核准。');
     if (Logic.clean(req.mode) === 'link') {
       cub = findCub_(req.cubId);
       if (cub.status !== '在團' && cub.status !== Logic.TRIAL) throw new ApiError(ERR.BAD_INPUT, '只能連結在團的團員或體驗者。');
@@ -4653,10 +4749,10 @@ registerAdmin_('requestApprove', 'reviewRequests', function (req, who) {
     }
     // 綁定：同意時間與版本沿用申請時的紀錄（家長送出申請時已同意）
     var exists = loadBindings_().some(function (b) { return b.accountId === r.accountId && b.cubId === cub.cubId; });
-    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion, Logic.RELATION.PARENT]]);
+    if (!exists) appendRows_(SHEET.BINDINGS, [[r.accountId, cub.cubId, new Date(), new Date(r.at || Date.now()), r.consentVersion, selfReq ? Logic.RELATION.SELF : Logic.RELATION.PARENT]]);
     closeRequest_(r, '已核准', who, cub.cubId, '');
-    logOp_(who.account.accountId, '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
-    return { type: '孩子', cubId: cub.cubId };
+    logOp_(who.account.accountId, selfReq ? '核准羅浮本人申請' : '核准孩子申請', cub.cubId, '', '綁定帳號 ' + p.acc.username);
+    return { type: selfReq ? '本人' : '孩子', cubId: cub.cubId };
   });
 });
 
@@ -5302,11 +5398,11 @@ function apiParentLeave_(req, who) {
     var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
     if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
     var cubObj = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
-    var isSelf = binding.relation === Logic.RELATION.SELF;
+    var isSelf = isMinorSelf_(binding, cubObj ? cubObj.section : '');
     if (!resolveWhoPerms_(who, !isSelf, isSelf, cubObj ? cubObj.section : '').tabs.parent_leave) {
       throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放線上請假功能。');
     }
-    if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+    if (bindingNeedsConsent_(binding, cubObj ? cubObj.section : '')) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
     var m = loadMeetings_().filter(function (x) { return x.meetingId === Logic.clean(req.meetingId); })[0];
     if (!m || !m.enabled || !Logic.isDateStr(m.date)) throw new ApiError(ERR.NOT_FOUND, '找不到這場集會。');
     if (m.date < today_()) throw new ApiError(ERR.BAD_INPUT, '這場集會已經過了，請聯絡團長或服務員。');
@@ -5355,7 +5451,7 @@ function apiParentCreateScoutAccount_(req, who) {
     var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
     var now = new Date();
     appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), nick, hash, salt, '啟用', now, '', '', '']]);
-    bindCub_(accountId, cub, binding.consentVersion || Logic.latestConsentVersion(loadConsents_()), Logic.RELATION.SELF, true);
+    bindCub_(accountId, cub, binding.consentVersion || latestConsentVersionFor_(''), Logic.RELATION.SELF, true);
     logOp_(who.account.accountId, '家長建立童軍本人帳號', cub.cubId, '', Logic.clean(req.username) + '（' + cub.section + '）');
     return { accountId: accountId, username: Logic.clean(req.username), cubName: cub.name, section: cub.section };
   });
@@ -5419,6 +5515,31 @@ registerAdmin_('siteContentSave', 'manageSettings', function (req, who) {
     if (adds.length) appendRows_(SHEET.SITE, adds);
     logOp_(who.account.accountId, '修改網站內容', '認識 22 團／活動時間／FB', '', '');
     return { changed: ups.length + adds.length };
+  });
+});
+
+// ───────────── 升團（SPEC 附錄第 69、80 點） ─────────────
+
+/**
+ * 升團：同一筆團員改到下一個分團（稚齡→小狼→童軍→行義→羅浮），團員ID、家長綁定、舊紀錄都不變。
+ * 由原分團的團長（或 admin、總團切到原分團）操作；升團日由團長指定（每年五月團慶），新分團的入團日＝升團日。
+ * 小隊清空、職務卸任；原本的入團日、小隊、職務寫進「升團紀錄」。新分團的目前級別依新分團的頒章重算（童軍→行義接續）。
+ */
+registerAdmin_('cubPromote', 'manageCubs', function (req, who) {
+  var date = requireDate_(Logic.clean(req.date), '升團日');
+  return withLock_(function () {
+    var cub = findCub_(req.cubId); // 只找得到目前分團（原分團）的團員
+    if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '只有在團的團員可以升團。');
+    var to = Logic.SECTIONS[Logic.SECTIONS.indexOf(cub.section) + 1];
+    if (!to) throw new ApiError(ERR.BAD_INPUT, '羅浮是最後一個分團，不能再升團；離開 22 團請用「標記離團」。');
+    var row = cubRow_(cub), oldRole = Logic.clean(row[10]);
+    endRoleInRow_(cub, row, date);
+    row[2] = ''; row[3] = date; row[9] = ''; row[11] = to; row[12] = '';
+    row[4] = Logic.currentLevelOf(loadAwards_().filter(function (a) { return a.cubId === cub.cubId; }), to);
+    updateRows_(SHEET.CUBS, [{ row: cub._row, values: row }]);
+    appendRows_(SHEET.PROMOTIONS, [[cub.cubId, cub.section, to, date, cub.joinDate, cub.squad, oldRole, who.account.accountId, new Date()]]);
+    logOp_(who.account.accountId, '升團', cub.cubId, cub.section, to + ' ' + date);
+    return { toSection: to };
   });
 });
 
@@ -5510,7 +5631,9 @@ function apiEventRegister_(req, who) {
   // 先看是不是 22 團的人（訊息照舊），再看總團有沒有開放這個身分線上報名（權限設定 parent_events）
   if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
   var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
+  var secOfCub = {};
+  loadCubs_().forEach(function (c) { secOfCub[c.cubId] = c.section; });
+  var isPar = myBinds.some(function (b) { return !isMinorSelf_(b, secOfCub[b.cubId]); });
   var isSelf = !who.admin && myBinds.length > 0 && !isPar;
   return afterSync_(withLock_(function () {
     var secs = accountSections_(who);
@@ -6258,6 +6381,225 @@ AUTHED_ACTIONS.inviteCreate = function (req, who) {
   });
 };
 
+// ════════════════ RegisApi.js ════════════════
+/**
+ * 續團確認與三項登記（SPEC 附錄第 69、70、80 點）
+ * - 三項登記＝團登記、服務員登記、童軍登記，每年向童軍會辦一次，登記年度採曆年制。
+ * - 只記「續團、已登記、應繳、已繳」；身分證字號、生日、電話、地址等仍在總會系統或紙本處理，系統不收集。
+ * - 續團確認：各分團團長年底勾選自己分團的團員與服務員要不要續團（只看目前分團）。
+ * - 三項登記：總團與最高管理員（沒有最高管理員時團長）設定年度登記費、勾選已登記與已繳、匯出名單；其他人看不到。
+ * 每年度每人一列：類型 童軍（對象ID＝團員ID）／服務員（對象ID＝帳號ID）／團（對象ID＝分團名稱）。
+ */
+
+var REGIS_TYPES = { SCOUT: '童軍', STAFF: '服務員', TROOP: '團' };
+
+/** 登記年度：九月以後預設是下一年（年底辦理下一年度的登記） */
+function defaultRegisYear_() {
+  var t = today_();
+  var y = Number(t.slice(0, 4)), m = Number(t.slice(5, 7));
+  return m >= 9 ? y + 1 : y;
+}
+function regisYear_(v) {
+  var y = Number(Logic.clean(v));
+  if (!y) return defaultRegisYear_();
+  if (!/^\d{4}$/.test(String(y)) || y < 2020 || y > 2100) throw new ApiError(ERR.BAD_INPUT, '請填寫正確的年度（西元年，例如 2027）。');
+  return y;
+}
+
+function loadRegis_() {
+  if (!ss_().getSheetByName(SHEET.REGIS)) return [];
+  return readRows_(SHEET.REGIS).filter(function (r) { return Logic.clean(r[0]) && Logic.clean(r[2]); }).map(function (r) {
+    return {
+      year: Number(r[0]) || 0, type: Logic.clean(r[1]), id: Logic.clean(r[2]), section: Logic.clean(r[3]),
+      renew: Logic.clean(r[4]), registered: Logic.clean(r[5]) === '是', amount: Logic.clean(r[6]) === '' ? null : Number(r[6]) || 0,
+      paid: Logic.clean(r[7]) === '是', note: Logic.clean(r[8]), _row: r._row, _raw: r
+    };
+  });
+}
+function loadFees_(year) {
+  if (!ss_().getSheetByName(SHEET.REGIS_FEES)) return null;
+  var r = readRows_(SHEET.REGIS_FEES).filter(function (x) { return Number(x[0]) === year; })[0];
+  return r ? { scout: Number(r[1]) || 0, staff: Number(r[2]) || 0, troop: Number(r[3]) || 0, note: Logic.clean(r[4]), _row: r._row } : null;
+}
+function feeOf_(fees, type) {
+  if (!fees) return 0;
+  return type === REGIS_TYPES.SCOUT ? fees.scout : type === REGIS_TYPES.STAFF ? fees.staff : fees.troop;
+}
+function regisKey_(type, id) { return type + '|' + id; }
+
+/** 某分團要確認續團的人：在團的團員＋該分團的團長、服務員（總團不在分團名單裡） */
+function renewPeople_(section) {
+  var sec = Logic.sectionOf(section), acc = accountsById_();
+  var cubs = loadCubs_().filter(function (c) { return c.section === sec && c.status === '在團'; }).map(function (c) {
+    return { type: REGIS_TYPES.SCOUT, id: c.cubId, name: c.name, squad: c.squad, section: sec };
+  });
+  var seen = {};
+  var staff = loadAdminRows_().filter(function (r) { return r.role !== Logic.CENTRAL && r.section === sec; }).filter(function (r) {
+    var a = acc[r.accountId];
+    if (!a || a.status !== '啟用' || seen[r.accountId]) return false;
+    seen[r.accountId] = true; return true;
+  }).map(function (r) { return { type: REGIS_TYPES.STAFF, id: r.accountId, name: r.name, title: r.title || r.role, section: sec }; });
+  return cubs.concat(staff);
+}
+
+/** 寫入或更新一列（只改傳進來的欄位） */
+function upsertRegis_(existing, year, type, id, section, fields, who) {
+  var cur = existing[regisKey_(type, id)];
+  var now = new Date();
+  if (cur) {
+    var v = HEADERS[SHEET.REGIS].map(function (h, j) { return cur._raw[j] === undefined ? '' : cur._raw[j]; });
+    if ('renew' in fields) v[4] = fields.renew;
+    if ('registered' in fields) v[5] = fields.registered;
+    if ('amount' in fields) v[6] = fields.amount;
+    if ('paid' in fields) v[7] = fields.paid;
+    if ('note' in fields) v[8] = fields.note;
+    v[3] = section; v[9] = who.account.accountId; v[10] = now;
+    return { update: { row: cur._row, values: v } };
+  }
+  return { append: [year, type, id, section, fields.renew || '', fields.registered || '否', 'amount' in fields ? fields.amount : '', fields.paid || '否', fields.note || '', who.account.accountId, now] };
+}
+
+// ───── 續團確認（各分團團長，只看目前分團） ─────
+
+registerAdmin_('renewList', 'manageCubs', function (req) {
+  var year = regisYear_(req.year), sec = curSec_();
+  var mine = {};
+  loadRegis_().forEach(function (r) { if (r.year === year) mine[regisKey_(r.type, r.id)] = r; });
+  return {
+    year: year, section: sec,
+    people: renewPeople_(sec).map(function (p) {
+      var r = mine[regisKey_(p.type, p.id)];
+      return { type: p.type, id: p.id, name: p.name, squad: p.squad || '', title: p.title || '', renew: r ? r.renew : '', registered: !!(r && r.registered) };
+    })
+  };
+});
+
+/** entries: [{type, id, renew: '是'|'否'|''}]；只能改目前分團的人，已登記的不能改成不續團 */
+registerAdmin_('renewSave', 'manageCubs', function (req, who) {
+  var year = regisYear_(req.year), sec = curSec_();
+  var entries = (req.entries || []).slice(0, 500);
+  return withLock_(function () {
+    var allowed = {};
+    renewPeople_(sec).forEach(function (p) { allowed[regisKey_(p.type, p.id)] = p; });
+    var existing = {};
+    loadRegis_().forEach(function (r) { if (r.year === year) existing[regisKey_(r.type, r.id)] = r; });
+    var ups = [], adds = [];
+    entries.forEach(function (e) {
+      var k = regisKey_(Logic.clean(e.type), Logic.clean(e.id)), p = allowed[k];
+      if (!p) throw new ApiError(ERR.NOT_FOUND, '名單已經變動，請重新整理。');
+      var renew = Logic.clean(e.renew);
+      if (['是', '否', ''].indexOf(renew) < 0) throw new ApiError(ERR.BAD_INPUT, '續團只能選「是」或「否」。');
+      if (renew === '否' && existing[k] && existing[k].registered) throw new ApiError(ERR.BAD_INPUT, p.name + ' 已經登記了，不能改成不續團，請先請總團取消登記。');
+      if (existing[k] && existing[k].renew === renew) return;
+      var w = upsertRegis_(existing, year, p.type, p.id, sec, { renew: renew }, who);
+      if (w.update) ups.push(w.update); else adds.push(w.append);
+    });
+    if (ups.length) updateRows_(SHEET.REGIS, ups);
+    if (adds.length) appendRows_(SHEET.REGIS, adds);
+    if (ups.length + adds.length) logOp_(who.account.accountId, '續團確認', sec, '', year + ' 年度 ' + (ups.length + adds.length) + ' 人');
+    return { changed: ups.length + adds.length };
+  });
+});
+
+// ───── 三項登記（總團、最高管理員） ─────
+
+function requireRegisManager_(who) {
+  if (!canManageAll_(who)) throw new ApiError(ERR.FORBIDDEN, '三項登記只有總團與最高管理員可以處理。');
+}
+AUTHED_ACTIONS.regisList = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year), fees = loadFees_(year);
+  var rows = {};
+  loadRegis_().forEach(function (r) { if (r.year === year) rows[regisKey_(r.type, r.id)] = r; });
+  var people = [];
+  Logic.SECTIONS.forEach(function (sec) {
+    var list = renewPeople_(sec);
+    // 團登記：這個分團有人要續團（或已登記）就列出來
+    var troopRow = rows[regisKey_(REGIS_TYPES.TROOP, sec)];
+    if (list.length || troopRow) list.unshift({ type: REGIS_TYPES.TROOP, id: sec, name: '22 團' + Logic.SECTION_FULL[sec] + '團', section: sec });
+    list.forEach(function (p) {
+      var r = rows[regisKey_(p.type, p.id)];
+      people.push({
+        type: p.type, id: p.id, name: p.name, section: sec, title: p.title || '',
+        renew: p.type === REGIS_TYPES.TROOP ? '是' : (r ? r.renew : ''),
+        registered: !!(r && r.registered), paid: !!(r && r.paid),
+        amount: r && r.amount !== null ? r.amount : feeOf_(fees, p.type), note: r ? r.note : ''
+      });
+    });
+  });
+  var due = people.filter(function (p) { return p.renew !== '否'; });
+  return {
+    year: year, fees: fees ? { scout: fees.scout, staff: fees.staff, troop: fees.troop, note: fees.note } : null, people: people,
+    summary: {
+      renewYes: people.filter(function (p) { return p.type !== REGIS_TYPES.TROOP && p.renew === '是'; }).length,
+      undecided: people.filter(function (p) { return p.type !== REGIS_TYPES.TROOP && !p.renew; }).length,
+      registered: due.filter(function (p) { return p.registered; }).length, total: due.length,
+      amount: due.reduce(function (s, p) { return s + (p.amount || 0); }, 0),
+      paid: due.filter(function (p) { return p.paid; }).reduce(function (s, p) { return s + (p.amount || 0); }, 0)
+    }
+  };
+};
+
+/** entries: [{type, id, section, registered?, paid?, amount?, note?}] */
+AUTHED_ACTIONS.regisSave = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year);
+  var entries = (req.entries || []).slice(0, 1000);
+  return withLock_(function () {
+    var existing = {};
+    loadRegis_().forEach(function (r) { if (r.year === year) existing[regisKey_(r.type, r.id)] = r; });
+    var ups = [], adds = [];
+    entries.forEach(function (e) {
+      var type = Logic.clean(e.type), id = Logic.clean(e.id), sec = Logic.sectionOf(e.section);
+      if ([REGIS_TYPES.SCOUT, REGIS_TYPES.STAFF, REGIS_TYPES.TROOP].indexOf(type) < 0 || !id) throw new ApiError(ERR.BAD_INPUT, '資料不正確，請重新整理。');
+      var f = {};
+      if ('registered' in e) f.registered = e.registered ? '是' : '否';
+      if ('paid' in e) f.paid = e.paid ? '是' : '否';
+      if ('amount' in e) {
+        var n = Number(e.amount);
+        if (e.amount === '' || e.amount === null) f.amount = '';
+        else if (!isFinite(n) || n < 0 || n > 100000) throw new ApiError(ERR.BAD_INPUT, '應繳金額需為 0～100000。');
+        else f.amount = Math.round(n);
+      }
+      if ('note' in e) f.note = Logic.clean(e.note).slice(0, 100);
+      var w = upsertRegis_(existing, year, type, id, sec, f, who);
+      if (w.update) ups.push(w.update); else adds.push(w.append);
+    });
+    if (ups.length) updateRows_(SHEET.REGIS, ups);
+    if (adds.length) appendRows_(SHEET.REGIS, adds);
+    if (ups.length + adds.length) logOp_(who.account.accountId, '三項登記', String(year), '', (ups.length + adds.length) + ' 筆');
+    return { changed: ups.length + adds.length };
+  });
+};
+
+AUTHED_ACTIONS.regisFeesSave = function (req, who) {
+  requireRegisManager_(who);
+  var year = regisYear_(req.year);
+  var num = function (v, label) {
+    var n = Number(v);
+    if (!isFinite(n) || n < 0 || n > 100000) throw new ApiError(ERR.BAD_INPUT, label + '需為 0～100000 的金額。');
+    return Math.round(n);
+  };
+  var vals = [year, num(req.scout, '童軍登記費'), num(req.staff, '服務員登記費'), num(req.troop, '團登記費'), Logic.clean(req.note).slice(0, 100), who.account.accountId, new Date()];
+  return withLock_(function () {
+    var cur = loadFees_(year);
+    if (cur) updateRows_(SHEET.REGIS_FEES, [{ row: cur._row, values: vals }]);
+    else appendRows_(SHEET.REGIS_FEES, [vals]);
+    logOp_(who.account.accountId, '設定登記費', String(year), cur ? [cur.scout, cur.staff, cur.troop].join('／') : '', vals.slice(1, 4).join('／'));
+    return {};
+  });
+};
+
+/** 匯出（附錄第 70 點）：姓名、分團、身分、續團、是否已登記、應繳、已繳；不續團的不列 */
+AUTHED_ACTIONS.regisExport = function (req, who) {
+  var d = AUTHED_ACTIONS.regisList(req, who);
+  var rows = [['姓名', '分團', '身分', '續團', '是否已登記', '應繳', '已繳']];
+  d.people.filter(function (p) { return p.renew !== '否'; }).forEach(function (p) {
+    rows.push([p.name, Logic.SECTION_FULL[p.section] || p.section, p.type, p.renew || '未確認', p.registered ? '是' : '否', p.amount || 0, p.paid ? '是' : '否']);
+  });
+  return { csv: Logic.toCsv(rows.map(function (r) { return r.map(function (v) { return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v; }); })), filename: '三項登記_' + d.year + '.csv' };
+};
+
 // ════════════════ Notify.js ════════════════
 /**
  * LINE 主動通知（SPEC 第八節，階段 5）
@@ -6507,6 +6849,29 @@ function ensureDailyTrigger_() {
   installDailyTrigger_();
   return true;
 }
+
+// ───────────── 推播額度（附錄第 73 點㉑：先維持免費方案，後台顯示本月已推播則數，接近上限提醒） ─────────────
+
+/** 本月已推播／上限（LINE 官方帳號的方案額度）；快取 1 小時。沒有 token 或查詢失敗回 null */
+function lineQuota_() {
+  var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
+  if (!token) return null;
+  var cache = CacheService.getScriptCache(), hit = cache.get('LINE_QUOTA');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* 重查 */ } }
+  try {
+    var get = function (path) {
+      var r = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/' + path, { method: 'get', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+      return r.getResponseCode() === 200 ? JSON.parse(r.getContentText() || '{}') : null;
+    };
+    var q = get('quota'), used = get('quota/consumption');
+    if (!q || !used) return null;
+    var limit = q.type === 'limited' ? Number(q.value) || 0 : 0;
+    var out = { used: Number(used.totalUsage) || 0, limit: limit, near: limit > 0 && Number(used.totalUsage) >= limit * 0.8 };
+    cache.put('LINE_QUOTA', JSON.stringify(out), 3600);
+    return out;
+  } catch (e) { return null; }
+}
+
 
 // ════════════════ Backup.js ════════════════
 /**
@@ -6839,7 +7204,12 @@ function setupCore_() {
       var details = Logic.buildDetailSeed(SEED.detailsCsv);
       if (details.length) { appendRows_(SHEET.DETAILS, details); report.seeded.push(SHEET.DETAILS + ' ' + details.length + ' 列'); }
     }
-    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_()]]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    if (dataRowCount_(SHEET.CONSENT) === 0) { appendRows_(SHEET.CONSENT, [[1, SEED.consentText, today_(), '']]); report.seeded.push(SHEET.CONSENT + ' 第 1 版'); }
+    // 羅浮本人（成年人版，附錄第 73 點⑲）：還沒有這一份就新增第 1 版，不動家長版
+    if (SEED.roverConsentText && !loadConsents_().some(function (c) { return c.audience === Logic.ROVER_AUDIENCE; })) {
+      appendRows_(SHEET.CONSENT, [[1, SEED.roverConsentText, today_(), Logic.ROVER_AUDIENCE]]);
+      report.seeded.push(SHEET.CONSENT + ' 羅浮本人版第 1 版');
+    }
 
     // 權限設定：只在分頁沒有資料列時匯入預設權限表
     if (dataRowCount_(SHEET.PERMS) === 0) {

@@ -535,6 +535,10 @@ async function shrinkImage(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 const unitLabel = (u) => (u.category === '進程' ? lvName(u.unit) : u.unit);
+/** 升團前在其他分團的紀錄（紀錄跟著人走）：升團經過＋拿過的章 */
+const historyHtml = (h) => (!h || (!(h.awards || []).length && !(h.promotions || []).length) ? '' : `<section class="card"><details><summary class="fold">📜 之前分團的紀錄（${(h.promotions || []).length} 次升團、${(h.awards || []).length} 個章）▾</summary>
+  ${(h.promotions || []).map((p) => `<div class="list-row"><span class="grow">⬆️ ${esc(secFull(p.from))} → ${esc(secFull(p.to))}</span><span class="s">${fmtDate(p.date)}</span></div>`).join('')}
+  ${(h.awards || []).map((a) => `<div class="list-row"><span class="grow">🏅 ${esc(a.category === '進程' ? lvName(a.unit) : a.unit + (BL(a.section) || '章'))} <span class="s">${esc(secFull(a.section))}</span></span><span class="s">${a.date ? fmtDate(a.date) : ''}</span></div>`).join('')}</details></section>`);
 const STATUS_ORDER = { '已完成待頒發': 0, '進行中': 1, '已頒發': 2, '未開始': 3 };
 const webRoot = () => (IN_GAS ? (gasBase || '（請向團長索取網址）') : location.origin + location.pathname.replace(/web\/?[^/]*$/, ''));
 
@@ -1551,6 +1555,7 @@ function viewHome(d) {
       ${challenging.length ? challenging.map(unitCard).join('') : '<p class="muted">目前沒有進行中的關卡。</p>'}</section>
     <section class="card"><h2>已經拿到的</h2>
       ${got.length ? got.map(unitCard).join('') : '<p class="muted">還沒有拿到章，一起加油！💪</p>'}</section>
+    ${historyHtml(d.history)}
     ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的${esc(BL())}（${notStarted.length} 個）▾</summary>
       ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
   mountNotices(3, '.hero', [c.section || '小狼']);
@@ -3023,12 +3028,14 @@ const ADMIN_PAGES = {
         <div class="more-menu"><button class="btn ghost small" id="moreBtn" style="margin-top:0" aria-label="更多操作">⋯</button>
           <div class="pop" id="morePop" hidden>
             ${L ? `<button id="edit">✏️ 編輯資料</button>${P ? '<button id="bf">📥 補登頒章</button>' : ''}` : ''}${L && c.status === '在團' ? '<button id="role">🎗️ 設定職務</button>' : ''}${P ? '<button id="pr">🖨️ 列印簽核單</button>' : ''}
+            ${L && c.status === '在團' && SECTIONS[SECTIONS.indexOf(c.section || '小狼') + 1] ? `<button id="promote">⬆️ 升團到${esc(secFull(SECTIONS[SECTIONS.indexOf(c.section || '小狼') + 1]))}</button>` : ''}
             ${L && (c.status === '在團' || c.status === '體驗') ? '<button class="dg" id="leave">標記離團</button>' : ''}${L && c.status !== '已匿名' ? '<button class="dg" id="priv">個資處理</button>' : ''}</div></div></div>
       ${c.status === '體驗' && d.trial ? `<section class="card"><h2>🧪 體驗者</h2>
         <p>一般團集會出席 <b>${d.trial.count}／${d.trial.need}</b> 次${d.trial.ready ? '（✅ 已滿，可以入團）' : ''}。大活動不算。</p>
         <div class="bar ${d.trial.ready ? 'full' : ''}"><span style="width:${Math.min(100, Math.round(d.trial.count / d.trial.need * 100))}%"></span></div>
         ${L ? '<button class="btn green" id="join">🎉 轉為入團</button>' : ''}</section>` : ''}
       ${d.units.some((u) => u.status === '已頒發') ? `<section class="card"><h2>🏅 已獲得的章</h2><div class="award-strip">${d.units.filter((u) => u.status === '已頒發').map((u) => `<span class="a"><span class="pic">${iconOf(u)}</span>${esc(unitLabel(u))}<span class="s">${u.awardDate ? fmtDate(u.awardDate) : ''}</span></span>`).join('')}</div></section>` : ''}
+      ${historyHtml(d.history)}
       ${(d.roles || []).length ? `<section class="card"><details><summary class="fold">🎗️ 職務紀錄（${d.roles.length}）</summary>${d.roles.map((x) => `<div class="list-row"><span class="grow"><span class="t">${esc(x.role)}</span> <span class="s">${esc(x.squad)}</span></span><span class="s">${fmtDate(x.start)} ～ ${x.end ? fmtDate(x.end) : '現在'}</span></div>`).join('')}</details></section>` : ''}
       ${!P ? `<section class="card"><p class="muted" style="margin:0">${esc(secFull(c.section))}的進程與章準備中。</p></section>` : ''}
       ${tab === 'bind' ? (bindHtml || '<section class="card"><p class="muted">只有團長可以管理綁定碼與家長帳號。</p></section>') : ''}
@@ -3057,13 +3064,20 @@ const ADMIN_PAGES = {
         bindForm($('#frl', sh), async (fd) => { const r = await withConfirm('cubRoleSave', { cubId: c.cubId, role: fd.get('role'), date: fd.get('date') }); if (!r) return; close(); toast('已更新職務'); reload(); });
       });
     });
+    on('#promote', () => {
+      const to = SECTIONS[SECTIONS.indexOf(c.section || '小狼') + 1];
+      openSheet(`<h2>⬆️ 升團到${esc(secFull(to))}</h2><p class="muted small">「${esc(c.name)}」會移到${esc(secFull(to))}的名單（團員ID、家長綁定不變），在這裡拿過的章與出席紀錄都保留，${esc(secFull(to))}的團長看得到。小隊清空、職務卸任，${esc(secFull(to))}的入團日＝升團日。</p>
+        <form id="fpm"><label>升團日（例如團慶那一天）</label><input type="date" name="date" value="${todayStr()}" required>
+        <button class="btn" type="submit">確定升團</button><div class="out"></div></form>`, (sh, close) => {
+        bindForm($('#fpm', sh), async (fd) => { const r = await api('cubPromote', { cubId: c.cubId, date: fd.get('date') }); close(); toast('已升團到' + secFull(r.toSection)); goAdmin('cubs'); });
+      });
+    });
     on('#leave', () => {
-      openSheet(`<h2>標記離開</h2><p class="muted small">「${esc(c.name)}」離開後，綁定碼立即失效、職務自動卸任；紀錄都會保留。</p>
-        <form id="flv">${c.status === '在團' ? `<label class="check"><input type="radio" name="reason" value="升團" checked> 🎓 升團（升上童軍團、畢業）</label>
-          <label class="check"><input type="radio" name="reason" value="離團"> 離團（中途離開）</label>` : '<input type="hidden" name="reason" value="離團">'}
-        <label>日期</label><input type="date" name="leftDate" value="${todayStr()}" required>
+      openSheet(`<h2>標記離團</h2><p class="muted small">「${esc(c.name)}」離團後，綁定碼立即失效、職務自動卸任；紀錄都會保留。升到下一個分團請用「⬆️ 升團」。</p>
+        <form id="flv"><label>離開原因</label><select class="full" name="leaveReason">${['不續團', '退團', '其他'].map((x) => `<option>${x}</option>`).join('')}</select>
+        <label>離團日</label><input type="date" name="leftDate" value="${todayStr()}" required>
         <button class="btn danger" type="submit">確定</button><div class="out"></div></form>`, (sh, close) => {
-        bindForm($('#flv', sh), async (fd) => { const r = await api('cubLeave', { cubId: c.cubId, leftDate: fd.get('leftDate'), reason: fd.get('reason') }); close(); toast('已標記' + r.status); reload(); });
+        bindForm($('#flv', sh), async (fd) => { const r = await api('cubLeave', { cubId: c.cubId, leftDate: fd.get('leftDate'), leaveReason: fd.get('leaveReason') }); close(); toast('已標記' + r.status); reload(); });
       });
     });
     on('#copyCode', () => copyText(`${c.name} 的家長您好：\n這是 22 團網站的綁定碼：${info.code}\n1. 打開 ${webRoot()}\n2. 按右上角「登入」→「我有綁定碼」\n3. 輸入綁定碼 ${info.code} 和孩子姓名「${c.name}」\n4. 設定帳號密碼、閱讀並同意個資說明就完成了！`));

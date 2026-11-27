@@ -548,7 +548,7 @@ test('設定頁：讀取、修改（檢查範圍、寫操作日誌）、服務�
   assert.match(call(L, 'consentSave', { content: '太短' }).message, /太短/);
   const c = call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' });
   assert.equal(c.version, 2);
-  assert.equal(env.rows('告知同意內容').length, 2, '舊版保留');
+  assert.equal(env.rows('告知同意內容').length, 3, '舊版保留（另有羅浮本人版一列）');
   assert.equal(call(P, 'me').needsConsent, true);
   assert.match(call(L, 'consentSave', { content: '親愛的家長您好：這是第二版的個資說明，內容有更新，請重新閱讀。' }).message, /沒有變更/);
 });
@@ -1381,9 +1381,10 @@ test('LINE 關鍵字「點名」（附錄第 63 點）：只回已連結的管�
 test('後台首頁提醒：個資說明與「了解幼童軍」還有【請填寫】範本文字（附錄第 65 點）', () => {
   const { call, L, A } = world();
   let al = call(L, 'adminHome').alerts;
-  assert.deepEqual(al.placeholders, ['個資告知內容', '認識 22 團'], '預設文字還沒改');
+  assert.deepEqual(al.placeholders, ['個資告知內容', '個資告知內容（羅浮本人版）', '認識 22 團'], '預設文字還沒改');
   assert.deepEqual(call(A, 'adminHome').alerts.placeholders, [], '服務員不顯示（改不了）');
   call(L, 'consentSave', { content: '親愛的家長您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡團長：LINE 官方帳號。' });
+  call(L, 'consentSave', { audience: '羅浮本人', content: '您好：資料保存到離團後 180 天，備份 8 週後刪除。聯絡群長：LINE 官方帳號。' });
   call(L, 'siteContentSave', { about: '我們是 22 團，歡迎來體驗。', activity: '', fb: '' });
   al = call(L, 'adminHome').alerts;
   assert.deepEqual(al.placeholders, []);

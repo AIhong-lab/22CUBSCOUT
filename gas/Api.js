@@ -160,10 +160,10 @@ function apiCatalog_(req) {
   return out;
 }
 
-function apiConsentText_() {
-  var c = latestConsent_();
+function apiConsentText_(req) {
+  var c = latestConsent_(req && req.audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
-  return { version: c.version, content: c.content, effective: c.effective };
+  return { version: c.version, content: c.content, effective: c.effective, audience: c.audience };
 }
 
 // ───────────── 綁定碼／邀請碼 ─────────────
@@ -248,8 +248,8 @@ function redeemInvite_(accountId, invite, nickname) {
   updateRows_(SHEET.INVITES, [{ row: invite._row, values: row }]);
 }
 
-function requireConsentVersion_(agreedVersion) {
-  var c = latestConsent_();
+function requireConsentVersion_(agreedVersion, audience) {
+  var c = latestConsent_(audience);
   if (!c) throw new ApiError(ERR.SERVER_ERROR, '尚未設定個資告知內容，請聯絡團長。');
   if (Number(agreedVersion) !== c.version) throw new ApiError(ERR.NEED_CONSENT, '請先閱讀並勾選同意個資告知內容。');
   return c.version;
@@ -386,7 +386,9 @@ function apiUpdateNickname_(req, who) {
 function isScoutSelfAccount_(who) {
   if (who.admin) return false;
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  return mine.length > 0 && mine.every(function (b) { return b.relation === Logic.RELATION.SELF; });
+  var secOf = {};
+  loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+  return mine.length > 0 && mine.every(function (b) { return isMinorSelf_(b, secOf[b.cubId]); });
 }
 function assertNotScoutSelf_(who) {
   if (isScoutSelfAccount_(who)) throw new ApiError(ERR.FORBIDDEN, '童軍本人帳號不能做這個操作，請家長處理。');
@@ -412,9 +414,13 @@ function apiBind_(req, who) {
 /** 告知內容改版後重新同意：更新此帳號所有綁定的同意時間與版本 */
 function apiReconsent_(req, who) {
   return withLock_(function () {
-    var version = requireConsentVersion_(req.consentVersion);
-    var now = new Date();
-    var ups = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; }).map(function (b) {
+    var now = new Date(), secOf = {};
+    loadCubs_().forEach(function (c) { secOf[c.cubId] = c.section; });
+    var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
+    // 帳號只有成年本人綁定時同意的是成年人版，否則是家長版；只更新同一份的綁定
+    var aud = mine.length && mine.every(function (b) { return isAdultSelf_(b, secOf[b.cubId]); }) ? Logic.ROVER_AUDIENCE : '';
+    var version = requireConsentVersion_(req.consentVersion, aud);
+    var ups = mine.filter(function (b) { return bindingAudience_(b, secOf[b.cubId]) === aud; }).map(function (b) {
       var row = b._raw.slice(0, HEADERS[SHEET.BINDINGS].length);
       row[3] = now; row[4] = version;
       return { row: b._row, values: row };
@@ -446,6 +452,7 @@ function registerByRequest_(req) {
   return withLock_(function () {
     var settings = loadSettings_().values;
     var identity = Logic.clean(req.identity);
+    if (identity === Logic.IDENTITY.ROVER_SELF) return registerRoverSelf_(req, settings);
     if (identity !== Logic.IDENTITY.PARENT && identity !== Logic.IDENTITY.STAFF) throw new ApiError(ERR.BAD_INPUT, '請選擇身分（家長或服務員）。');
     var v = Logic.validateChildNames(req.childNames, identity === Logic.IDENTITY.PARENT);
     if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error);
@@ -470,6 +477,30 @@ function registerByRequest_(req) {
     var s = createSession_(accountId, !!req.remember, settings);
     return { token: s.token, expiresAt: s.expiresAt };
   });
+}
+
+/**
+ * 羅浮本人自己註冊（附錄第 73 點⑱）：不需要家長；同意成年人版個資告知，送出「本人」申請到羅浮，群長核准後綁定為本人。
+ * 在 registerByRequest_ 的鎖裡面呼叫。
+ */
+function registerRoverSelf_(req, settings) {
+  var v = Logic.validateChildNames([req.selfName], true);
+  if (!v.ok) throw new ApiError(ERR.BAD_INPUT, v.error.replace('孩子', '你'));
+  checkAccountInput_(req.username, req.password, req.nickname || v.names[0], settings);
+  var version = requireConsentVersion_(req.consentVersion, Logic.ROVER_AUDIENCE);
+  var requests = loadRequests_();
+  if (Logic.recentRequestAccounts(requests, Date.now()) >= settings['每日註冊申請上限']) {
+    throw new ApiError(ERR.LOCKED, '目前註冊的人太多，暫停註冊，請稍後再試，或聯絡團長。');
+  }
+  if (isReservedUsername_(req.username) || findAccountByName_(req.username)) throw new ApiError(ERR.NAME_TAKEN, '這個帳號名稱已經有人使用，請換一個。');
+  var accountId = newId_('U', loadAccounts_().map(function (a) { return a.accountId; }));
+  var salt = randomHex_(32), now = new Date();
+  var hash = Logic.hashPassword(String(req.password), salt, HASH_ITERATIONS, hmacHex_);
+  appendRows_(SHEET.ACCOUNTS, [[accountId, Logic.clean(req.username), Logic.clean(req.nickname) || v.names[0], hash, salt, '啟用', now, now, '', '']]);
+  appendRows_(SHEET.REQUESTS, [requestRow_(accountId, '本人', v.names[0], version, requests, now, '羅浮')]);
+  logOp_(accountId, '註冊申請', Logic.clean(req.username), '', '羅浮本人');
+  var s = createSession_(accountId, !!req.remember, settings);
+  return { token: s.token, expiresAt: s.expiresAt };
 }
 
 /** 已登入的家長再申請新增孩子（例如第二個孩子） */
@@ -535,7 +566,6 @@ function apiStartup_(req, who) {
 }
 
 function apiMe_(req, who) {
-  var latest = Logic.latestConsentVersion(loadConsents_());
   var cubs = loadCubs_();
   var mine = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
   var list = [];
@@ -544,7 +574,9 @@ function apiMe_(req, who) {
     if (!c) return;
     list.push({ cubId: c.cubId, name: c.name, section: c.section, relation: b.relation || Logic.RELATION.PARENT, consentVersion: b.consentVersion, consentAt: b.consentAt ? new Date(b.consentAt).toISOString() : '' });
   });
-  var hasParentBinding = list.some(function (x) { return x.relation !== Logic.RELATION.SELF; });
+  // 成年的羅浮本人和家長一樣（附錄第 80 點）；未成年的本人帳號另外限制
+  var hasParentBinding = list.some(function (x) { return !isMinorSelf_(x, x.section); });
+  var myAudience = list.length && list.every(function (x) { return isAdultSelf_(x, x.section); }) ? Logic.ROVER_AUDIENCE : '';
   var isScoutSelf = !who.admin && list.length > 0 && !hasParentBinding;
   var mySec = who.section || (list[0] ? list[0].section : '');
   var permView = resolveWhoPerms_(who, hasParentBinding, isScoutSelf, mySec);
@@ -588,8 +620,10 @@ function apiMe_(req, who) {
       var rej = mineReq.filter(function (r) { return r.status === '已退回'; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 5);
       return pend.concat(rej).map(function (r) { return { type: r.type, name: r.name, status: r.status, at: r.at ? new Date(r.at).toISOString() : '', note: r.note }; });
     })(),
-    latestConsentVersion: latest,
-    needsConsent: mine.some(function (b) { return Logic.needsReconsent(b, latest); })
+    latestConsentVersion: latestConsentVersionFor_(myAudience),
+    needsConsent: mine.some(function (b) { var c = cubs.filter(function (x) { return x.cubId === b.cubId; })[0]; return bindingNeedsConsent_(b, c ? c.section : ''); }),
+    // 帳號只有成年本人綁定時看成年人版告知（附錄第 73 點⑲）
+    consentAudience: myAudience
   };
 }
 
@@ -602,12 +636,12 @@ function apiCubDetail_(req, who) {
   var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
   // 沒有綁定與小狼不存在回同一句話，不透露小狼是否存在
   if (!binding) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  if (Logic.needsReconsent(binding, Logic.latestConsentVersion(loadConsents_()))) {
-    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
-  }
   var cub = loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
   if (!cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
-  var isSelf = binding.relation === Logic.RELATION.SELF;
+  if (bindingNeedsConsent_(binding, cub.section)) {
+    throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+  }
+  var isSelf = isMinorSelf_(binding, cub.section);
   var pv = resolveWhoPerms_(who, !isSelf, isSelf, cub.section);
   var view = buildCubView_(cub, today_());
   view.relation = binding.relation || Logic.RELATION.PARENT;
@@ -680,7 +714,7 @@ function buildCubView_(cub, today) {
       tenure: Logic.tenure(cub.joinDate, today).text, currentLevel: progress.currentLevel || '', status: cub.status === Logic.TRIAL ? Logic.TRIAL : '', trialStart: cub.trialStart,
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
-    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section),
+    hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位

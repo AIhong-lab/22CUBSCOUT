@@ -246,3 +246,26 @@ function ensureDailyTrigger_() {
   installDailyTrigger_();
   return true;
 }
+
+// ───────────── 推播額度（附錄第 73 點㉑：先維持免費方案，後台顯示本月已推播則數，接近上限提醒） ─────────────
+
+/** 本月已推播／上限（LINE 官方帳號的方案額度）；快取 1 小時。沒有 token 或查詢失敗回 null */
+function lineQuota_() {
+  var token = PropertiesService.getScriptProperties().getProperty('LINE_MESSAGING_TOKEN');
+  if (!token) return null;
+  var cache = CacheService.getScriptCache(), hit = cache.get('LINE_QUOTA');
+  if (hit) { try { return JSON.parse(hit); } catch (e) { /* 重查 */ } }
+  try {
+    var get = function (path) {
+      var r = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/' + path, { method: 'get', headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true });
+      return r.getResponseCode() === 200 ? JSON.parse(r.getContentText() || '{}') : null;
+    };
+    var q = get('quota'), used = get('quota/consumption');
+    if (!q || !used) return null;
+    var limit = q.type === 'limited' ? Number(q.value) || 0 : 0;
+    var out = { used: Number(used.totalUsage) || 0, limit: limit, near: limit > 0 && Number(used.totalUsage) >= limit * 0.8 };
+    cache.put('LINE_QUOTA', JSON.stringify(out), 3600);
+    return out;
+  } catch (e) { return null; }
+}
+

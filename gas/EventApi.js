@@ -85,7 +85,9 @@ function apiEventRegister_(req, who) {
   // 先看是不是 22 團的人（訊息照舊），再看總團有沒有開放這個身分線上報名（權限設定 parent_events）
   if (!canRegisterEvents_(who)) throw new ApiError(ERR.FORBIDDEN, EVENT_NOT_ELIGIBLE);
   var myBinds = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId; });
-  var isPar = myBinds.some(function (b) { return b.relation !== Logic.RELATION.SELF; });
+  var secOfCub = {};
+  loadCubs_().forEach(function (c) { secOfCub[c.cubId] = c.section; });
+  var isPar = myBinds.some(function (b) { return !isMinorSelf_(b, secOfCub[b.cubId]); });
   var isSelf = !who.admin && myBinds.length > 0 && !isPar;
   return afterSync_(withLock_(function () {
     var secs = accountSections_(who);
