@@ -75,7 +75,7 @@ HEADERS[SHEET.FAILURES] = ['類型', '對象', '時間'];
 HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '申請時間', '狀態', '處理人', '處理時間', '小狼ID', '同意版本', '備註', '分團'];
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間', '分團'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
-HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間', '分團'];
+HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間', '分團', '人數上限', '身分費用'];
 HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間', '分團'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
@@ -117,7 +117,7 @@ TEXT_COLUMNS[SHEET.PROMOTIONS] = [1, 4, 5];
 TEXT_COLUMNS[SHEET.REGIS] = [1, 3];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
-TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13];
+TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13, 17];
 TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
@@ -126,7 +126,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-27b';
+var APP_VERSION = '2026-11-27c';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {

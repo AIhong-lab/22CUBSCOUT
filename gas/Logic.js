@@ -691,7 +691,20 @@ var Logic = (function () {
   function isStamp(s) { return STAMP_RE.test(String(s || '')) && isDateStr(String(s).slice(0, 10)) && Number(String(s).slice(11, 13)) < 24 && Number(String(s).slice(14, 16)) < 60; }
   function multiline(v, max) { return String(v === null || v === undefined ? '' : v).replace(/\r\n/g, '\n').trim().slice(0, max); }
 
-  /** 檢查團長設定的活動；questions = [{ label, type:'choice'|'text', options:[…], required }] */
+  var EVENT_Q_TYPES = ['choice', 'multi', 'text'];
+  var EVENT_MAX_CAPACITY = 2000;
+  /** 金額：空白＝沒有設定（null）；其他要是 0～max 的整數，不合法回 NaN */
+  function feeValue(v, max) {
+    if (v === '' || v === undefined || v === null) return null;
+    var n = Number(v);
+    return isFinite(n) && n >= 0 && n <= max && Math.floor(n) === n ? n : NaN;
+  }
+
+  /**
+   * 檢查團長設定的活動（附錄第 50、81 點）。
+   * questions = [{ label, type:'choice'|'multi'|'text', options:[…], fees:[選項另加的金額], required }]
+   * capacity：人數上限（0＝不限）；identityFees：{ 身分別: 金額 }，沒填的身分用每人費用。
+   */
   function validateEvent(req) {
     req = req || {};
     var title = clean(req.title);
@@ -704,6 +717,16 @@ var Logic = (function () {
     if (regEnd <= regStart) return { ok: false, error: '結束報名時間要晚於開始報名時間。' };
     var fee = req.fee === '' || req.fee === undefined || req.fee === null ? 0 : Number(req.fee);
     if (!isFinite(fee) || fee < 0 || fee > 1000000 || Math.floor(fee) !== fee) return { ok: false, error: '費用需為 0～1000000 的整數。' };
+    var capacity = feeValue(req.capacity, EVENT_MAX_CAPACITY);
+    if (capacity !== capacity) return { ok: false, error: '人數上限需為 0～' + EVENT_MAX_CAPACITY + ' 的整數（0 或空白＝不限）。' };
+    var identityFees = {}, feeErr = '';
+    var srcFees = req.identityFees && typeof req.identityFees === 'object' ? req.identityFees : {};
+    EVENT_IDENTITIES.forEach(function (idn) {
+      var f = feeValue(srcFees[idn], 1000000);
+      if (f !== f) { if (!feeErr) feeErr = '「' + idn + '」的費用需為 0～1000000 的整數（空白＝同每人費用）。'; return; }
+      if (f !== null) identityFees[idn] = f;
+    });
+    if (feeErr) return { ok: false, error: feeErr };
     var qs = Array.isArray(req.questions) ? req.questions : [];
     if (qs.length > 10) return { ok: false, error: '自訂題目最多 10 題。' };
     var out = [], seen = {}, err = '';
@@ -715,17 +738,62 @@ var Logic = (function () {
       if (bad) { err = no + '：報名表不收集「' + bad + '」這類機敏資訊，請改用其他方式聯絡。'; return; }
       if (seen[label]) { err = no + '：題目重複了。'; return; }
       seen[label] = true;
-      var type = q.type === 'choice' ? 'choice' : 'text', options = [];
-      if (type === 'choice') {
-        (Array.isArray(q.options) ? q.options : []).forEach(function (o) { o = clean(o).slice(0, 30); if (o && options.indexOf(o) < 0) options.push(o); });
-        if (options.length < 2 || options.length > 10) { err = no + '：選擇題要有 2～10 個選項。'; return; }
+      var type = EVENT_Q_TYPES.indexOf(q.type) >= 0 ? q.type : 'text', options = [], fees = [];
+      if (type !== 'text') {
+        var srcF = Array.isArray(q.fees) ? q.fees : [];
+        (Array.isArray(q.options) ? q.options : []).forEach(function (o, j) {
+          if (err) return;
+          o = clean(o).slice(0, 30);
+          if (!o || options.indexOf(o) >= 0) return;
+          if (type === 'multi' && o.indexOf('、') >= 0) { err = no + '：複選題的選項不能有「、」。'; return; }
+          var f = feeValue(srcF[j], 100000);
+          if (f !== f) { err = no + '：「' + o + '」另加的金額需為 0～100000 的整數。'; return; }
+          options.push(o); fees.push(f || 0);
+        });
+        if (err) return;
+        if (options.length < 2 || options.length > 10) { err = no + '：' + (type === 'multi' ? '複選題' : '選擇題') + '要有 2～10 個選項。'; return; }
       }
-      out.push({ id: clean(q.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'q' + (i + 1), label: label, type: type, options: options, required: !!q.required });
+      var item = { id: clean(q.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'q' + (i + 1), label: label, type: type, options: options, required: !!q.required };
+      // 只有選項真的有另加金額才存 fees（舊活動沒有這個欄位）
+      if (fees.some(function (f) { return f > 0; })) item.fees = fees;
+      out.push(item);
     });
     if (err) return { ok: false, error: err };
     var ids = {};
     out.forEach(function (q, i) { if (ids[q.id]) q.id = 'q' + (i + 1) + 'x'; ids[q.id] = true; });
-    return { ok: true, event: { title: title, desc: multiline(req.desc, 2000), date: date, endDate: endDate, regStart: regStart, regEnd: regEnd, fee: fee, questions: out } };
+    return { ok: true, event: { title: title, desc: multiline(req.desc, 2000), date: date, endDate: endDate, regStart: regStart, regEnd: regEnd, fee: fee, questions: out, capacity: capacity || 0, identityFees: identityFees } };
+  }
+
+  /** 複選題的答案：陣列或「、」分隔的字串 → 依選項順序、用「、」串起來 */
+  function multiAnswer(v, options) {
+    var list = Array.isArray(v) ? v.map(clean) : clean(v).split('、').map(clean);
+    list = list.filter(String);
+    var bad = list.filter(function (x) { return options.indexOf(x) < 0; })[0];
+    if (bad) return { ok: false };
+    return { ok: true, value: options.filter(function (o) { return list.indexOf(o) >= 0; }).join('、') };
+  }
+
+  /**
+   * 一位報名者的應繳金額（附錄第 81 點）：身分別有設定費用就用它，否則用每人費用；
+   * 再加上選到的選項另加的金額（複選題每個選到的都加）。
+   */
+  function eventAmount(ev, person) {
+    var idf = (ev && ev.identityFees) || {};
+    var total = Object.prototype.hasOwnProperty.call(idf, person.identity) ? Number(idf[person.identity]) || 0 : Number(ev.fee) || 0;
+    (ev.questions || []).forEach(function (q) {
+      if (!q.fees || !person.answers) return;
+      var v = clean(person.answers[q.id]);
+      if (!v) return;
+      var picked = q.type === 'multi' ? v.split('、') : [v];
+      picked.forEach(function (o) { var j = q.options.indexOf(o); if (j >= 0) total += Number(q.fees[j]) || 0; });
+    });
+    return total;
+  }
+
+  /** 名額：capacity＝0 不限；taken＝目前正取人數；n＝這次送出的人數 → 正取幾位（其餘候補） */
+  function eventSeats(capacity, taken, n) {
+    if (!capacity) return n;
+    return Math.max(0, Math.min(n, capacity - taken));
   }
 
   /** 檢查一次送出的報名：people = [{ name, identity, answers:{ 題目id: 答案 } }] */
@@ -743,7 +811,12 @@ var Logic = (function () {
       var ans = {}, src = (p && p.answers) || {};
       (questions || []).forEach(function (q) {
         if (err) return;
-        var v = clean(src[q.id]).slice(0, 100);
+        var v;
+        if (q.type === 'multi') {
+          var m = multiAnswer(src[q.id], q.options);
+          if (!m.ok) { err = no + '（' + name + '）：「' + q.label + '」請從選項中選擇。'; return; }
+          v = m.value;
+        } else v = clean(src[q.id]).slice(0, 100);
         if (!v) { if (q.required) err = no + '（' + name + '）：請回答「' + q.label + '」。'; return; }
         if (q.type === 'choice' && q.options.indexOf(v) < 0) { err = no + '（' + name + '）：「' + q.label + '」請從選項中選擇。'; return; }
         ans[q.id] = v;
@@ -1729,7 +1802,7 @@ var Logic = (function () {
     hashPassword: hashPassword, verifyPassword: verifyPassword, constantTimeEqual: constantTimeEqual, isSessionValid: isSessionValid, isTempCodeValid: isTempCodeValid,
     isLocked: isLocked, isGlobalBindLocked: isGlobalBindLocked,
     latestConsentVersion: latestConsentVersion, needsReconsent: needsReconsent,
-    TRIAL: TRIAL, GRADUATED: GRADUATED, LEAVE_REASONS: LEAVE_REASONS, ADULT_SELF_SECTIONS: ADULT_SELF_SECTIONS, ROVER_AUDIENCE: ROVER_AUDIENCE, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, isUnitImage: isUnitImage, trialProgress: trialProgress,
+    TRIAL: TRIAL, GRADUATED: GRADUATED, LEAVE_REASONS: LEAVE_REASONS, ADULT_SELF_SECTIONS: ADULT_SELF_SECTIONS, ROVER_AUDIENCE: ROVER_AUDIENCE, CUB_ROLES: CUB_ROLES, ROLE_LEVELS: ROLE_LEVELS, MEETING_TYPES: MEETING_TYPES, EVENT_IDENTITIES: EVENT_IDENTITIES, EVENT_MAX_PER_ACCOUNT: EVENT_MAX_PER_ACCOUNT, validateEvent: validateEvent, validateEventPeople: validateEventPeople, eventAmount: eventAmount, eventSeats: eventSeats, EVENT_Q_TYPES: EVENT_Q_TYPES, isUnitImage: isUnitImage, trialProgress: trialProgress,
     IDENTITY: IDENTITY, validateChildNames: validateChildNames, recentRequestAccounts: recentRequestAccounts,
     PERM_LEVELS: PERM_LEVELS, PERM_FEATURES: PERM_FEATURES, defaultPermRows: defaultPermRows, parsePermRules: parsePermRules, validatePermUpdate: validatePermUpdate, allowsFeature: allowsFeature, resolvePermissions: resolvePermissions,
     can: can, canRevokeSignoff: canRevokeSignoff, validateAdminChange: validateAdminChange, OWNER_ONLY_MESSAGE: OWNER_ONLY_MESSAGE, OWNER_LOCKED_MESSAGE: OWNER_LOCKED_MESSAGE, canDeleteAccount: canDeleteAccount,

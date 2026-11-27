@@ -1066,7 +1066,7 @@ test('活動報名與繳費紀錄（附錄第 50 點）：團長設定、登入�
   assert.ok(id);
   // 公開資料：有起訖時間與費用，沒有題目和報名名單
   const pub = env.api({ action: 'siteInfo' }).events;
-  assert.deepEqual(Object.keys(pub[0]).sort(), ['date', 'desc', 'endDate', 'fee', 'id', 'regEnd', 'regStart', 'state', 'targets', 'title']);
+  assert.deepEqual(Object.keys(pub[0]).sort(), ['capacity', 'date', 'desc', 'endDate', 'fee', 'id', 'identityFees', 'regEnd', 'regStart', 'state', 'targets', 'title']);
   assert.equal(pub[0].state, '報名中');
   // 報名要登入
   assert.equal(env.api({ action: 'eventList' }).ok, false);
