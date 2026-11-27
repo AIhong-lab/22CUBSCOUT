@@ -428,7 +428,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-27a';
+const APP_VERSION = '2026-11-27b';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -990,6 +990,7 @@ function renderSignup1(prev = {}) {
       <div class="menu-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">
         <button data-id="家長" class="${prev.identity === '家長' ? 'on' : ''}"><span class="ic">👨‍👩‍👧</span>家長<br><span class="s">孩子在團裡，想看孩子的進度</span></button>
         <button data-id="服務員" class="${prev.identity === '服務員' ? 'on' : ''}"><span class="ic">🧢</span>服務員<br><span class="s">協助團集會、點名、簽核</span></button>
+        <button data-id="羅浮本人" class="${prev.identity === '羅浮本人' ? 'on' : ''}"><span class="ic">🎒</span>羅浮童軍本人<br><span class="s">18 歲以上，自己註冊、看自己的紀錄</span></button>
       </div>
       <div class="msg info small">同時是<b>家長和服務員</b>：請選「服務員」，下一步可以一起填孩子；或先選「家長」，之後請團長幫你調整成服務員。</div>
       <button class="linkbtn" id="back">← 回登入</button>
@@ -1036,6 +1037,7 @@ const childSecsOf = (root) => $$('.kid-row', root).filter((r) => $('input[name=c
 /** 註冊第 2 步：孩子與帳號 */
 function renderSignup2(ctx) {
   scrollTop();
+  if (ctx.identity === '羅浮本人') return renderSignupRover(ctx);
   const parent = ctx.identity === '家長';
   const withKids = parent || ctx.withKids;
   $app.innerHTML = `
@@ -1080,6 +1082,36 @@ function renderSignup2(ctx) {
   });
 }
 
+/** 羅浮本人註冊（附錄第 73 點⑱）：自己的姓名＋帳號密碼，下一步看成年人版個資說明，群長核准後綁定為本人 */
+function renderSignupRover(ctx) {
+  $app.innerHTML = `
+    <section class="card narrow">
+      <h2>🎒 註冊 2／3：羅浮童軍本人</h2>
+      <p class="muted small">送出後由羅浮群的群長核對，核准後就能看到自己的進程與出席。</p>
+      <form id="f">
+        <label for="sn">你的姓名（全名，群長會核對）</label><input id="sn" name="selfName" type="text" maxlength="20" value="${esc(ctx.selfName || '')}" required>
+        <label for="u">帳號（4～20 個英文字母、數字或底線）</label>
+        <input id="u" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" value="${esc(ctx.username || '')}" required>
+        <label for="p">密碼（至少 8 個字）</label><input id="p" name="password" type="password" autocomplete="new-password" required>
+        <label for="p2">再輸入一次密碼</label><input id="p2" name="password2" type="password" autocomplete="new-password" required>
+        <label class="check"><input type="checkbox" name="remember" checked> 記住我（這台裝置下次不用再登入）</label>
+        <button class="btn" type="submit">下一步</button>
+        <div class="out"></div>
+      </form>
+      <button class="linkbtn" id="back">← 上一步</button>
+    </section>`;
+  $('#back').onclick = () => renderSignup1(ctx);
+  bindForm($('#f'), async (fd, out) => {
+    if (fd.get('password') !== fd.get('password2')) return msg(out, '兩次輸入的密碼不一樣。');
+    if (!/^[A-Za-z0-9_]{4,20}$/.test(fd.get('username').trim())) return msg(out, '帳號需為 4～20 個英文字母、數字或底線。');
+    if (fd.get('password').length < 8) return msg(out, '密碼至少 8 個字。');
+    const name = fd.get('selfName').trim();
+    const next = Object.assign({}, ctx, { selfName: name, nickname: name, username: fd.get('username').trim(), password: fd.get('password'), remember: !!fd.get('remember') });
+    if (!next.consent) next.consent = await api('consentText', { audience: '羅浮本人' });
+    renderSignup3(next);
+  });
+}
+
 /** 註冊第 3 步：個資說明（有填孩子才需要；不同意就不建立任何資料） */
 function renderSignup3(ctx) {
   scrollTop();
@@ -1103,7 +1135,7 @@ function renderSignup3(ctx) {
 
 async function doSignup(ctx) {
   try {
-    const r = await api('register', { identity: ctx.identity, childNames: ctx.childNames, childSections: ctx.childSections, staffSection: ctx.staffSection, username: ctx.username, password: ctx.password,
+    const r = await api('register', { identity: ctx.identity, selfName: ctx.selfName, childNames: ctx.childNames, childSections: ctx.childSections, staffSection: ctx.staffSection, username: ctx.username, password: ctx.password,
       nickname: ctx.nickname, remember: ctx.remember, consentVersion: ctx.consent ? ctx.consent.version : undefined });
     store.set('token', r.token, ctx.remember);
     await start();
@@ -1207,7 +1239,7 @@ async function doRegister(ctx) {
 
 async function renderReconsent() {
   setTabs(null); loading();
-  const c = await api('consentText');
+  const c = await api('consentText', { audience: (state.me && state.me.consentAudience) || '' });
   scrollTop();
   $app.innerHTML = `
     <section class="card narrow">
@@ -1414,7 +1446,7 @@ async function renderParent(keep) {
 
 function requestsHtml(reqs) {
   if (!reqs || !reqs.length) return '';
-  return reqs.map((r) => `<div class="list-row"><span class="grow"><span class="t">${r.type === '服務員' ? '🧢 服務員申請' : '🧒 ' + esc(r.name || '孩子申請')}</span>
+  return reqs.map((r) => `<div class="list-row"><span class="grow"><span class="t">${r.type === '服務員' ? '🧢 服務員申請' : r.type === '本人' ? '🎒 羅浮本人申請' : '🧒 ' + esc(r.name || '孩子申請')}</span>
     ${r.note ? `<br><span class="s">團長備註：${esc(r.note)}</span>` : ''}</span>
     <span class="pill ${r.status === '待審核' ? 'st-已完成待頒發' : 'st-未開始'}">${r.status === '待審核' ? '⏳ 等待團長審核' : '未通過'}</span></div>`).join('');
 }
@@ -1670,12 +1702,12 @@ async function renderMine() {
   const me = state.me;
   loading();
   let consent = null;
-  try { consent = await api('consentText'); } catch (e) { if (e.code === 'SESSION_EXPIRED') return; }
+  try { consent = await api('consentText', { audience: me.consentAudience || '' }); } catch (e) { if (e.code === 'SESSION_EXPIRED') return; }
   $app.innerHTML = `
     <section class="card"><h2>👤 我的帳號</h2>
       <div class="list-row"><span class="grow">帳號</span><b>${esc(me.username)}</b></div>
       <div class="list-row"><span class="grow">稱呼</span><b>${esc(me.nickname)}</b></div>
-      <div class="list-row"><span class="grow">身分</span><b>${esc(me.isOwner ? '最高管理員' : me.isCentral ? '總團' : me.role ? (secFull(me.section || '小狼') + ' ' + (me.title || me.role)) : me.isScoutSelf ? '童軍本人帳號（僅檢視自己）' : '家長')}</b></div>
+      <div class="list-row"><span class="grow">身分</span><b>${esc(me.isOwner ? '最高管理員' : me.isCentral ? '總團' : me.role ? (secFull(me.section || '小狼') + ' ' + (me.title || me.role)) : me.isScoutSelf ? '童軍本人帳號（僅檢視自己）' : me.consentAudience ? '羅浮童軍本人' : '家長')}</b></div>
       <details><summary class="fold">✏️ 修改稱呼</summary>
         <form id="fn"><input name="nickname" type="text" value="${esc(me.nickname)}" required><button class="btn" type="submit">儲存</button><div class="out"></div></form></details>
       <details><summary class="fold">🔒 修改密碼</summary>
@@ -2143,10 +2175,10 @@ const canShared = (f) => !!(state.me && (state.me.shared || []).includes(f));
 const PAGE_GROUPS = [
   [['roll', '📋 點名'], ['calendar', '📅 行事曆'], ['periods', '🎯 年度出席']],
   [['sign', '✅ 簽核'], ['award', '🏅 頒章'], ['overview', '📊 進程總覽'], ['print', '🖨️ 列印']],
-  [['cubs', '👥 團員名單'], ['requests', '📝 帳號申請'], ['squads', '🏕️ 小隊'], ['attOverview', '🐾 出席總覽']],
+  [['cubs', '👥 團員名單'], ['requests', '📝 帳號申請'], ['squads', '🏕️ 小隊'], ['attOverview', '🐾 出席總覽'], ['renew', '📅 續團確認']],
   [['notices', '📣 公佈欄'], ['events', '🎪 活動報名']],
   [['admins', '👥 分團管理員'], ['accounts', '🔑 所有帳號'], ['staff', '🏷️ 分團身分'], ['perms', '🎛️ 權限設定']],
-  [['settings', '⚙️ 系統與網站'], ['items', '📚 項目管理'], ['privacy', '🔐 個資處理'], ['backup', '💾 備份'], ['handover', '🤝 移交中心']],
+  [['settings', '⚙️ 系統與網站'], ['items', '📚 項目管理'], ['privacy', '🔐 個資處理'], ['backup', '💾 備份'], ['regis', '🧾 三項登記'], ['handover', '🤝 移交中心']],
 ];
 
 /** 判斷單一後台頁面是否可存取（優先讀取動態權限表 me.tabs，未設定時退回角色預設） */
@@ -2172,6 +2204,9 @@ function pageOk(k) {
     case 'staff': return !!(state.me && state.me.canManageStaff);
     case 'perms': return hasTab('tab_permissions', isTopAdmin());
     case 'handover': return hasTab('tab_handover', isTopAdmin());
+    // 續團確認：各分團團長；三項登記：總團、最高管理員（沒有最高管理員時團長）（附錄第 70、80 點）
+    case 'renew': return hasTab('tab_cubs_manage', L);
+    case 'regis': return isTopAdmin() || (!!state.me && !state.me.ownerExists && L);
     // 分團團長要改自己分團的設定（小隊、體驗次數、小狼進程設定），全團的部分由權限設定決定（附錄第 74、76 點）
     case 'settings': return L || hasTab('tab_settings', false) || hasTab('tab_site', false) || hasTab('tab_consent', false);
     case 'items': return P && hasTab('tab_items', L);
@@ -2201,7 +2236,7 @@ const ADMIN_GROUPS = ['團務互動', '系統與權限', '個人'];
 function adminMoreItems() {
   const commFirst = firstPageOf(['notices', 'events']);
   const authFirst = firstPageOf(['admins', 'accounts', 'staff', 'perms']);
-  const setFirst = firstPageOf(['settings', 'items', 'privacy', 'backup']);
+  const setFirst = firstPageOf(['settings', 'items', 'privacy', 'backup', 'regis']);
   return [
     commFirst && [commFirst, '📣', '公告與活動', true, '團務互動'],
     authFirst && [authFirst, '🛡️', '帳號與權限', true, '系統與權限'],
@@ -2294,6 +2329,8 @@ const ADMIN_PAGES = {
     else if (al.backup) alerts.push([al.backup.ok ? 'green' : 'red', '💾', `上次備份：${fmtTime(al.backup.at)}　${al.backup.message}`]);
     else alerts.push(['yellow', '💾', '還沒有備份紀錄']);
     if (al.noLineAdmin) alerts.push(['yellow', '💬', '還沒有管理員連結 LINE 通知（更多 → 連結 LINE 通知）']);
+    // LINE 推播額度（附錄第 73 點㉑）：免費方案每月有上限
+    if (al.lineQuota) alerts.push([al.lineQuota.near ? 'red' : 'green', '📨', `LINE 本月已推播 ${al.lineQuota.used} 則${al.lineQuota.limit ? '／上限 ' + al.lineQuota.limit + ' 則' : '（無上限）'}${al.lineQuota.near ? '，快用完了：超過上限後達標通知會送不出去，可考慮升級方案或減少通知' : ''}`]);
     const L = isLeader();
     const hot = alerts.filter((x) => x[0] === 'red').length;
     const todo = [];
@@ -2640,6 +2677,10 @@ const ADMIN_PAGES = {
       ${d.canConsent ? `<section class="card"><h2>📜 個資說明（家長註冊時看到的內容）</h2>
         <p class="muted small">目前是第 ${esc(d.consent ? d.consent.version : '－')} 版${d.consent && d.consent.effective ? '（' + fmtDate(d.consent.effective) + ' 起）' : ''}。儲存後會變成新的一版，舊版保留；<b>已綁定的家長下次登入要重新同意</b>。</p>
         <form id="fc"><textarea name="content" style="min-height:260px">${esc(d.consent ? d.consent.content : '')}</textarea>
+          <button class="btn alt" type="submit">儲存為新版本</button><div class="out"></div></form></section>` : ''}
+      ${d.canConsent ? `<section class="card"><h2>📜 個資說明（羅浮本人註冊時看到的成年人版）</h2>
+        <p class="muted small">目前是第 ${esc(d.roverConsent ? d.roverConsent.version : '－')} 版。和家長版分開計算；儲存後<b>已綁定的羅浮本人下次登入要重新同意</b>，家長不受影響。</p>
+        <form id="fcr"><textarea name="content" style="min-height:220px">${esc(d.roverConsent ? d.roverConsent.content : '')}</textarea>
           <button class="btn alt" type="submit">儲存為新版本</button><div class="out"></div></form></section>` : ''}`;
     wireBack();
     const orig = {};
@@ -2660,6 +2701,11 @@ const ADMIN_PAGES = {
       const r = await api('consentSave', { content: fd.get('content') });
       msg(out, `已儲存為第 ${r.version} 版。`, 'ok');
     });
+    if ($('#fcr')) bindForm($('#fcr'), async (fd, out) => {
+      if (!confirm('儲存為新版本後，所有羅浮本人帳號下次登入都要重新閱讀並同意。確定嗎？')) return;
+      const r = await api('consentSave', { content: fd.get('content'), audience: '羅浮本人' });
+      msg(out, `已儲存為羅浮本人版第 ${r.version} 版。`, 'ok');
+    });
   },
 
   // ───── 帳號申請（團長） ─────
@@ -2679,8 +2725,8 @@ const ADMIN_PAGES = {
         <div class="row-flex"><button class="btn green small" data-ok>✅ 核准為服務員</button><button class="btn danger small" data-no>退回</button></div><div class="out"></div>
       </div>` : `
       <div class="unit" style="padding:14px" data-req="${esc(r.requestId)}">
-        <div class="name">🧒 ${esc(r.name)}</div>
-        <div class="muted small">申請人：${esc(r.nickname)}（帳號 ${esc(r.username)}）・${fmtTime(Date.parse(r.at))}</div>
+        <div class="name">${r.type === '本人' ? '🎒 羅浮本人：' : '🧒 '}${esc(r.name)}</div>
+        <div class="muted small">${r.type === '本人' ? '本人自己註冊（核准後綁定為本人）' : '申請人：' + esc(r.nickname)}（帳號 ${esc(r.username)}）・${fmtTime(Date.parse(r.at))}</div>
         ${assignBox(r)}
         ${r.sameName.length ? '<div class="msg warn small">已經有同名的團員，可能是爸爸或媽媽已經申請過，建議選「連結到現有團員」。</div>' : ''}
         <div class="chips"><label class="check" style="margin:4px 12px 4px 0"><input type="radio" name="mode-${esc(r.requestId)}" value="new" ${r.sameName.length ? '' : 'checked'}> 新增團員（直接入團）</label>
@@ -3175,6 +3221,81 @@ const ADMIN_PAGES = {
       <section class="card"><button class="btn ghost" id="lo">登出</button></section>`;
     $$('.menu-grid button').forEach((b) => { b.onclick = () => goAdmin(b.dataset.p); });
     $('#lo').onclick = logout;
+  },
+
+  // ───── 續團確認（各分團團長；附錄第 69、80 點） ─────
+  async renew(params) {
+    const d = await api('renewList', params.year ? { year: params.year } : {});
+    const pick = {};
+    d.people.forEach((p) => { pick[p.type + '|' + p.id] = p.renew; });
+    const row = (p) => `<div class="list-row" data-k="${esc(p.type + '|' + p.id)}"><span class="grow"><span class="t">${esc(p.name)}</span> <span class="s">${esc(p.type === '服務員' ? (p.title || '服務員') : (p.squad || ''))}${p.registered ? '・已登記' : ''}</span></span>
+      <span class="chips" style="margin:0">${['是', '否'].map((v) => `<button type="button" class="chip ${p.renew === v ? 'on' : ''}" data-v="${v}" ${p.registered && v === '否' ? 'disabled' : ''}>${v === '是' ? '✅ 續團' : '✖ 不續團'}</button>`).join('')}</span></div>`;
+    const scouts = d.people.filter((p) => p.type === '童軍'), staff = d.people.filter((p) => p.type === '服務員');
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>📅 ${d.year} 年度續團確認</h2>
+      <p class="muted small">年底勾選${esc(secFull(d.section))}每位團員、團長與服務員明年要不要續團。續團的名單，就是總團辦理三項登記（團、服務員、童軍登記）的名單；已經登記的不能改成不續團。</p>
+      <div class="row-flex"><button class="btn ghost small" id="prevY">← ${d.year - 1}</button><button class="btn ghost small" id="nextY">${d.year + 1} →</button><button class="btn ghost small" id="allYes">全部設為續團</button></div>
+      <h3>團員（${scouts.length}）</h3>${scouts.map(row).join('') || '<p class="muted">沒有在團的團員。</p>'}
+      <h3>團長與服務員（${staff.length}）</h3>${staff.map(row).join('') || '<p class="muted">沒有。</p>'}
+      <button class="btn" id="save">儲存續團確認</button><div class="out" id="rout"></div></section>`;
+    wireBack();
+    const orig = Object.assign({}, pick);
+    $$('[data-k] [data-v]').forEach((b) => { b.onclick = () => { const k = b.closest('[data-k]').dataset.k; pick[k] = pick[k] === b.dataset.v ? '' : b.dataset.v; $$('[data-v]', b.closest('[data-k]')).forEach((x) => x.classList.toggle('on', x.dataset.v === pick[k])); }; });
+    $('#allYes').onclick = () => { $$('[data-k]').forEach((r) => { const k = r.dataset.k; if (pick[k] !== '否') { pick[k] = '是'; $$('[data-v]', r).forEach((x) => x.classList.toggle('on', x.dataset.v === '是')); } }); };
+    $('#prevY').onclick = () => goAdmin('renew', { year: d.year - 1 });
+    $('#nextY').onclick = () => goAdmin('renew', { year: d.year + 1 });
+    leaveGuard = Object.assign(() => !Object.keys(pick).some((k) => pick[k] !== orig[k]) || confirm('續團確認還沒儲存，確定要離開嗎？'), { dirty: () => Object.keys(pick).some((k) => pick[k] !== orig[k]) });
+    $('#save').onclick = (ev) => act(ev.currentTarget, async () => {
+      const entries = Object.keys(pick).filter((k) => pick[k] !== orig[k]).map((k) => { const [type, id] = k.split('|'); return { type, id, renew: pick[k] }; });
+      if (!entries.length) return msg($('#rout'), '沒有變更。', 'info');
+      const r = await api('renewSave', { year: d.year, entries });
+      Object.assign(orig, pick);
+      msg($('#rout'), `已儲存 ${r.changed} 位。`, 'ok'); toast('續團確認已儲存');
+    });
+  },
+
+  // ───── 三項登記（總團、最高管理員；附錄第 70、80 點） ─────
+  async regis(params) {
+    const d = await api('regisList', params.year ? { year: params.year } : {});
+    const f = d.fees || { scout: '', staff: '', troop: '', note: '' }, sm = d.summary;
+    const due = d.people.filter((p) => p.renew !== '否');
+    const tr = (p) => `<tr data-k="${esc(p.type + '|' + p.id)}" data-sec="${esc(p.section)}"><td><b>${esc(p.name)}</b><br><span class="s">${esc(secFull(p.section))}・${esc(p.type)}${p.title ? '・' + esc(p.title) : ''}</span></td>
+      <td>${p.type === '團' ? '－' : esc(p.renew || '未確認')}</td>
+      <td><input type="checkbox" data-f="registered" ${p.registered ? 'checked' : ''} aria-label="已登記"></td>
+      <td><input type="number" data-f="amount" min="0" max="100000" value="${esc(p.amount)}" style="width:90px"></td>
+      <td><input type="checkbox" data-f="paid" ${p.paid ? 'checked' : ''} aria-label="已繳"></td></tr>`;
+    $app.innerHTML = `${backBtn()}<section class="card"><h2>🧾 ${d.year} 年度三項登記</h2>
+      <p class="muted small">團登記、服務員登記、童軍登記，每年向童軍會辦一次。這裡只記錄有沒有登記、應繳多少、繳了沒；身分證字號、生日等仍在總會系統或紙本處理，系統不收集。名單來自各分團團長的「續團確認」（不續團的不列）。</p>
+      <div class="row-flex"><button class="btn ghost small" id="prevY">← ${d.year - 1}</button><button class="btn ghost small" id="nextY">${d.year + 1} →</button><button class="btn ghost small" id="exp">⬇️ 匯出名單（CSV）</button></div>
+      <div class="stats3"><div><b>${sm.registered}／${sm.total}</b>已登記</div><div><b>${sm.paid}／${sm.amount}</b>已繳／應繳（元）</div><div><b>${sm.undecided}</b>還沒確認續團</div></div></section>
+      <section class="card"><h2>💰 ${d.year} 年度登記費</h2><p class="muted small">每年、每個縣市不同，請依當年度童軍會公告填寫；改了以後還沒單獨改過金額的人會自動套用。</p>
+        <form id="ff"><div class="row-flex">
+          <label style="flex:1">童軍登記費<input name="scout" type="number" min="0" max="100000" value="${esc(f.scout)}" required></label>
+          <label style="flex:1">服務員登記費<input name="staff" type="number" min="0" max="100000" value="${esc(f.staff)}" required></label>
+          <label style="flex:1">團登記費（每個分團）<input name="troop" type="number" min="0" max="100000" value="${esc(f.troop)}" required></label></div>
+          <label>備註</label><input name="note" type="text" maxlength="100" value="${esc(f.note)}">
+          <button class="btn alt" type="submit">儲存登記費</button><div class="out"></div></form></section>
+      <section class="card"><h2>📋 名單（${due.length}）</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>對象</th><th>續團</th><th>已登記</th><th>應繳</th><th>已繳</th></tr></thead><tbody>${due.map(tr).join('')}</tbody></table></div>
+        <button class="btn" id="save">儲存登記與繳費</button><div class="out" id="gout"></div></section>`;
+    wireBack();
+    $('#prevY').onclick = () => goAdmin('regis', { year: d.year - 1 });
+    $('#nextY').onclick = () => goAdmin('regis', { year: d.year + 1 });
+    bindForm($('#ff'), async (fd, out) => { await api('regisFeesSave', { year: d.year, scout: fd.get('scout'), staff: fd.get('staff'), troop: fd.get('troop'), note: fd.get('note') }); toast('登記費已儲存'); goAdmin('regis', { year: d.year }); });
+    const snap = (tr) => ({ registered: $('[data-f=registered]', tr).checked, paid: $('[data-f=paid]', tr).checked, amount: $('[data-f=amount]', tr).value });
+    const orig = {};
+    $$('tr[data-k]').forEach((t) => { orig[t.dataset.k] = JSON.stringify(snap(t)); });
+    $('#save').onclick = (ev) => act(ev.currentTarget, async () => {
+      const entries = $$('tr[data-k]').filter((t) => JSON.stringify(snap(t)) !== orig[t.dataset.k]).map((t) => { const [type, id] = t.dataset.k.split('|'); return Object.assign({ type, id, section: t.dataset.sec }, snap(t)); });
+      if (!entries.length) return msg($('#gout'), '沒有變更。', 'info');
+      const r = await api('regisSave', { year: d.year, entries });
+      msg($('#gout'), `已儲存 ${r.changed} 筆。`, 'ok'); toast('已儲存'); goAdmin('regis', { year: d.year });
+    });
+    $('#exp').onclick = (ev) => act(ev.currentTarget, async () => {
+      const r = await api('regisExport', { year: d.year });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['\ufeff' + r.csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = r.filename; document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
+    });
   },
 
   async squads() {

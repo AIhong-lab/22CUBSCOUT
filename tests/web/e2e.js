@@ -360,7 +360,7 @@ function seed(env) {
   env.advance(-31 * 24 * 3600000); // 時鐘撥回「今天」，後面的點名才會預設今天的集會
 
   // 告知內容改版 → 要求重新同意
-  env.sheet('告知同意內容').getRange(3, 1, 1, 3).setValues([[2, '第二版測試內容', '2026-12-14']]);
+  env.sheet('告知同意內容').getRange(4, 1, 1, 4).setValues([[2, '第二版測試內容', '2026-12-14', '']]); // 第 3 列是羅浮本人版
   await page.reload();
   await page.getByText('個資說明已更新').waitFor();
   await page.check('input[name=agree]');
@@ -721,15 +721,15 @@ function seed(env) {
   await shot('42-cub-role'); await noHScroll('小狼頁職務');
   assert.equal(env.rows('小狼名單').find((r) => r[0] === 'C1')[10], '小隊長');
 
-  // 升團：職務自動卸任，狀態「升團」
+  // 升團（附錄第 80 點）：同一筆資料改到童軍，職務自動卸任
   await sideTab('cubs');
   await page.locator('#list .list-row', { hasText: '測試小狼己' }).click();
   await page.locator('#moreBtn').click();
-  await page.locator('#leave').click();
-  await shot('43-leave-form');
-  await page.click('form#flv button[type=submit]');
-  await page.getByText('已標記升團').waitFor();
-  assert.equal(env.rows('小狼名單').find((r) => r[1] === '測試小狼己')[7], '升團');
+  await page.locator('#promote').click();
+  await shot('43-promote-form');
+  await page.click('form#fpm button[type=submit]');
+  await page.getByText('已升團到童軍').waitFor();
+  assert.deepEqual(env.rows('小狼名單').find((r) => r[1] === '測試小狼己').slice(7, 8).concat(env.rows('小狼名單').find((r) => r[1] === '測試小狼己')[11]), ['在團', '童軍']);
 
   // 匯出 CSV
   await sideTab('overview');
