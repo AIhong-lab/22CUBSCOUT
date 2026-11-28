@@ -193,6 +193,8 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
       pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核' && requestVisible_(r); }).length : 0,
       notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0),
+      // 家長回報、等服務員確認的筆數（附錄第 83 點）
+      pendingReports: hasProgress ? pendingReports_().length : 0,
       // LINE 推播額度（附錄第 73 點㉑）：只給總團與最高管理員（沒有最高管理員時團長）
       lineQuota: canManageAll_(who) ? lineQuota_() : null,
       placeholders: canShared_(who, '個資告知') || canShared_(who, '網站內容') ? placeholderPlaces_() : []
@@ -430,7 +432,15 @@ registerAdmin_('signoffData', 'signoff', function (req, who) {
     if (c.signer === who.account.accountId && !seen[c.itemId]) { seen[c.itemId] = true; recent.push(c.itemId); }
   }
   var done = comps.filter(function (c) { return Logic.isCountedCompletion(c); }).map(function (c) { return c.cubId + '|' + c.itemId; });
-  return { items: items, cubs: cubs, squads: squadsOf_(secCubs_()), recent: recent, done: done, today: today_() };
+  // 集會預排（附錄第 83 點）：今天的集會，沒有就最近 7 天內有預排的那一場
+  var today = today_(), from = Logic.addDays(today, -7), plan = null;
+  loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date <= today && m.date >= from && meetingVisible_(m); })
+    .sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (m) {
+      if (plan) return;
+      var ids = meetingPlanItems_(m, curSec_()).map(function (i) { return i.id; });
+      if (ids.length) plan = { meetingId: m.meetingId, date: m.date, name: m.name, itemIds: ids };
+    });
+  return { items: items, cubs: cubs, squads: squadsOf_(secCubs_()), recent: recent, done: done, today: today, plan: plan };
 });
 
 registerAdmin_('signoff', 'signoff', function (req, who) {
@@ -1364,7 +1374,8 @@ registerAdmin_('meetingList', 'attendance', function (req, who) {
   // 出席人數只算目前分團的團員（全團集會各分團各自點名）
   loadAttendance_().forEach(function (a) { if (Logic.isPresent(a.status) && mine[a.cubId]) count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
   var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date) && meetingVisible_(m); }).map(function (m) {
-    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0, target: m.target, canEdit: canEditMeeting_(who, m) };
+    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0, target: m.target, canEdit: canEditMeeting_(who, m),
+      plan: meetingPlanItems_(m, curSec_()).map(function (i) { return i.id; }) };
   }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()), section: curSec_(), canManageAll: canManageAll_(who) };
 });
@@ -1466,8 +1477,11 @@ registerAdmin_('attendanceSheet', 'attendance', function (req) {
   var m = findMeeting_(req.meetingId);
   var st = {};
   loadAttendance_().forEach(function (a) { if (a.meetingId === m.meetingId) st[a.cubId] = a.status; });
-  var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date) }; });
-  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, target: m.target }, cubs: cubs, squads: squadsOf_(secCubs_()) };
+  // 這一天有活動報名時（附錄第 83 點）：標出有報名的團員（依姓名比對），點名可以只列報名的人
+  var ev = eventRegNamesOn_(m.date, curSec_());
+  var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date), registered: !!(ev && ev.names[c.name]) }; });
+  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, target: m.target }, cubs: cubs, squads: squadsOf_(secCubs_()),
+    event: ev ? { title: ev.titles.join('、'), count: cubs.filter(function (c) { return c.registered; }).length } : null };
 });
 
 /** 儲存點名：只更新送來的小狼（以「集會＋小狼」為單位，同時點名不互相覆蓋）；空白＝刪除該筆 */

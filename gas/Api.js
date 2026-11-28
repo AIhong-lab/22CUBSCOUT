@@ -678,6 +678,7 @@ function buildCubView_(cub, today) {
   // [修補] 簽核人帳號ID → 管理員姓名：改用全分團 adminNames_()，避免總團或他分團服務員簽核時顯示空白
   var names = adminNames_();
 
+  var pendingMap = hasProgress ? pendingReportsOf_(cub.cubId) : {};
   var unitViews = progress.units.map(function (u) {
     var info = units[u.category + '|' + u.unit] || {};
     return {
@@ -686,7 +687,8 @@ function buildCubView_(cub, today) {
       done: u.done, total: u.total, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
       attendRequired: u.attendRequired || 0, attendSinceLast: u.attendSinceLast || 0,
       items: u.items.map(function (i) {
-        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto, details: detailsView_(byItem, i.id) };
+        // 家長回報（附錄第 83 點）：還沒完成的項目帶項目ID 供回報；pending＝已回報、等服務員確認
+        return { id: i.done ? '' : i.id, pending: !i.done && !!pendingMap[i.id], section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto, details: detailsView_(byItem, i.id) };
       })
     };
   }).sort(function (a, b) { return a.order - b.order; });
@@ -715,6 +717,7 @@ function buildCubView_(cub, today) {
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
     hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
+    canReport: hasProgress && cub.status === '在團' && reportEnabled_(),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位
@@ -723,7 +726,9 @@ function buildCubView_(cub, today) {
     units: unitViews,
     attendance: {
       meetings: past.map(function (m) { return { date: m.date, name: m.name, status: statusOf[m.meetingId] || '－' }; }),
-      upcoming: upcoming.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, note: m.note, leave: statusOf[m.meetingId] === '請假' }; }),
+      upcoming: upcoming.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, note: m.note, leave: statusOf[m.meetingId] === '請假',
+        // 這次集會預排要做的項目（附錄第 83 點），只給文字
+        plan: meetingPlanItems_(m, cub.section).slice(0, 12).map(function (i) { return i.text; }) }; }),
       counts: Logic.attendanceCounts(attRecords),
       rate: rate
     }

@@ -23,7 +23,9 @@ function loadRegs_() {
       id: Logic.clean(r[0]), eventId: Logic.clean(r[1]), accountId: Logic.clean(r[2]), name: Logic.clean(r[3]), identity: Logic.clean(r[4]),
       answers: parseJson_(r[5], {}), amount: Number(r[6]) || 0, paid: Logic.clean(r[7]) === '是', at: ms_(r[8]),
       // active＝還沒取消（含候補）；wait＝候補（額滿後送出的，附錄第 81 點），不算進報名人數與應收金額
-      active: Logic.clean(r[9]) !== '取消', wait: Logic.clean(r[9]) === REG_WAIT, _row: r._row, _raw: r
+      active: Logic.clean(r[9]) !== '取消', wait: Logic.clean(r[9]) === REG_WAIT,
+      // 家長回報已繳費（附錄第 83 點）：只是告知，團長勾「已繳」才算
+      reported: !!Logic.clean(r[12]), reportNote: Logic.clean(r[13]), _row: r._row, _raw: r
     };
   });
 }
@@ -92,7 +94,7 @@ function apiEventList_(req, who) {
     events: events.map(function (e) {
       var v = eventView_(e, now, taken);
       if (eligible) v.questions = e.questions;
-      v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait }; });
+      v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, reported: r.reported, reportNote: r.reportNote }; });
       return v;
     })
   };
@@ -132,7 +134,7 @@ function apiEventRegister_(req, who) {
     var seats = Logic.eventSeats(ev.capacity, takenSeats_(regs)[ev.id] || 0, v.people.length);
     appendRows_(SHEET.EVENT_REGS, v.people.map(function (p, i) {
       var id = newId_('R', ids); ids.push(id);
-      return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), Logic.eventAmount(ev, p), '否', now, i < seats ? '有效' : REG_WAIT, '', ''];
+      return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), Logic.eventAmount(ev, p), '否', now, i < seats ? '有效' : REG_WAIT, '', '', '', ''];
     }));
     var waited = v.people.length - seats;
     logOp_(who.account.accountId, '活動報名', ev.id, '', v.people.length + ' 位' + (waited ? '（候補 ' + waited + ' 位）' : ''));
@@ -157,6 +159,44 @@ function apiEventCancel_(req, who) {
   }));
 }
 AUTHED_ACTIONS.eventCancel = apiEventCancel_;
+
+/**
+ * 家長回報「已經繳費了」（附錄第 83 點）：{ regIds:[…], note }。只記錄回報時間與一句備註（例如「11/30 轉帳」），
+ * 不經手金流；團長在名單看到後勾「已繳」才算。note 留空再送一次＝更新備註；cancel=true 取消回報。
+ */
+function apiEventPayReport_(req, who) {
+  var ids = (Array.isArray(req.regIds) ? req.regIds : []).map(Logic.clean).filter(String).slice(0, 30);
+  if (!ids.length) throw new ApiError(ERR.BAD_INPUT, '請選擇要回報的報名。');
+  var note = Logic.clean(req.note).slice(0, 40);
+  if (/\d{6,}/.test(note)) throw new ApiError(ERR.BAD_INPUT, '備註請不要寫帳號等長串數字，寫日期或方式就好（例如「11/30 轉帳」）。');
+  return afterSync_(withLock_(function () {
+    var mine = loadRegs_().filter(function (r) { return ids.indexOf(r.id) >= 0 && r.accountId === who.account.accountId && r.active; });
+    if (!mine.length) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
+    var evId = mine[0].eventId, now = new Date(), ups = [];
+    mine.forEach(function (r) {
+      if (r.eventId !== evId || r.paid) return;
+      var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
+      while (row.length < HEADERS[SHEET.EVENT_REGS].length) row.push('');
+      row[12] = req.cancel ? '' : now; row[13] = req.cancel ? '' : note;
+      ups.push({ row: r._row, values: row });
+    });
+    if (!ups.length) throw new ApiError(ERR.BAD_INPUT, '這些報名已經登記繳費了。');
+    updateRows_(SHEET.EVENT_REGS, ups);
+    logOp_(who.account.accountId, req.cancel ? '取消繳費回報' : '家長回報已繳費', evId, '', ups.length + ' 筆');
+    return { changed: ups.length, _ev: evId };
+  }));
+}
+AUTHED_ACTIONS.eventPayReport = apiEventPayReport_;
+
+/** 某一天、某分團可以參加的活動，有效報名（不含候補）的姓名：{ titles:[…], names:{姓名:true} }；沒有活動回 null */
+function eventRegNamesOn_(date, section) {
+  var evs = loadEvents_().filter(function (e) { return !e.archived && e.date <= date && (e.endDate || e.date) >= date && Logic.targetsInclude(e.targets, section); });
+  if (!evs.length) return null;
+  var ids = {}, names = {};
+  evs.forEach(function (e) { ids[e.id] = true; });
+  loadRegs_().forEach(function (r) { if (ids[r.eventId] && r.active && !r.wait) names[r.name] = true; });
+  return { titles: evs.map(function (e) { return e.title; }), names: names };
+}
 
 // ───────────── 後台：活動設定、報名名單、繳費紀錄（團長） ─────────────
 
@@ -236,7 +276,7 @@ registerAdmin_('eventRegs', 'manageEvents', function (req, who) {
   return {
     event: v, sheetUrl: ev.sheetId ? EVENT_SHEET_URL + ev.sheetId : '',
     regs: loadRegs_().filter(function (r) { return r.eventId === ev.id && r.active; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
-      return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
+      return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, reported: r.reported, reportNote: r.reportNote, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
     })
   };
 });
@@ -346,10 +386,10 @@ function syncEventSheet_(eventId, inLock) {
   var acc = accountsById_(), now = new Date();
   var fmt = function (t) { return t ? Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd HH:mm') : ''; };
   var regs = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).sort(function (a, b) { return a.at - b.at; });
-  var head = ['姓名', '身分別'].concat(ev.questions.map(function (q) { return q.label; }), ['報名人', '應繳金額', '已繳', '報名時間', '狀態', '最後更新']);
+  var head = ['姓名', '身分別'].concat(ev.questions.map(function (q) { return q.label; }), ['報名人', '應繳金額', '已繳', '家長回報已繳', '報名時間', '狀態', '最後更新']);
   var rows = [head].concat(regs.map(function (r) {
     return [r.name, r.identity].concat(ev.questions.map(function (q) { return r.answers[q.id] || ''; }),
-      [(acc[r.accountId] || {}).nickname || '（帳號已刪除）', r.amount, r.paid ? '是' : '否', fmt(r.at), !r.active ? '取消' : r.wait ? REG_WAIT : '有效', fmt(ms_(r._raw[11]) || r.at)]);
+      [(acc[r.accountId] || {}).nickname || '（帳號已刪除）', r.amount, r.paid ? '是' : '否', r.reported ? '是' + (r.reportNote ? '（' + r.reportNote + '）' : '') : '', fmt(r.at), !r.active ? '取消' : r.wait ? REG_WAIT : '有效', fmt(ms_(r._raw[11]) || r.at)]);
   }));
   writeSheet_(book, '報名名單', rows);
   var act = regs.filter(function (r) { return r.active && !r.wait; });
