@@ -67,6 +67,7 @@ test('報名：自動算應繳金額；額滿後排候補；團長轉正取；�
   const saved = call(L, 'eventSave', base);
   assert.ok(saved.id, JSON.stringify(saved));
   const id = saved.id;
+  assert.equal(env.api({ action: 'siteInfo' }).events[0].left, 3, '先讀一次，公開資料進快取');
   const ev = call(P1, 'eventList').events[0];
   assert.equal(ev.capacity, 3);
   assert.equal(ev.left, 3);
@@ -90,6 +91,8 @@ test('報名：自動算應繳金額；額滿後排候補；團長轉正取；�
   assert.equal(byName('測試小狼甲')[5], JSON.stringify({ [qd]: '週六、週日', [qt]: '租帳篷', [qb]: '團服' }));
   assert.deepEqual(rows.map((x) => x[9]), ['有效', '有效', '有效', '候補']);
   assert.equal(call(P2, 'eventList').events[0].left, 0);
+  // 公開首頁的剩餘名額跟著更新（報名不是後台動作，也要清公開快取）
+  assert.equal(env.api({ action: 'siteInfo' }).events[0].left, 0);
   assert.equal(call(P2, 'eventList').events[0].mine.find((m) => m.name === '測試爸爸').wait, true);
   // 後台：報名 3 位、候補 1 位
   const list = call(L, 'eventAdminList').events[0];

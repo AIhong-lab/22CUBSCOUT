@@ -367,6 +367,8 @@ function syncEventSheet_(eventId, inLock) {
 function afterSync_(res) {
   var id = res && res._ev;
   if (res) delete res._ev;
+  // 報名、取消會改變公開的剩餘名額（附錄第 82 點）：家長端動作不經過 registerAdmin_，這裡也清公開快取
+  if (id) clearPublicCache_();
   if (id) { try { syncEventSheet_(id, false); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
   return res;
 }
