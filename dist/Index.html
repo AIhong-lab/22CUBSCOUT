@@ -427,7 +427,7 @@
 // ───── 唯一的設定值：後端（Google Apps Script）網址。不得放其他任何設定或金鑰。 ─────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbww6S893jbjV5pUZs1Azk7ccnLd0MwJ9o2mf3olcYkryY0aOxFIYO1q8MCWhLsUvK5IUw/exec';
 /** 網頁版本：必須和 gas/Config.js 的 APP_VERSION 一樣（npm test 會檢查）。不一樣代表後端還沒部署新版本（附錄第 72 點） */
-const APP_VERSION = '2026-11-27c';
+const APP_VERSION = '2026-11-28a';
 
 // ═════════════ 小工具 ═════════════
 const $app = document.getElementById('app');
@@ -893,6 +893,42 @@ async function renderEventForm(eventId) {
     else toast(`已報名 ${r.added} 位`);
     renderEventForm(eventId);
   });
+}
+
+/**
+ * 首頁的「🎪 活動報名」卡片（附錄第 82 點）：所有人都看得到（訪客、家長、服務員），只列還沒結束、沒關閉的活動。
+ * secs：只列全團＋這些分團的活動（null＝全部）；where：{ before: 選擇器 } 或 { after: 選擇器 }；
+ * showEmpty：沒有活動時也顯示卡片。報名本身仍要登入，資格由後端檢查。
+ */
+function mountEvents(secs, where, showEmpty) {
+  loadSite().then((site) => {
+    if ($('#evCard')) return;
+    const ref = $(where.before || where.after);
+    if (!ref) return; // 已經換頁了
+    const today = todayStr();
+    const okT = (t) => !secs || t === '全團' || secs.includes(t);
+    const list = (site.events || []).filter((e) => e.state !== '已關閉' && (e.endDate || e.date) >= today && (!e.targets || !e.targets.length || e.targets.some(okT)))
+      .sort((a, b) => ((a.state === '報名中') !== (b.state === '報名中') ? (a.state === '報名中' ? -1 : 1) : a.date < b.date ? -1 : 1));
+    if (!list.length && !showEmpty) return;
+    const when = (e) => (e.state === '尚未開始' ? fmtStamp(e.regStart) + ' 開始報名' : e.state === '報名中' ? '報名到 ' + fmtStamp(e.regEnd) : '報名已截止');
+    const seats = (e) => (!e.capacity || e.left === undefined ? '' : e.left === 0 ? '・<span style="color:var(--red)">額滿（可排候補）</span>' : '・剩 ' + e.left + ' 位');
+    const row = (e) => `<div class="list-row ev-row"><span class="grow"><span class="t">${esc(e.title)}</span> <span class="pill ${EV_PILL[e.state]}">${e.state}</span>${secs ? '' : ' ' + (e.targets || []).map(targetPill).join(' ')}<br>
+      <span class="s">📅 ${fmtDate(e.date)}${e.endDate && e.endDate !== e.date ? '～' + fmtDate(e.endDate) : ''}・${when(e)}・${feeText(e)}${seats(e)}</span></span>
+      <button class="btn ${e.state === '報名中' ? 'cta' : 'ghost'} small" data-evgo="${esc(e.id)}" data-open="${e.state === '報名中' ? 1 : ''}" style="margin-top:0">${e.state === '報名中' ? '✍️ 報名' : '看說明'}</button></div>`;
+    const html = `<section class="card" id="evCard"><h2>🎪 活動報名</h2>${list.length ? list.slice(0, 6).map(row).join('') : '<p class="muted" style="margin:0">目前沒有開放報名的活動，有新活動會出現在這裡。</p>'}
+      ${list.length > 6 ? '<button class="linkbtn" id="evMore">看全部活動 ›</button>' : ''}${list.length && !state.me ? '<p class="muted small" style="margin:6px 0 0">報名要先登入；還沒有帳號請先註冊。</p>' : ''}</section>`;
+    ref.insertAdjacentHTML(where.before ? 'beforebegin' : 'afterend', html);
+    const more = $('#evMore'); if (more) more.onclick = () => { if (canLeave()) renderInfo('events'); };
+    $$('#evCard [data-evgo]').forEach((b) => { b.onclick = () => {
+      if (!canLeave()) return;
+      const id = b.dataset.evgo;
+      if (!b.dataset.open) return renderInfo('events');
+      if (state.me) return renderEventForm(id);
+      pendingEvent.set(id);
+      if (store.get('token')) { setHash(''); return start(); }
+      renderLogin({ notice: '請先登入，登入後會直接打開報名表。還沒有帳號請先註冊。' });
+    }; });
+  }).catch(() => {});
 }
 
 /** 在 $app 最前面（或指定元素後面）補上公告；載入失敗就不顯示 */
@@ -1572,6 +1608,7 @@ function viewHomeBasic(d) {
     <section class="card"><div class="row-flex"><span class="grow"><b>下次集會</b><br><span class="s">${nextMeet ? fmtDate(nextMeet.date) + '　' + esc(nextMeet.name) : '行事曆還沒有之後的集會'}</span></span><button class="btn ghost small" id="toAtt" style="margin-top:0">出席紀錄 ›</button></div></section>
     <section class="card"><p class="muted" style="margin:0">${esc(secFull(sec))}的進程與章準備中，完成後這裡會顯示孩子的進度。</p></section>`;
   mountNotices(3, '.hero', [sec]);
+  mountEvents(mySecs(), { after: '.hero' }, false);
   $('#toAtt').onclick = () => { state.seg = 'attendance'; state.view = 'progress'; renderParent(true); };
 }
 
@@ -1628,6 +1665,7 @@ function viewHome(d) {
     ${notStarted.length ? `<section class="card"><details><summary class="fold">🌱 還沒開始的${esc(BL())}（${notStarted.length} 個）▾</summary>
       ${notStarted.map(unitCard).join('')}</details></section>` : ''}`;
   mountNotices(3, '.hero', [c.section || '小狼']);
+  mountEvents(mySecs(), { after: '.hero' }, false);
   const tm = $('#toMap');
   if (tm) tm.onclick = () => { state.mapSel = tm.dataset.lv; state.seg = 'map'; state.view = 'progress'; renderParent(true); };
   const ta = $('#toAtt');
@@ -1978,7 +2016,7 @@ function renderHome() {
       <button class="pri" data-go="login"><span class="ic">🔑</span>${state.me ? '回到我的頁面' : '登入／註冊'}</button>
       <button data-info="notices"><span class="ic">📣</span>公佈欄</button>
     </div>
-    <div class="chips" id="homeLinks">${[['calendar', 'pub_calendar'], ['events', 'parent_events'], ['about', 'pub_about']].filter(([, tid]) => hasTab(tid, true)).map(([k]) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
+    <div class="chips" id="homeLinks">${[['calendar', 'pub_calendar'], ['events', ''], ['about', 'pub_about']].filter(([, tid]) => !tid || hasTab(tid, true)).map(([k]) => `<button class="chip" data-info="${k}">${INFO_PAGES[k]}</button>`).join('')}</div>
     <section class="card" id="calCard" hidden></section>
     <section class="card"><h2>怎麼登入？</h2>
       <p class="small" style="margin:0">家長、團長、服務員都從這裡登入，系統會依帳號自動帶你到對的地方：家長看到自己孩子的資料；團長、服務員進入所屬分團的後台。第一次使用請按「登入／註冊 → 註冊新帳號」，選孩子所屬的分團送出申請，團長審核後就能使用。</p></section>
@@ -1987,6 +2025,7 @@ function renderHome() {
   $$('[data-go]').forEach((b) => { b.onclick = () => onPublicTab(b.dataset.go); });
   $$('[data-info]').forEach((b) => { b.onclick = () => { if (canLeave()) renderInfo(b.dataset.info); }; });
   mountNotices(5, '#homeLinks', []);
+  mountEvents(null, { before: '#homeLinks' }, true);
   mountCalendarAndFb([]);
 }
 /** 首頁與分團頁共用：行事曆（只顯示全團＋secs）與 FB 按鈕 */
@@ -2030,6 +2069,7 @@ function renderSectionPage(sec) {
     $$('[data-ps]').forEach((b) => { b.onclick = () => renderCatalog(b.dataset.ps, { sec }); });
     $$('[data-info]').forEach((b) => { b.onclick = () => { if (canLeave()) renderInfo(b.dataset.info); }; });
     mountNotices(5, '#homeLinks', [sec]);
+    mountEvents([sec], { before: '#homeLinks' }, true);
     mountCalendarAndFb([sec]);
   }
   $('#toPortal').onclick = () => renderHome();
@@ -2073,6 +2113,7 @@ function wireHomeIntro(secs) {
   const psec = hasProgressSec(secs[0]) ? secs[0] : '小狼';
   $$('[data-go]').forEach((b) => { b.onclick = () => (b.dataset.go === 'parent' ? document.getElementById('toParent').click() : b.dataset.go === 'progress' || b.dataset.go === 'badges' ? renderCatalog(b.dataset.go, { sec: psec }) : onPublicTab(b.dataset.go)); });
   mountNotices(5, '#homeLinks', secs);
+  mountEvents(secs, { before: '#homeLinks' }, true);
   $$('#homeLinks [data-info]').forEach((b) => { b.onclick = () => { if (canLeave()) renderInfo(b.dataset.info); }; });
   mountCalendarAndFb(secs);
   // 技能章數量以實際資料為準（團長可以在項目管理新增技能章）

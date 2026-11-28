@@ -1950,7 +1950,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-27c';
+var APP_VERSION = '2026-11-28a';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -5986,6 +5986,8 @@ function syncEventSheet_(eventId, inLock) {
 function afterSync_(res) {
   var id = res && res._ev;
   if (res) delete res._ev;
+  // 報名、取消會改變公開的剩餘名額（附錄第 82 點）：家長端動作不經過 registerAdmin_，這裡也清公開快取
+  if (id) clearPublicCache_();
   if (id) { try { syncEventSheet_(id, false); } catch (e) { console.error('活動存檔試算表更新失敗：' + (e && e.message)); } }
   return res;
 }

@@ -81,6 +81,7 @@
   - LINE 額度 `lineQuota_()`（Notify.js，快取 1 小時）→ `adminHome.alerts.lineQuota`。
   - 測試 `tests/scouts.test.js`、`promote.test.js`、`regis.test.js`、`rover.test.js`、`tests/web/all.js`。
 - **活動報名表設計再加強（SPEC 附錄第 81 點，2026-11-27）**：題目類型 `Logic.EVENT_Q_TYPES`（choice／multi／text）、選項加價 `q.fees`、`Logic.eventAmount`（身分費用 `identityFees` 或每人費用＋選項加價）、`Logic.eventSeats`；「活動」第 16、17 欄「人數上限」「身分費用」；報名狀態「候補」（`REG_WAIT`，`r.wait`；**算人數、應收一律排除候補**，`takenSeats_`）；`eventRegPromote`（團長轉正取）。前端 `feeText`、`optText`／`optEdit`／`parseOpt`、`[data-qm]` 複選、`[data-amt-est]` 預估金額。測試 `tests/eventform.test.js`、`tests/web/eventform.js`。
+- **活動報名放上首頁（SPEC 附錄第 82 點，2026-11-28）**：前端 `mountEvents(secs, {before|after}, showEmpty)`（`#evCard`，用 `siteInfo.events`；公開首頁全部、分團頁＝全團＋該分團、家長首頁＝`mySecs()`）；`afterSync_` 有活動ID 時 `clearPublicCache_()`（家長報名不經過 `registerAdmin_`）。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。

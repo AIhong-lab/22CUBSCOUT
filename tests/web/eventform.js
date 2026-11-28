@@ -75,11 +75,16 @@ const PAGE = 'https://pages.test/web/';
   assert.equal(await q(1).locator('[data-q=options]').inputValue(), '自備, 租帳篷+200');
   await logout();
 
+  // ═════ 首頁的活動報名卡片（附錄第 82 點）：訪客也看得到；按「報名」先登入，登入後直接打開報名表 ═════
+  await page.evaluate(() => { siteData = null; renderHome(); });
+  await page.locator('#evCard').waitFor();
+  assert.match(await page.locator('#evCard').innerText(), /冬季露營[\s\S]*報名中[\s\S]*家長 600 元；其他 1000 元[\s\S]*剩 2 位[\s\S]*報名要先登入/);
+  await noHScroll('首頁活動卡片');
+  await page.locator('#evCard [data-evgo]').click();
+  await page.getByText('登入後會直接打開報名表').waitFor();
+  await page.fill('input[name=username]', 'mom01'); await page.fill('input[name=password]', 'mom01pass12');
+  await page.click('button[type=submit]');
   // ═════ 家長報名：預估金額、名額 2 位，報 3 位 → 1 位候補 ═════
-  await login('mom01', 'mom01pass12');
-  await page.waitForTimeout(500);
-  await page.evaluate(() => renderInfo('events'));
-  await page.locator('[data-reg]').first().click();
   await page.locator('form#fev').waitFor();
   assert.match(await text(), /名額\s*2 位・剩 2 位/);
   const p = (i) => page.locator('[data-person]').nth(i);
@@ -105,6 +110,10 @@ const PAGE = 'https://pages.test/web/';
   assert.match(await text(), /測試爸爸[\s\S]*候補中/);
   assert.match(await text(), /已額滿，送出會排候補/);
   assert.deepEqual(env.rows('活動報名').map((x) => [x[3], x[6], x[9]]), [['測試小狼甲', 1200, '有效'], ['測試媽媽', 600, '有效'], ['測試爸爸', 600, '候補']]);
+  // 家長首頁也有活動卡片（顯示額滿可排候補）
+  await page.evaluate(() => { siteData = null; state.view = 'home'; renderParent(true); });
+  await page.locator('#evCard').waitFor();
+  assert.match(await page.locator('#evCard').innerText(), /冬季露營[\s\S]*額滿（可排候補）/);
   await logout();
 
   // ═════ 團長：名單裡候補、轉正取 ═════
