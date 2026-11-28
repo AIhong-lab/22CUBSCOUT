@@ -18,7 +18,7 @@ const SEED_SECTIONS = [
   { sec: '童軍', file: '童軍行義', unitKey: '童軍、行義' },
   { sec: '羅浮', file: '羅浮', unitKey: '羅浮' }
 ];
-const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'TeamApi.js', 'EventApi.js', 'ItemsAdmin.js', 'StaffApi.js', 'RegisApi.js', 'Notify.js', 'Backup.js', 'Webhook.js', 'RichMenu.js', 'Setup.js'];
+const ORDER = ['Logic.js', 'Config.js', 'SeedData.js', 'Db.js', 'Auth.js', 'Api.js', 'Menu.js', 'AdminApi.js', 'TeamApi.js', 'EventApi.js', 'ItemsAdmin.js', 'StaffApi.js', 'RegisApi.js', 'ReportApi.js', 'Notify.js', 'Backup.js', 'Webhook.js', 'RichMenu.js', 'Setup.js'];
 
 function buildSeedData() {
   const itemsCsv = read('data/items.csv');

@@ -82,6 +82,7 @@
   - 測試 `tests/scouts.test.js`、`promote.test.js`、`regis.test.js`、`rover.test.js`、`tests/web/all.js`。
 - **活動報名表設計再加強（SPEC 附錄第 81 點，2026-11-27）**：題目類型 `Logic.EVENT_Q_TYPES`（choice／multi／text）、選項加價 `q.fees`、`Logic.eventAmount`（身分費用 `identityFees` 或每人費用＋選項加價）、`Logic.eventSeats`；「活動」第 16、17 欄「人數上限」「身分費用」；報名狀態「候補」（`REG_WAIT`，`r.wait`；**算人數、應收一律排除候補**，`takenSeats_`）；`eventRegPromote`（團長轉正取）。前端 `feeText`、`optText`／`optEdit`／`parseOpt`、`[data-qm]` 複選、`[data-amt-est]` 預估金額。測試 `tests/eventform.test.js`、`tests/web/eventform.js`。
 - **活動報名放上首頁（SPEC 附錄第 82 點，2026-11-28）**：前端 `mountEvents(secs, {before|after}, showEmpty)`（`#evCard`，用 `siteInfo.events`；公開首頁全部、分團頁＝全團＋該分團、家長首頁＝`mySecs()`）；`afterSync_` 有活動ID 時 `clearPublicCache_()`（家長報名不經過 `registerAdmin_`）。
+- **大字版、家長回報與三項小功能（SPEC 附錄第 83 點，2026-11-28）**：CSS 字級放大（內文 19px、最小 16px；**新增畫面不要用小於 16px 的字**）、`.seg` 可左右滑、`.list-row` 可換行。`gas/ReportApi.js`：家長 `itemReport`／`itemReportCancel`（完成紀錄「待確認」列，`REPORT_PENDING`；`pendingReportsOf_`、`reportEnabled_`，設定「開放家長回報進程」）、後台 `reportList`／`reportReview`（權限 `signoff`）、`meetingPlanSave`／`meetingPlanItems_`（集會第 11 欄「預排項目」JSON，`signoffData.plan`、家長 `upcoming[].plan`）。EventApi：`eventPayReport`（活動報名第 13、14 欄）、`eventRegNamesOn_`（`attendanceSheet` 的 `registered`／`event`，依姓名比對）。前端 `reportBtnHtml`（`[data-rep]` 全域點擊）、`payBarHtml`／`wirePayBar`／`mountPayReminder`（`#payCard`）、`ADMIN_PAGES.reports`、行事曆 `[data-plan]`、點名 `#onlyReg`、簽核 `st.filter === 'plan'`。**完成紀錄只有「待確認」列可以刪**。測試 `tests/report.test.js`、`tests/web/report.js`。
 
 ## 架構
 - 前端：`web/index.html`，原生 HTML/CSS/JS，無框架、無建置工具，可部署到 GitHub Pages（repo 為 Public），也可以直接由 GAS 提供（`dist/Index.html`，附錄第 56 點）。查詢端與後台同一頁，依身分切換。
@@ -128,10 +129,10 @@
 | 項目總表 | 項目ID、類別（進程/技能章）、級別或章名、大項、項目內容、排序、啟用（是/否）、分團（空白＝小狼） |
 | 級別與章說明 | 名稱、類別、分類（服務類/健身類/技巧類；稚齡為服務類/運動類/技巧類；進程留空）、說明、晉級條件、排序、分團（空白＝小狼） |
 | 進程細項 | 項目ID、分組、細項內容、通過標準、生活應用、排序、啟用（是/否） |
-| 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人、回報狀態 |
+| 完成紀錄 | 小狼ID、項目ID、完成日期、簽核人、備註、回報人（家長帳號ID）、回報狀態（空白／待確認／已確認） |
 | 頒章紀錄 | 小狼ID、級別或章名、頒發日期、頒發場合、備註、簽核人、登錄時間、分團（空白＝小狼；章名要和分團一起對應） |
 | 通知紀錄 | 小狼ID、級別或章名、通知類型、通知時間 |
-| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動）、計入進程（是/否，空白＝是）、分團（分團名稱或「全團」；空白＝小狼） |
+| 集會行事曆 | 集會ID、日期、名稱、備註、啟用（是/否）、建立人、建立時間、類型（一般/大活動）、計入進程（是/否，空白＝是）、分團（分團名稱或「全團」；空白＝小狼）、預排項目（項目ID 的 JSON 陣列） |
 | 出席紀錄 | 集會ID、小狼ID、狀態（出席/遲到/請假；空白＝無此列）、點名人、點名時間 |
 | 年度出席設定 | 年度名稱、開始日、結束日、應出席總數、備註、分團（全團／分團；空白＝小狼） |
 | 額外出席 | 年度名稱、小狼ID、額外出席次數、備註、設定人、設定時間 |
@@ -143,7 +144,7 @@
 | 公告 | 公告ID、標題、內容、置頂（是/否）、集會ID、發布人、發布時間、狀態（顯示/下架）、分團（分團名稱或「全團」） |
 | 網站內容 | 鍵（about/activity/fb）、內容、更新人、更新時間 |
 | 活動 | 活動ID、標題、說明、活動日期、結束日期、報名開始、報名結束、每人費用、題目（JSON）、狀態（開放/關閉）、建立人、建立時間、存檔試算表ID、封存時間、分團（「全團」或「童軍、行義」可複選；空白＝小狼）、人數上限（空白＝不限）、身分費用（JSON） |
-| 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/候補/取消）、更新人、更新時間 |
+| 活動報名 | 報名ID、活動ID、帳號ID、姓名、身分別、答案（JSON）、應繳金額、已繳（是/否）、報名時間、狀態（有效/候補/取消）、更新人、更新時間、家長回報繳費（時間）、回報備註 |
 | 章圖 | 名稱、類別、圖片（data URL）、更新人、更新時間、分團（空白＝小狼） |
 | 設定 | 鍵、值、說明（另有「最高管理員帳號ID」一列，只能由移交中心寫入） |
 | 權限設定 | 功能代碼、功能名稱、分類、最低權限、停用分團、更新人、更新時間（系統分頁，由後台權限設定頁維護） |

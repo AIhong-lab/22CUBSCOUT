@@ -1141,8 +1141,8 @@ test('每個活動一份獨立的存檔試算表（附錄第 51 點）：建立�
   assert.match(book.getName(), /春季健行/);
   assert.equal(env.drive.moved.length, 1, '放進存檔資料夾');
   assert.ok(env.props.EVENT_FOLDER_ID);
-  const list = () => { const sh = book.getSheetByName('報名名單'); return sh.getRange(1, 1, sh.getLastRow(), 9).getValues(); };
-  assert.deepEqual(list()[0], ['姓名', '身分別', '飲食', '報名人', '應繳金額', '已繳', '報名時間', '狀態', '最後更新']);
+  const list = () => { const sh = book.getSheetByName('報名名單'); return sh.getRange(1, 1, sh.getLastRow(), 10).getValues(); };
+  assert.deepEqual(list()[0], ['姓名', '身分別', '飲食', '報名人', '應繳金額', '已繳', '家長回報已繳', '報名時間', '狀態', '最後更新']);
   assert.equal(list().length, 1);
   const q = call(P, 'eventList').events[0].questions[0].id;
   call(P, 'eventRegister', { eventId: id, people: [{ name: '測試小狼甲', identity: '小狼', answers: { [q]: '葷' } }, { name: '=HYPERLINK("x")', identity: '家長', answers: {} }] });
@@ -1157,7 +1157,7 @@ test('每個活動一份獨立的存檔試算表（附錄第 51 點）：建立�
   call(P, 'eventCancel', { regId: regs.regs[1].regId });
   rows = list();
   assert.deepEqual(rows[1].slice(4, 6), [250, '是']);
-  assert.equal(rows[2][7], '取消', '取消的也留在存檔裡');
+  assert.equal(rows[2][8], '取消', '取消的也留在存檔裡');
   const info = book.getSheetByName('活動資訊');
   assert.match(JSON.stringify(info.getRange(1, 1, info.getLastRow(), 2).getValues()), /春季健行.*已收金額.*250/);
   // 只有一份，不會每次同步都新增檔案；手動同步只有團長可以

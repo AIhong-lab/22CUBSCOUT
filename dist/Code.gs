@@ -362,6 +362,7 @@ var Logic = (function () {
     { key: '備份保留份數', type: 'int', def: 8, min: 1, max: 52, desc: '' },
     { key: '離團後提醒處理個資的天數', type: 'int', def: 180, min: 0, max: 3650, desc: '填 0 表示不提醒' },
     { key: '允許外部網頁連線', type: 'bool', def: true, desc: '是：GitHub 等外部網頁也能連到後端（舊做法）。否：只有放在 GAS 上的網頁能用（鎖在 GAS）。請先確認 GAS 版網頁可以正常登入，再改成「否」' },
+    { key: '開放家長回報進程', type: 'bool', def: true, desc: '是：家長可以在孩子的闖關畫面回報「在家完成了」，服務員確認後才算完成。否：只能由服務員簽核' },
     { key: '每日註冊申請上限', type: 'int', def: 30, min: 5, max: 500, desc: '24 小時內最多幾個新帳號送出註冊申請，超過就暫停註冊（防止濫用）' }
   ];
   // 各分團自己的設定（附錄第 73 點⑥⑧）：小狼用原本的鍵，其他分團的鍵後面加「（分團）」；沒填就用預設值，不算錯誤
@@ -1890,7 +1891,7 @@ HEADERS[SHEET.UNITS] = ['名稱', '類別', '分類', '說明', '晉級條件', 
 HEADERS[SHEET.DETAILS] = ['項目ID', '分組', '細項內容', '通過標準', '生活應用', '排序', '啟用'];
 HEADERS[SHEET.COMPLETIONS] = ['小狼ID', '項目ID', '完成日期', '簽核人', '備註', '回報人', '回報狀態'];
 HEADERS[SHEET.AWARDS] = ['小狼ID', '級別或章名', '頒發日期', '頒發場合', '備註', '簽核人', '登錄時間', '分團'];
-HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型', '計入進程', '分團'];
+HEADERS[SHEET.MEETINGS] = ['集會ID', '日期', '名稱', '備註', '啟用', '建立人', '建立時間', '類型', '計入進程', '分團', '預排項目'];
 HEADERS[SHEET.ATTENDANCE] = ['集會ID', '小狼ID', '狀態', '點名人', '點名時間'];
 HEADERS[SHEET.PERIODS] = ['年度名稱', '開始日', '結束日', '應出席總數', '備註', '分團'];
 HEADERS[SHEET.EXTRA] = ['年度名稱', '小狼ID', '額外出席次數', '備註', '設定人', '設定時間'];
@@ -1900,7 +1901,7 @@ HEADERS[SHEET.REQUESTS] = ['申請ID', '帳號ID', '類型', '填寫姓名', '�
 HEADERS[SHEET.SQUAD_STAFF] = ['小隊', '帳號ID', '設定人', '設定時間', '分團'];
 HEADERS[SHEET.ROLES] = ['小狼ID', '小隊', '職務', '開始日', '結束日', '設定人', '設定時間'];
 HEADERS[SHEET.EVENTS] = ['活動ID', '標題', '說明', '活動日期', '結束日期', '報名開始', '報名結束', '每人費用', '題目', '狀態', '建立人', '建立時間', '存檔試算表ID', '封存時間', '分團', '人數上限', '身分費用'];
-HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間'];
+HEADERS[SHEET.EVENT_REGS] = ['報名ID', '活動ID', '帳號ID', '姓名', '身分別', '答案', '應繳金額', '已繳', '報名時間', '狀態', '更新人', '更新時間', '家長回報繳費', '回報備註'];
 HEADERS[SHEET.UNIT_IMAGES] = ['名稱', '類別', '圖片', '更新人', '更新時間', '分團'];
 HEADERS[SHEET.SITE] = ['鍵', '內容', '更新人', '更新時間'];
 HEADERS[SHEET.NOTICES] = ['公告ID', '標題', '內容', '置頂', '集會ID', '發布人', '發布時間', '狀態', '分團'];
@@ -1942,7 +1943,7 @@ TEXT_COLUMNS[SHEET.REGIS] = [1, 3];
 TEXT_COLUMNS[SHEET.NOTICES] = [1, 5];
 TEXT_COLUMNS[SHEET.SITE] = [1, 2];
 TEXT_COLUMNS[SHEET.EVENTS] = [1, 2, 3, 4, 5, 6, 7, 9, 13, 17];
-TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6];
+TEXT_COLUMNS[SHEET.EVENT_REGS] = [1, 2, 3, 4, 5, 6, 14];
 TEXT_COLUMNS[SHEET.UNIT_IMAGES] = [1, 2, 3];
 TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
 
@@ -1950,7 +1951,7 @@ TEXT_COLUMNS[SHEET.PERMS] = [1, 2, 3, 4, 5];
  * 後端版本（SPEC 附錄第 72 點）：每次改 gas/ 的程式都要更新，並同步改 web/index.html 的 APP_VERSION。
  * 網頁登入後比對兩邊，不一樣就在後台首頁提醒團長「後端還是舊版，請部署新版本」。
  */
-var APP_VERSION = '2026-11-28a';
+var APP_VERSION = '2026-11-28b';
 
 /** API 錯誤代碼（前端依代碼處理，訊息直接顯示給使用者） */
 var ERR = {
@@ -2334,7 +2335,7 @@ function loadAwards_() {
 
 function loadMeetings_() {
   return readRows_(SHEET.MEETINGS).filter(function (r) { return Logic.clean(r[0]); }).map(function (r) {
-    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', counts: Logic.clean(r[8]) !== '否', target: Logic.targetOf(r[9]), _row: r._row };
+    return { meetingId: Logic.clean(r[0]), date: dateStr_(r[1]), name: Logic.clean(r[2]), note: Logic.clean(r[3]), enabled: Logic.clean(r[4]) !== '否', type: Logic.clean(r[7]) === '大活動' ? '大活動' : '一般', counts: Logic.clean(r[8]) !== '否', target: Logic.targetOf(r[9]), plan: parseJson_(r[10], []), _row: r._row };
   });
 }
 
@@ -3272,6 +3273,7 @@ function buildCubView_(cub, today) {
   // [修補] 簽核人帳號ID → 管理員姓名：改用全分團 adminNames_()，避免總團或他分團服務員簽核時顯示空白
   var names = adminNames_();
 
+  var pendingMap = hasProgress ? pendingReportsOf_(cub.cubId) : {};
   var unitViews = progress.units.map(function (u) {
     var info = units[u.category + '|' + u.unit] || {};
     return {
@@ -3280,7 +3282,8 @@ function buildCubView_(cub, today) {
       done: u.done, total: u.total, awardDate: u.awardDate, awardOccasion: u.awardOccasion || '',
       attendRequired: u.attendRequired || 0, attendSinceLast: u.attendSinceLast || 0,
       items: u.items.map(function (i) {
-        return { section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto, details: detailsView_(byItem, i.id) };
+        // 家長回報（附錄第 83 點）：還沒完成的項目帶項目ID 供回報；pending＝已回報、等服務員確認
+        return { id: i.done ? '' : i.id, pending: !i.done && !!pendingMap[i.id], section: i.section, text: i.text, done: i.done, date: i.date, signer: i.done ? (names[i.signer] || (i.auto ? '出席自動計算' : '')) : '', auto: i.auto, details: detailsView_(byItem, i.id) };
       })
     };
   }).sort(function (a, b) { return a.order - b.order; });
@@ -3309,6 +3312,7 @@ function buildCubView_(cub, today) {
       role: cub.role, squadStaff: squadStaffNames_(cub.squad, cub.section), section: cub.section
     },
     hasProgress: hasProgress, levels: Logic.levelsOf(cub.section), history: cubHistory_(cub),
+    canReport: hasProgress && cub.status === '在團' && reportEnabled_(),
     trial: cub.status === Logic.TRIAL ? Logic.trialProgress(attRecords, Logic.sectionSetting(settings, '體驗所需出席次數', cub.section)) : null,
     nextChallenge: (function (n) {
       // 白名單：不帶簽核人帳號ID 等內部欄位
@@ -3317,7 +3321,9 @@ function buildCubView_(cub, today) {
     units: unitViews,
     attendance: {
       meetings: past.map(function (m) { return { date: m.date, name: m.name, status: statusOf[m.meetingId] || '－' }; }),
-      upcoming: upcoming.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, note: m.note, leave: statusOf[m.meetingId] === '請假' }; }),
+      upcoming: upcoming.map(function (m) { return { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, note: m.note, leave: statusOf[m.meetingId] === '請假',
+        // 這次集會預排要做的項目（附錄第 83 點），只給文字
+        plan: meetingPlanItems_(m, cub.section).slice(0, 12).map(function (i) { return i.text; }) }; }),
       counts: Logic.attendanceCounts(attRecords),
       rate: rate
     }
@@ -3688,6 +3694,8 @@ registerAdmin_('adminHome', 'viewOverview', function (req, who) {
       noLineAdmin: !admins.some(function (a) { return a.lineUserId; }),
       pendingRequests: Logic.can(who.admin.role, 'reviewRequests') ? loadRequests_().filter(function (r) { return r.status === '待審核' && requestVisible_(r); }).length : 0,
       notifyFailed: Number(props.getProperty('NOTIFY_FAILED') || 0),
+      // 家長回報、等服務員確認的筆數（附錄第 83 點）
+      pendingReports: hasProgress ? pendingReports_().length : 0,
       // LINE 推播額度（附錄第 73 點㉑）：只給總團與最高管理員（沒有最高管理員時團長）
       lineQuota: canManageAll_(who) ? lineQuota_() : null,
       placeholders: canShared_(who, '個資告知') || canShared_(who, '網站內容') ? placeholderPlaces_() : []
@@ -3925,7 +3933,15 @@ registerAdmin_('signoffData', 'signoff', function (req, who) {
     if (c.signer === who.account.accountId && !seen[c.itemId]) { seen[c.itemId] = true; recent.push(c.itemId); }
   }
   var done = comps.filter(function (c) { return Logic.isCountedCompletion(c); }).map(function (c) { return c.cubId + '|' + c.itemId; });
-  return { items: items, cubs: cubs, squads: squadsOf_(secCubs_()), recent: recent, done: done, today: today_() };
+  // 集會預排（附錄第 83 點）：今天的集會，沒有就最近 7 天內有預排的那一場
+  var today = today_(), from = Logic.addDays(today, -7), plan = null;
+  loadMeetings_().filter(function (m) { return m.enabled && Logic.isDateStr(m.date) && m.date <= today && m.date >= from && meetingVisible_(m); })
+    .sort(function (a, b) { return a.date < b.date ? 1 : -1; }).forEach(function (m) {
+      if (plan) return;
+      var ids = meetingPlanItems_(m, curSec_()).map(function (i) { return i.id; });
+      if (ids.length) plan = { meetingId: m.meetingId, date: m.date, name: m.name, itemIds: ids };
+    });
+  return { items: items, cubs: cubs, squads: squadsOf_(secCubs_()), recent: recent, done: done, today: today, plan: plan };
 });
 
 registerAdmin_('signoff', 'signoff', function (req, who) {
@@ -4859,7 +4875,8 @@ registerAdmin_('meetingList', 'attendance', function (req, who) {
   // 出席人數只算目前分團的團員（全團集會各分團各自點名）
   loadAttendance_().forEach(function (a) { if (Logic.isPresent(a.status) && mine[a.cubId]) count[a.meetingId] = (count[a.meetingId] || 0) + 1; });
   var list = loadMeetings_().filter(function (m) { return Logic.isDateStr(m.date) && meetingVisible_(m); }).map(function (m) {
-    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0, target: m.target, canEdit: canEditMeeting_(who, m) };
+    return { meetingId: m.meetingId, date: m.date, name: m.name, note: m.note, enabled: m.enabled, type: m.type, counts: m.counts, attended: count[m.meetingId] || 0, target: m.target, canEdit: canEditMeeting_(who, m),
+      plan: meetingPlanItems_(m, curSec_()).map(function (i) { return i.id; }) };
   }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
   return { meetings: list, today: today_(), defaultId: defaultMeetingId_(list, today_()), section: curSec_(), canManageAll: canManageAll_(who) };
 });
@@ -4961,8 +4978,11 @@ registerAdmin_('attendanceSheet', 'attendance', function (req) {
   var m = findMeeting_(req.meetingId);
   var st = {};
   loadAttendance_().forEach(function (a) { if (a.meetingId === m.meetingId) st[a.cubId] = a.status; });
-  var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date) }; });
-  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, target: m.target }, cubs: cubs, squads: squadsOf_(secCubs_()) };
+  // 這一天有活動報名時（附錄第 83 點）：標出有報名的團員（依姓名比對），點名可以只列報名的人
+  var ev = eventRegNamesOn_(m.date, curSec_());
+  var cubs = cubsOnDate_(m.date, m.type).map(function (c) { return { cubId: c.cubId, name: c.name, squad: c.squad, status: st[c.cubId] || '', trial: !(c.joinDate && c.joinDate <= m.date), registered: !!(ev && ev.names[c.name]) }; });
+  return { meeting: { meetingId: m.meetingId, date: m.date, name: m.name, type: m.type, target: m.target }, cubs: cubs, squads: squadsOf_(secCubs_()),
+    event: ev ? { title: ev.titles.join('、'), count: cubs.filter(function (c) { return c.registered; }).length } : null };
 });
 
 /** 儲存點名：只更新送來的小狼（以「集會＋小狼」為單位，同時點名不互相覆蓋）；空白＝刪除該筆 */
@@ -5642,7 +5662,9 @@ function loadRegs_() {
       id: Logic.clean(r[0]), eventId: Logic.clean(r[1]), accountId: Logic.clean(r[2]), name: Logic.clean(r[3]), identity: Logic.clean(r[4]),
       answers: parseJson_(r[5], {}), amount: Number(r[6]) || 0, paid: Logic.clean(r[7]) === '是', at: ms_(r[8]),
       // active＝還沒取消（含候補）；wait＝候補（額滿後送出的，附錄第 81 點），不算進報名人數與應收金額
-      active: Logic.clean(r[9]) !== '取消', wait: Logic.clean(r[9]) === REG_WAIT, _row: r._row, _raw: r
+      active: Logic.clean(r[9]) !== '取消', wait: Logic.clean(r[9]) === REG_WAIT,
+      // 家長回報已繳費（附錄第 83 點）：只是告知，團長勾「已繳」才算
+      reported: !!Logic.clean(r[12]), reportNote: Logic.clean(r[13]), _row: r._row, _raw: r
     };
   });
 }
@@ -5711,7 +5733,7 @@ function apiEventList_(req, who) {
     events: events.map(function (e) {
       var v = eventView_(e, now, taken);
       if (eligible) v.questions = e.questions;
-      v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait }; });
+      v.mine = mine.filter(function (r) { return r.eventId === e.id; }).map(function (r) { return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, reported: r.reported, reportNote: r.reportNote }; });
       return v;
     })
   };
@@ -5751,7 +5773,7 @@ function apiEventRegister_(req, who) {
     var seats = Logic.eventSeats(ev.capacity, takenSeats_(regs)[ev.id] || 0, v.people.length);
     appendRows_(SHEET.EVENT_REGS, v.people.map(function (p, i) {
       var id = newId_('R', ids); ids.push(id);
-      return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), Logic.eventAmount(ev, p), '否', now, i < seats ? '有效' : REG_WAIT, '', ''];
+      return [id, ev.id, who.account.accountId, p.name, p.identity, JSON.stringify(p.answers), Logic.eventAmount(ev, p), '否', now, i < seats ? '有效' : REG_WAIT, '', '', '', ''];
     }));
     var waited = v.people.length - seats;
     logOp_(who.account.accountId, '活動報名', ev.id, '', v.people.length + ' 位' + (waited ? '（候補 ' + waited + ' 位）' : ''));
@@ -5776,6 +5798,44 @@ function apiEventCancel_(req, who) {
   }));
 }
 AUTHED_ACTIONS.eventCancel = apiEventCancel_;
+
+/**
+ * 家長回報「已經繳費了」（附錄第 83 點）：{ regIds:[…], note }。只記錄回報時間與一句備註（例如「11/30 轉帳」），
+ * 不經手金流；團長在名單看到後勾「已繳」才算。note 留空再送一次＝更新備註；cancel=true 取消回報。
+ */
+function apiEventPayReport_(req, who) {
+  var ids = (Array.isArray(req.regIds) ? req.regIds : []).map(Logic.clean).filter(String).slice(0, 30);
+  if (!ids.length) throw new ApiError(ERR.BAD_INPUT, '請選擇要回報的報名。');
+  var note = Logic.clean(req.note).slice(0, 40);
+  if (/\d{6,}/.test(note)) throw new ApiError(ERR.BAD_INPUT, '備註請不要寫帳號等長串數字，寫日期或方式就好（例如「11/30 轉帳」）。');
+  return afterSync_(withLock_(function () {
+    var mine = loadRegs_().filter(function (r) { return ids.indexOf(r.id) >= 0 && r.accountId === who.account.accountId && r.active; });
+    if (!mine.length) throw new ApiError(ERR.NOT_FOUND, '找不到這筆報名。');
+    var evId = mine[0].eventId, now = new Date(), ups = [];
+    mine.forEach(function (r) {
+      if (r.eventId !== evId || r.paid) return;
+      var row = r._raw.slice(0, HEADERS[SHEET.EVENT_REGS].length);
+      while (row.length < HEADERS[SHEET.EVENT_REGS].length) row.push('');
+      row[12] = req.cancel ? '' : now; row[13] = req.cancel ? '' : note;
+      ups.push({ row: r._row, values: row });
+    });
+    if (!ups.length) throw new ApiError(ERR.BAD_INPUT, '這些報名已經登記繳費了。');
+    updateRows_(SHEET.EVENT_REGS, ups);
+    logOp_(who.account.accountId, req.cancel ? '取消繳費回報' : '家長回報已繳費', evId, '', ups.length + ' 筆');
+    return { changed: ups.length, _ev: evId };
+  }));
+}
+AUTHED_ACTIONS.eventPayReport = apiEventPayReport_;
+
+/** 某一天、某分團可以參加的活動，有效報名（不含候補）的姓名：{ titles:[…], names:{姓名:true} }；沒有活動回 null */
+function eventRegNamesOn_(date, section) {
+  var evs = loadEvents_().filter(function (e) { return !e.archived && e.date <= date && (e.endDate || e.date) >= date && Logic.targetsInclude(e.targets, section); });
+  if (!evs.length) return null;
+  var ids = {}, names = {};
+  evs.forEach(function (e) { ids[e.id] = true; });
+  loadRegs_().forEach(function (r) { if (ids[r.eventId] && r.active && !r.wait) names[r.name] = true; });
+  return { titles: evs.map(function (e) { return e.title; }), names: names };
+}
 
 // ───────────── 後台：活動設定、報名名單、繳費紀錄（團長） ─────────────
 
@@ -5855,7 +5915,7 @@ registerAdmin_('eventRegs', 'manageEvents', function (req, who) {
   return {
     event: v, sheetUrl: ev.sheetId ? EVENT_SHEET_URL + ev.sheetId : '',
     regs: loadRegs_().filter(function (r) { return r.eventId === ev.id && r.active; }).sort(function (a, b) { return a.at - b.at; }).map(function (r) {
-      return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
+      return { regId: r.id, name: r.name, identity: r.identity, answers: r.answers, amount: r.amount, paid: r.paid, wait: r.wait, reported: r.reported, reportNote: r.reportNote, at: r.at, by: (acc[r.accountId] || {}).nickname || '（帳號已刪除）' };
     })
   };
 });
@@ -5965,10 +6025,10 @@ function syncEventSheet_(eventId, inLock) {
   var acc = accountsById_(), now = new Date();
   var fmt = function (t) { return t ? Utilities.formatDate(new Date(t), TZ, 'yyyy-MM-dd HH:mm') : ''; };
   var regs = loadRegs_().filter(function (r) { return r.eventId === ev.id; }).sort(function (a, b) { return a.at - b.at; });
-  var head = ['姓名', '身分別'].concat(ev.questions.map(function (q) { return q.label; }), ['報名人', '應繳金額', '已繳', '報名時間', '狀態', '最後更新']);
+  var head = ['姓名', '身分別'].concat(ev.questions.map(function (q) { return q.label; }), ['報名人', '應繳金額', '已繳', '家長回報已繳', '報名時間', '狀態', '最後更新']);
   var rows = [head].concat(regs.map(function (r) {
     return [r.name, r.identity].concat(ev.questions.map(function (q) { return r.answers[q.id] || ''; }),
-      [(acc[r.accountId] || {}).nickname || '（帳號已刪除）', r.amount, r.paid ? '是' : '否', fmt(r.at), !r.active ? '取消' : r.wait ? REG_WAIT : '有效', fmt(ms_(r._raw[11]) || r.at)]);
+      [(acc[r.accountId] || {}).nickname || '（帳號已刪除）', r.amount, r.paid ? '是' : '否', r.reported ? '是' + (r.reportNote ? '（' + r.reportNote + '）' : '') : '', fmt(r.at), !r.active ? '取消' : r.wait ? REG_WAIT : '有效', fmt(ms_(r._raw[11]) || r.at)]);
   }));
   writeSheet_(book, '報名名單', rows);
   var act = regs.filter(function (r) { return r.active && !r.wait; });
@@ -6714,6 +6774,166 @@ AUTHED_ACTIONS.regisExport = function (req, who) {
   });
   return { csv: Logic.toCsv(rows.map(function (r) { return r.map(function (v) { return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v; }); })), filename: '三項登記_' + d.year + '.csv' };
 };
+
+// ════════════════ ReportApi.js ════════════════
+// 家長回報進程、集會預排項目（SPEC 附錄第 83 點）
+// 家長回報：寫入「完成紀錄」但回報狀態為「待確認」（不算完成），服務員確認後才算；不收照片，只有一句說明。
+// 集會預排：行事曆的集會先勾這次要做的項目，簽核時自動帶出，家長在「接下來的集會」看得到。
+
+var REPORT_PENDING = '待確認', REPORT_OK = '已確認';
+var REPORT_MAX_PER_CUB = 30;
+
+/** 家長可不可以回報（設定「開放家長回報進程」，預設是） */
+function reportEnabled_() { return loadSettings_().values['開放家長回報進程'] !== false; }
+
+/** 某位團員「待確認」的回報：{ 項目ID: 完成紀錄 }；已經被簽核（算完成）的不列 */
+function pendingReportsOf_(cubId, comps) {
+  comps = comps || loadCompletions_();
+  var done = {}, out = {};
+  comps.forEach(function (c) { if (c.cubId === cubId && Logic.isCountedCompletion(c)) done[c.itemId] = true; });
+  comps.forEach(function (c) { if (c.cubId === cubId && c.reportStatus === REPORT_PENDING && !done[c.itemId]) out[c.itemId] = c; });
+  return out;
+}
+
+/** 家長端共用檢查：綁定、同意、家長權限（未成年的本人帳號不能回報）、分團有進程 */
+function reportBinding_(who, cubId) {
+  var binding = loadBindings_().filter(function (b) { return b.accountId === who.account.accountId && b.cubId === cubId; })[0];
+  var cub = binding && loadCubs_().filter(function (c) { return c.cubId === cubId; })[0];
+  if (!binding || !cub) throw new ApiError(ERR.NOT_FOUND, '找不到這位小狼的資料。');
+  if (bindingNeedsConsent_(binding, cub.section)) throw new ApiError(ERR.NEED_CONSENT, '個資告知內容已更新，請先閱讀並同意。');
+  if (isMinorSelf_(binding, cub.section)) throw new ApiError(ERR.FORBIDDEN, '回報要由家長的帳號操作。');
+  if (!resolveWhoPerms_(who, true, false, cub.section).tabs.member_progress) throw new ApiError(ERR.FORBIDDEN, '目前此身分或分團未開放進程功能。');
+  if (Logic.PROGRESS_SECTIONS.indexOf(cub.section) < 0) throw new ApiError(ERR.BAD_INPUT, '這個分團還沒有進程。');
+  if (cub.status !== '在團') throw new ApiError(ERR.BAD_INPUT, '在團的團員才能回報。');
+  return cub;
+}
+
+/** 家長回報：{ cubId, itemIds:[…], note }。已完成或已回報的略過 */
+function apiItemReport_(req, who) {
+  return withLock_(function () {
+    if (!reportEnabled_()) throw new ApiError(ERR.FORBIDDEN, '目前沒有開放家長回報，請在團集會時請服務員簽核。');
+    var cub = reportBinding_(who, Logic.clean(req.cubId));
+    var ids = (Array.isArray(req.itemIds) ? req.itemIds : []).map(Logic.clean).filter(String);
+    if (!ids.length || ids.length > 20) throw new ApiError(ERR.BAD_INPUT, '請選擇要回報的項目（一次最多 20 項）。');
+    var note = Logic.clean(req.note).slice(0, 60);
+    var okItem = {};
+    sectionItems_(cub.section).forEach(function (i) { if (i.enabled) okItem[i.id] = true; });
+    var comps = loadCompletions_(), done = {};
+    comps.forEach(function (c) { if (c.cubId === cub.cubId && (Logic.isCountedCompletion(c) || c.reportStatus === REPORT_PENDING)) done[c.itemId] = true; });
+    var pendingCount = Object.keys(pendingReportsOf_(cub.cubId, comps)).length;
+    var add = [], seen = {};
+    ids.forEach(function (id) {
+      if (!okItem[id]) throw new ApiError(ERR.BAD_INPUT, '有項目不存在或已停用，請重新整理。');
+      if (done[id] || seen[id]) return;
+      seen[id] = true;
+      add.push([cub.cubId, id, today_(), '', note, who.account.accountId, REPORT_PENDING]);
+    });
+    if (pendingCount + add.length > REPORT_MAX_PER_CUB) throw new ApiError(ERR.BAD_INPUT, '等待確認的回報太多了，請等服務員確認後再回報。');
+    if (add.length) {
+      appendRows_(SHEET.COMPLETIONS, add);
+      logOp_(who.account.accountId, '家長回報', cub.cubId, '', add.length + ' 項');
+    }
+    return { added: add.length };
+  });
+}
+AUTHED_ACTIONS.itemReport = apiItemReport_;
+
+/** 家長取消自己還沒被確認的回報（只刪「待確認」那一列，不動已完成的紀錄） */
+function apiItemReportCancel_(req, who) {
+  return withLock_(function () {
+    var cub = reportBinding_(who, Logic.clean(req.cubId));
+    var c = pendingReportsOf_(cub.cubId)[Logic.clean(req.itemId)];
+    if (!c || c.reporter !== who.account.accountId) throw new ApiError(ERR.NOT_FOUND, '找不到這筆回報，可能已經確認了。');
+    deleteRows_(SHEET.COMPLETIONS, [c._row]);
+    logOp_(who.account.accountId, '家長取消回報', cub.cubId, c.itemId, '');
+    return { removed: 1 };
+  });
+}
+AUTHED_ACTIONS.itemReportCancel = apiItemReportCancel_;
+
+/** 後台：目前分團等待確認的回報 */
+function pendingReports_() {
+  var cubs = {}, items = {};
+  secCubs_().forEach(function (c) { cubs[c.cubId] = c; });
+  sectionItems_(curSec_()).forEach(function (i) { items[i.id] = i; });
+  var comps = loadCompletions_(), done = {};
+  comps.forEach(function (c) { if (Logic.isCountedCompletion(c)) done[c.cubId + '|' + c.itemId] = true; });
+  return comps.filter(function (c) { return c.reportStatus === REPORT_PENDING && cubs[c.cubId] && items[c.itemId] && !done[c.cubId + '|' + c.itemId]; })
+    .map(function (c) { return { c: c, cub: cubs[c.cubId], item: items[c.itemId] }; });
+}
+
+registerAdmin_('reportList', 'signoff', function () {
+  var acc = accountsById_();
+  return {
+    enabled: reportEnabled_(),
+    reports: pendingReports_().map(function (x) {
+      return { cubId: x.cub.cubId, name: x.cub.name, squad: x.cub.squad, itemId: x.item.id, category: x.item.category, unit: x.item.unit, text: x.item.text,
+        date: x.c.date, note: x.c.note, by: (acc[x.c.reporter] || {}).nickname || '（帳號已刪除）' };
+    }).sort(function (a, b) { return a.name === b.name ? (a.date < b.date ? -1 : 1) : (a.name < b.name ? -1 : 1); })
+  };
+});
+
+/** 確認或退回：entries = [{ cubId, itemId }]；ok=true 確認（簽核人記確認的人），false 退回（刪掉那筆待確認） */
+registerAdmin_('reportReview', 'signoff', function (req, who) {
+  var entries = Array.isArray(req.entries) ? req.entries.slice(0, 200) : [];
+  if (!entries.length) throw new ApiError(ERR.BAD_INPUT, '請先勾選要處理的回報。');
+  var ok = req.ok !== false;
+  return withLock_(function () {
+    var map = {};
+    pendingReports_().forEach(function (x) { map[x.c.cubId + '|' + x.c.itemId] = x; });
+    var hit = [], seen = {};
+    entries.forEach(function (e) {
+      var k = Logic.clean(e && e.cubId) + '|' + Logic.clean(e && e.itemId);
+      if (map[k] && !seen[k]) { seen[k] = true; hit.push(map[k]); }
+    });
+    if (!hit.length) throw new ApiError(ERR.NOT_FOUND, '這些回報已經處理過了，請重新整理。');
+    if (ok) {
+      updateRows_(SHEET.COMPLETIONS, hit.map(function (x) {
+        return { row: x.c._row, values: [x.c.cubId, x.c.itemId, x.c.date, who.account.accountId, x.c.note ? '家長回報：' + x.c.note : '家長回報', x.c.reporter, REPORT_OK] };
+      }));
+    } else {
+      deleteRows_(SHEET.COMPLETIONS, hit.map(function (x) { return x.c._row; }));
+    }
+    logOp_(who.account.accountId, ok ? '確認家長回報' : '退回家長回報', hit.length + ' 筆', '', hit.slice(0, 20).map(function (x) { return x.cub.cubId + ' ' + x.item.id; }).join('、'));
+    return { changed: hit.length };
+  });
+});
+
+// ───────────── 集會預排項目 ─────────────
+
+/** 集會的預排項目裡，屬於某分團（進程模組）而且還啟用的項目 */
+function meetingPlanItems_(m, section) {
+  var ids = Array.isArray(m.plan) ? m.plan : [];
+  if (!ids.length) return [];
+  var by = {};
+  sectionItems_(section).forEach(function (i) { if (i.enabled) by[i.id] = i; });
+  return ids.filter(function (id) { return by[id]; }).map(function (id) { return by[id]; });
+}
+
+/** 儲存預排：{ meetingId, itemIds:[…] }。只換掉目前分團的部分，其他分團排的留著（全團集會各排各的） */
+registerAdmin_('meetingPlanSave', 'signoff', function (req, who) {
+  var want = (Array.isArray(req.itemIds) ? req.itemIds : []).map(Logic.clean).filter(String);
+  if (want.length > 40) throw new ApiError(ERR.BAD_INPUT, '一場集會最多預排 40 個項目。');
+  return withLock_(function () {
+    var m = findMeeting_(req.meetingId);
+    var mine = {};
+    sectionItems_(curSec_()).forEach(function (i) { if (i.enabled) mine[i.id] = true; });
+    var seen = {}, ids = [];
+    want.forEach(function (id) {
+      if (!mine[id]) throw new ApiError(ERR.BAD_INPUT, '有項目不存在或已停用，請重新整理。');
+      if (!seen[id]) { seen[id] = true; ids.push(id); }
+    });
+    var keep = (Array.isArray(m.plan) ? m.plan : []).filter(function (id) { return !mine[id]; });
+    var raw = readRows_(SHEET.MEETINGS).filter(function (r) { return r._row === m._row; })[0];
+    var row = raw.slice(0, HEADERS[SHEET.MEETINGS].length);
+    while (row.length < HEADERS[SHEET.MEETINGS].length) row.push('');
+    var all = keep.concat(ids);
+    row[10] = all.length ? JSON.stringify(all) : '';
+    updateRows_(SHEET.MEETINGS, [{ row: m._row, values: row }]);
+    logOp_(who.account.accountId, '集會預排項目', m.meetingId, '', m.date + ' ' + ids.length + ' 項');
+    return { count: ids.length };
+  });
+});
 
 // ════════════════ Notify.js ════════════════
 /**
