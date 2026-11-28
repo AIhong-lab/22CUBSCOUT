@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node tools/build.js && node --test tests/*.test.js",
     "build": "node tools/build.js",
-    "test:web": "node tools/build.js && node tests/web/e2e.js && E2E_GAS=1 node tests/web/e2e.js && node tests/web/gas-mode.js && node tests/web/pwa.js && node tests/web/slow.js && node tests/web/sections.js && node tests/web/beaver.js && node tests/web/all.js && node tests/web/eventform.js"
+    "test:web": "node tools/build.js && node tests/web/e2e.js && E2E_GAS=1 node tests/web/e2e.js && node tests/web/gas-mode.js && node tests/web/pwa.js && node tests/web/slow.js && node tests/web/sections.js && node tests/web/beaver.js && node tests/web/all.js && node tests/web/eventform.js && node tests/web/report.js"
   },
   "engines": {
     "node": ">=18"
